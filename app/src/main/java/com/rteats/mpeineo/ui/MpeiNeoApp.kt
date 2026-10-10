@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -87,7 +88,9 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
     val scope = rememberCoroutineScope()
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    // Transient overlay state must not survive a restored Activity separately
+    // from the search field's own focus and keyboard state.
+    var searchExpanded by remember { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
 
     // targetPage changes during a gesture or programmatic animation; settledPage
@@ -245,6 +248,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                         onSelect = viewModel::selectTarget,
                         onToggleFavorite = viewModel::toggleFavorite,
                         onRenameFavorite = viewModel::renameFavorite,
+                        expanded = searchExpanded,
                         onExpandedChange = { searchExpanded = it },
                         active = pager.currentPage == AppTab.SCHEDULE.ordinal,
                         modifier = Modifier.fillMaxSize().align(Alignment.BottomCenter),

@@ -97,11 +97,11 @@ internal fun ScheduleDockedSearch(
     onSelect: (ScheduleTarget) -> Unit,
     onToggleFavorite: (ScheduleTarget) -> Unit,
     onRenameFavorite: (ScheduleTarget, String) -> Unit,
+    expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     var fieldValue by remember { mutableStateOf(TextFieldValue(state.searchQuery)) }
@@ -125,7 +125,6 @@ internal fun ScheduleDockedSearch(
     val searchFocusRequester = remember { FocusRequester() }
 
     fun closeSearch() {
-        expanded = false
         onExpandedChange(false)
         fieldValue = TextFieldValue("")
         onQueryChanged("")
@@ -441,7 +440,6 @@ internal fun ScheduleDockedSearch(
                                     selection = TextRange(0, fieldValue.text.length),
                                 )
                                 if (!expanded) {
-                                    expanded = true
                                     onExpandedChange(true)
                                 }
                             } else if (!focus.isFocused) {
