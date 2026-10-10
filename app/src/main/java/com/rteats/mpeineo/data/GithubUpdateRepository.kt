@@ -19,6 +19,12 @@ private const val RELEASES_URL =
     "https://api.github.com/repos/rteats/mpei-neo/releases?per_page=30"
 private const val DEV_RELEASE_URL =
     "https://api.github.com/repos/rteats/mpei-neo/releases/tags/dev"
+private const val DEV_MANIFEST_URL =
+    "https://github.com/rteats/mpei-neo/releases/download/dev/update.json"
+private const val DEV_APK_URL =
+    "https://github.com/rteats/mpei-neo/releases/download/dev/MPEI-Neo-Dev.apk"
+private const val DEV_PAGE_URL =
+    "https://github.com/rteats/mpei-neo/releases/tag/dev"
 
 data class GithubReleaseInfo(
     val versionCode: Int,
@@ -214,6 +220,54 @@ class GithubUpdateRepository(
     }
 
     private fun fetchDevRelease(): GithubReleaseInfo {
+        // GitHub's unauthenticated REST API can return HTTP 403 on shared
+        // cellular/VPN exit IPs. Prefer the published release asset.
+        runCatching { fetchDevManifest() }
+            .onSuccess { return it }
+            .onFailure { problem ->
+                diagnostics.log(
+                    "UPDATE",
+                    "dev manifest unavailable type=${problem.javaClass.simpleName} " +
+                        "detail=${problem.message?.take(160).orEmpty()}; REST fallback",
+                )
+            }
+
+        return try {
+            fetchDevReleaseFromApi()
+        } catch (problem: Exception) {
+            throw IllegalStateException(
+                "Не удалось проверить Dev-обновление. " +
+                    "GitHub может ограничивать запросы; APK можно установить " +
+                    "вручную со страницы релизов. ${problem.message.orEmpty().take(160)}",
+                problem,
+            )
+        }
+    }
+
+    private fun fetchDevManifest(): GithubReleaseInfo {
+        val request = Request.Builder()
+            .url(DEV_MANIFEST_URL)
+            .header("Accept", "application/json")
+            .header("Cache-Control", "no-cache")
+            .header("User-Agent", "MPEI-Neo-Android")
+            .build()
+
+        updateHttpClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful) {
+                "Dev manifest returned HTTP ${response.code}"
+            }
+            val payload = response.body?.string()
+                ?: error("Dev manifest response was empty")
+            val result = parseDevUpdateManifest(payload, gson)
+            diagnostics.log(
+                "UPDATE",
+                "dev manifest loaded code=${result.versionCode} sha256=true",
+            )
+            return result
+        }
+    }
+
+    private fun fetchDevReleaseFromApi(): GithubReleaseInfo {
         val release = getReleaseDto(DEV_RELEASE_URL)
         val versionCode = Regex("""versionCode:\s*(\d+)""")
             .find(release.body)
@@ -244,7 +298,7 @@ class GithubUpdateRepository(
 
         updateHttpClient.newCall(request).execute().use { response ->
             check(response.isSuccessful) {
-                "GitHub Releases returned HTTP ${response.code}"
+                githubApiError(response)
             }
             val body = response.body?.string()
                 ?: error("GitHub Releases returned an empty response")
@@ -273,11 +327,27 @@ class GithubUpdateRepository(
 
         updateHttpClient.newCall(request).execute().use { response ->
             check(response.isSuccessful) {
-                "GitHub Releases returned HTTP ${response.code}"
+                githubApiError(response)
             }
             val body = response.body?.string()
                 ?: error("GitHub Releases returned an empty response")
             return gson.fromJson(body, ReleaseDto::class.java)
+        }
+    }
+
+    private fun githubApiError(response: okhttp3.Response): String {
+        val remaining = response.header("X-RateLimit-Remaining") ?: "unknown"
+        val reset = response.header("X-RateLimit-Reset") ?: "unknown"
+        val retry = response.header("Retry-After") ?: "unknown"
+        diagnostics.log(
+            "UPDATE",
+            "GitHub API HTTP ${response.code} " +
+                "rateRemaining=$remaining rateReset=$reset retryAfter=$retry",
+        )
+        return if (response.code == 403 && remaining == "0") {
+            "GitHub API rate limit (HTTP 403). Повторите позже."
+        } else {
+            "GitHub Releases returned HTTP ${response.code}"
         }
     }
 
@@ -409,3 +479,35 @@ private data class AssetDto(
     @SerializedName("digest")
     val digest: String? = null,
 )
+
+/** Validated update metadata with a fixed, trusted APK URL. */
+internal data class DevUpdateManifest(
+    val versionCode: Int = 0,
+    val versionName: String = "",
+    val sha256: String = "",
+)
+
+internal fun parseDevUpdateManifest(json: String, gson: Gson): GithubReleaseInfo {
+    val data = gson.fromJson(json, DevUpdateManifest::class.java)
+        ?: error("Empty Dev update manifest")
+    require(data.versionCode > 0) { "Invalid Dev versionCode" }
+    val match = Regex("""^\\d+\\.\\d+\\.\\d+-dev\\.(\\d+)$""")
+        .matchEntire(data.versionName)
+    require(match != null && match.groupValues[1].toIntOrNull() == data.versionCode) {
+        "Invalid Dev versionName"
+    }
+    require(Regex("^[a-fA-F0-9]{64}$").matches(data.sha256)) {
+        "Invalid Dev SHA-256"
+    }
+    return GithubReleaseInfo(
+        versionCode = data.versionCode,
+        versionName = data.versionName,
+        tagName = "dev",
+        title = "MPEI Neo Dev ${data.versionName}",
+        notes = "Автоматическая сборка из main.",
+        releasePageUrl = DEV_PAGE_URL,
+        apkUrl = DEV_APK_URL,
+        apkName = "MPEI-Neo-Dev.apk",
+        sha256 = data.sha256.lowercase(),
+    )
+}
