@@ -2,6 +2,13 @@ package com.rteats.mpeineo.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -49,6 +56,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,12 +102,29 @@ internal fun ScheduleDockedSearch(
     var expanded by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
     var renameDraft by remember { mutableStateOf("") }
+    var fieldValue by remember { mutableStateOf(TextFieldValue(state.searchQuery)) }
+    var searchHasFocus by remember { mutableStateOf(false) }
+    val searchCorner by animateDpAsState(
+        targetValue = if (expanded) 20.dp else 28.dp,
+        animationSpec = tween(durationMillis = 210),
+        label = "schedule-search-shape",
+    )
+
+    LaunchedEffect(state.searchQuery) {
+        if (fieldValue.text != state.searchQuery) {
+            fieldValue = TextFieldValue(
+                text = state.searchQuery,
+                selection = TextRange(state.searchQuery.length),
+            )
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
     fun closeSearch() {
         expanded = false
         onExpandedChange(false)
+        fieldValue = TextFieldValue("")
         onQueryChanged("")
         focusManager.clearFocus(force = true)
         keyboard?.hide()
@@ -108,7 +135,7 @@ internal fun ScheduleDockedSearch(
         closeSearch()
     }
 
-    androidx.compose.runtime.LaunchedEffect(active) {
+    LaunchedEffect(active) {
         if (!active && expanded) closeSearch()
     }
     BackHandler(enabled = active && expanded && renameTarget == null) { closeSearch() }
@@ -124,13 +151,18 @@ internal fun ScheduleDockedSearch(
     }
 
     BoxWithConstraints(modifier = modifier) {
-        val panelMaxHeight = (maxHeight - 86.dp).coerceAtLeast(0.dp)
+        // The docked field stays anchored while the unified surface grows UP.
+        val panelMaxHeight = (maxHeight - 90.dp).coerceAtLeast(0.dp)
         val rowCount = favorites.size + otherResults.size
         val suggestedHeight = (118 + rowCount.coerceAtMost(6) * 74 +
             (if (state.isSearching || state.searchError != null) 48 else 0)).dp
         val panelHeight = suggestedHeight.coerceAtMost(panelMaxHeight)
 
-        if (expanded) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(120)),
+        ) {
             Box(
                 modifier = Modifier.fillMaxSize()
                     .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f))
@@ -142,20 +174,29 @@ internal fun ScheduleDockedSearch(
             )
         }
 
-        Column(
+        // Suggestions and the search field share one continuous tonal surface:
+        // no detached popover, second shadow, seam, or discontinuous radii.
+        Surface(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
-            if (expanded && panelHeight > 0.dp) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                        .height(panelHeight),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 4.dp,
-                    shadowElevation = 6.dp,
+            Column {
+                AnimatedVisibility(
+                    visible = expanded && panelHeight > 0.dp,
+                    enter = expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = tween(245),
+                    ) + fadeIn(tween(155)),
+                    exit = shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(175),
+                    ) + fadeOut(tween(95)),
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().height(panelHeight),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -343,49 +384,56 @@ internal fun ScheduleDockedSearch(
             }
                     }
                 }
-            }
 
-            // Solid dock matches the navigation bar below it. Only the upper
-            // corners are rounded; no shadow/gradient in light or dark theme.
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
+                // Keep the actual search field pinned above the navigation bar,
+                // regardless of how many suggestions are currently displayed.
                 Box(
                     modifier = Modifier.fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp),
                 ) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
+                        shape = RoundedCornerShape(searchCorner),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(
                             1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f),
+                            MaterialTheme.colorScheme.outlineVariant.copy(
+                                alpha = if (expanded) 0.52f else 0.30f,
+                            ),
                         ),
                     ) {
                 TextField(
-                    value = state.searchQuery,
-                    onValueChange = onQueryChanged,
+                    value = fieldValue,
+                    onValueChange = { updated ->
+                        fieldValue = updated
+                        if (updated.text != state.searchQuery) onQueryChanged(updated.text)
+                    },
                     modifier = Modifier.fillMaxWidth()
                         .testTag("schedule-docked-search")
-                        .onFocusChanged {
-                            if (it.isFocused && !expanded) {
-                                expanded = true
-                                onExpandedChange(true)
+                        .onFocusChanged { focus ->
+                            if (focus.isFocused && !searchHasFocus) {
+                                searchHasFocus = true
+                                fieldValue = fieldValue.copy(
+                                    selection = TextRange(0, fieldValue.text.length),
+                                )
+                                if (!expanded) {
+                                    expanded = true
+                                    onExpandedChange(true)
+                                }
+                            } else if (!focus.isFocused) {
+                                searchHasFocus = false
                             }
                         },
                     singleLine = true,
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(searchCorner),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
                         onSearch()
                         keyboard?.hide()
                     }),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                     ),
@@ -398,12 +446,21 @@ internal fun ScheduleDockedSearch(
                         )
                     },
                     leadingIcon = {
-                        if (expanded) {
-                            IconButton(onClick = ::closeSearch) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Закрыть поиск")
+                        Crossfade(
+                            targetState = expanded,
+                            animationSpec = tween(160),
+                            label = "schedule-search-leading",
+                        ) { isExpanded ->
+                            if (isExpanded) {
+                                IconButton(onClick = ::closeSearch) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Закрыть поиск",
+                                    )
+                                }
+                            } else {
+                                Icon(Icons.Default.Search, contentDescription = null)
                             }
-                        } else {
-                            Icon(Icons.Default.Search, contentDescription = null)
                         }
                     },
                     trailingIcon = {
