@@ -1,6 +1,15 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -87,9 +97,9 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
     }.getOrDefault(false)
 
 /**
- * Each lesson starts as a one-line row: period, truncated title and room.
- * Tapping anywhere expands the original detailed presentation; no chevron or
- * hint increases the collapsed height.
+ * An anchored, expandable lesson. Number/title stay in place, while the
+ * preview room fades into the detailed location row below.
+ * The app's expressive MotionScheme coordinates layout, color and shape.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -98,32 +108,64 @@ internal fun LessonCard(lesson: Lesson) {
         lesson.startTime, lesson.name, lesson.place, lesson.lecturer, lesson.groups,
     ) { mutableStateOf(false) }
 
+    val motion = MaterialTheme.motionScheme
+    val cornerRadius by animateDpAsState(
+        targetValue = if (expanded) 20.dp else 28.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "lesson-corner",
+    )
+    val container by animateColorAsState(
+        targetValue = lerp(
+            lessonContainerColor(lesson.kind),
+            MaterialTheme.colorScheme.primaryContainer,
+            if (expanded) 0.12f else 0f,
+        ),
+        animationSpec = motion.defaultEffectsSpec(),
+        label = "lesson-container",
+    )
+    val verticalPadding by animateDpAsState(
+        targetValue = if (expanded) 13.dp else 10.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "lesson-padding",
+    )
+
     Surface(
         onClick = { expanded = !expanded },
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = lessonContainerColor(lesson.kind),
+        shape = RoundedCornerShape(cornerRadius),
+        color = container,
     ) {
         Column(
-            modifier = Modifier.animateContentSize()
-                .padding(horizontal = 14.dp, vertical = if (expanded) 12.dp else 10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = verticalPadding),
         ) {
-            if (!expanded) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    LessonNumber(lesson.startTime)
-                    Text(
-                        lesson.name,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    if (lesson.place.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                LessonNumber(lesson.startTime)
+                Text(
+                    lesson.name,
+                    modifier = Modifier.weight(1f).animateContentSize(
+                        animationSpec = motion.defaultSpatialSpec(),
+                    ),
+                    maxLines = if (expanded) Int.MAX_VALUE else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (lesson.place.isNotBlank()) {
+                    AnimatedVisibility(
+                        visible = !expanded,
+                        enter = expandHorizontally(
+                            expandFrom = Alignment.End,
+                            animationSpec = motion.defaultSpatialSpec(),
+                        ) + fadeIn(animationSpec = motion.defaultEffectsSpec()),
+                        exit = shrinkHorizontally(
+                            shrinkTowards = Alignment.End,
+                            animationSpec = motion.defaultSpatialSpec(),
+                        ) + fadeOut(animationSpec = motion.defaultEffectsSpec()),
+                    ) {
                         Text(
                             lesson.place,
                             modifier = Modifier.widthIn(max = 100.dp),
@@ -134,16 +176,29 @@ internal fun LessonCard(lesson: Lesson) {
                         )
                     }
                 }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = motion.defaultSpatialSpec(),
+                ) + fadeIn(animationSpec = motion.defaultEffectsSpec()),
+                exit = shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = motion.defaultSpatialSpec(),
+                ) + fadeOut(animationSpec = motion.defaultEffectsSpec()),
+            ) {
+                Column(
+                    modifier = Modifier.padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        LessonNumber(lesson.startTime)
                         Text(
-                            "${lesson.startTime}–${lesson.endTime}",
+                            lesson.startTime + "–" + lesson.endTime,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             style = MaterialTheme.typography.labelLarge,
@@ -151,34 +206,38 @@ internal fun LessonCard(lesson: Lesson) {
                         )
                         if (lesson.kind.isNotBlank()) LessonTypeChip(lesson.kind)
                     }
-                    Text(
-                        lesson.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (lesson.place.isNotBlank() || lesson.lecturer.isNotBlank() ||
-                        lesson.groups.isNotBlank()
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (lesson.place.isNotBlank()) {
-                                LessonDetail(
-                                    icon = { Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                    text = lesson.place,
+                    if (lesson.place.isNotBlank()) {
+                        LessonDetail(
+                            icon = {
+                                Icon(
+                                    Icons.Default.Place, contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
                                 )
-                            }
-                            if (lesson.lecturer.isNotBlank()) {
-                                LessonDetail(
-                                    icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                    text = lesson.lecturer,
+                            },
+                            text = lesson.place,
+                        )
+                    }
+                    if (lesson.lecturer.isNotBlank()) {
+                        LessonDetail(
+                            icon = {
+                                Icon(
+                                    Icons.Default.Person, contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
                                 )
-                            }
-                            if (lesson.groups.isNotBlank()) {
-                                LessonDetail(
-                                    icon = { Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                    text = lesson.groups,
+                            },
+                            text = lesson.lecturer,
+                        )
+                    }
+                    if (lesson.groups.isNotBlank()) {
+                        LessonDetail(
+                            icon = {
+                                Icon(
+                                    Icons.Default.List, contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
                                 )
-                            }
-                        }
+                            },
+                            text = lesson.groups,
+                        )
                     }
                 }
             }

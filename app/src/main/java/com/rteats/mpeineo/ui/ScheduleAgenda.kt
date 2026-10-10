@@ -5,8 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -106,6 +104,7 @@ internal fun ScheduleAgenda(
         entryDay = currentDayIndex
     }
 
+    val motion = MaterialTheme.motionScheme
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
@@ -115,12 +114,12 @@ internal fun ScheduleAgenda(
             val forward = targetState > initialState
             (slideInVertically(
                 initialOffsetY = { if (forward) it / 4 else -it / 4 },
-                animationSpec = tween(230, easing = FastOutSlowInEasing),
-            ) + fadeIn(animationSpec = tween(160))) togetherWith
+                animationSpec = motion.defaultSpatialSpec(),
+            ) + fadeIn(animationSpec = motion.defaultEffectsSpec())) togetherWith
                 (slideOutVertically(
                     targetOffsetY = { if (forward) -it / 4 else it / 4 },
-                    animationSpec = tween(230, easing = FastOutSlowInEasing),
-                ) + fadeOut(animationSpec = tween(160)))
+                    animationSpec = motion.defaultSpatialSpec(),
+                ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
         },
     ) { displayedWeek ->
         val weekStart = monday.plusWeeks(displayedWeek.toLong())
