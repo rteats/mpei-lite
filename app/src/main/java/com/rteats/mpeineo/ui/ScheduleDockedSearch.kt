@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,6 +72,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -93,7 +96,6 @@ internal fun ScheduleDockedSearch(
     state: MainUiState,
     onQueryChanged: (String) -> Unit,
     onTypeChanged: (ScheduleTargetType?) -> Unit,
-    onSearch: () -> Unit,
     onSelect: (ScheduleTarget) -> Unit,
     onToggleFavorite: (ScheduleTarget) -> Unit,
     onRenameFavorite: (ScheduleTarget, String) -> Unit,
@@ -106,6 +108,10 @@ internal fun ScheduleDockedSearch(
     var renameDraft by remember { mutableStateOf("") }
     var fieldValue by remember { mutableStateOf(TextFieldValue(state.searchQuery)) }
     var searchHasFocus by remember { mutableStateOf(false) }
+    // An expanded search may initially have no visible IME for several frames.
+    // Only a visible -> hidden IME transition ends the interaction.
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var keyboardShownDuringSearch by remember { mutableStateOf(false) }
     val searchCorner by animateDpAsState(
         targetValue = if (expanded) 20.dp else 28.dp,
         animationSpec = tween(durationMillis = 210),
@@ -137,8 +143,24 @@ internal fun ScheduleDockedSearch(
         closeSearch()
     }
 
-    LaunchedEffect(active) {
-        if (!active && expanded) closeSearch()
+    LaunchedEffect(active, expanded, keyboardVisible) {
+        if (!active || !expanded) {
+            keyboardShownDuringSearch = false
+            if (!active && expanded) closeSearch()
+        } else if (keyboardVisible) {
+            keyboardShownDuringSearch = true
+        } else if (shouldCollapseSearchOnImeDismiss(
+                active = active,
+                expanded = expanded,
+                wasKeyboardVisible = keyboardShownDuringSearch,
+                keyboardVisible = keyboardVisible,
+            )
+        ) {
+            // System Back, a keyboard gesture, and the IME's dismiss button
+            // all restore the selected schedule's name in the collapsed field.
+            keyboardShownDuringSearch = false
+            closeSearch()
+        }
     }
     BackHandler(enabled = active && expanded && renameTarget == null) { closeSearch() }
 
@@ -449,10 +471,9 @@ internal fun ScheduleDockedSearch(
                     singleLine = true,
                     shape = RoundedCornerShape(searchCorner),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        onSearch()
-                        keyboard?.hide()
-                    }),
+                    // Results already load as the user types. Submitting via
+                    // the IME closes this transient search mode too.
+                    keyboardActions = KeyboardActions(onSearch = ::closeSearch),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
@@ -537,3 +558,14 @@ internal fun ScheduleDockedSearch(
         )
     }
 }
+
+/**
+ * Prevents the search from instantly collapsing during the delay between
+ * focusing the field and the keyboard actually appearing.
+ */
+internal fun shouldCollapseSearchOnImeDismiss(
+    active: Boolean,
+    expanded: Boolean,
+    wasKeyboardVisible: Boolean,
+    keyboardVisible: Boolean,
+): Boolean = active && expanded && wasKeyboardVisible && !keyboardVisible

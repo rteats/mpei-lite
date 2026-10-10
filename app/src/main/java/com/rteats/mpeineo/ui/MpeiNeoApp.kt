@@ -244,7 +244,6 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                         state = scheduleState,
                         onQueryChanged = viewModel::updateSearchQuery,
                         onTypeChanged = viewModel::setSearchType,
-                        onSearch = viewModel::search,
                         onSelect = viewModel::selectTarget,
                         onToggleFavorite = viewModel::toggleFavorite,
                         onRenameFavorite = viewModel::renameFavorite,
