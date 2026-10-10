@@ -236,8 +236,18 @@ internal fun ScheduleDockedSearch(
                             mutableStateOf(false)
                         }
                         val current = state.selected?.favoriteKey() == favorite.favoriteKey()
+                        Surface(
+                            onClick = { select(favorite) },
+                            modifier = Modifier.fillMaxWidth()
+                                .animateItem()
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                            shape = MaterialTheme.shapes.large,
+                            color = if (current) {
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                            } else Color.Transparent,
+                        ) {
                         ListItem(
-                            modifier = Modifier.fillMaxWidth().clickable { select(favorite) },
+                            modifier = Modifier.fillMaxWidth(),
                             leadingContent = {
                                 Icon(
                                     Icons.Default.Star,
@@ -301,6 +311,7 @@ internal fun ScheduleDockedSearch(
                             },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
+                        }
                     }
                 }
 
@@ -339,8 +350,16 @@ internal fun ScheduleDockedSearch(
                     val favorite = state.favorites.any {
                         it.favoriteKey() == result.favoriteKey()
                     }
+                    Surface(
+                        onClick = { select(result) },
+                        modifier = Modifier.fillMaxWidth()
+                            .animateItem()
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = Color.Transparent,
+                    ) {
                     ListItem(
-                        modifier = Modifier.fillMaxWidth().clickable { select(result) },
+                        modifier = Modifier.fillMaxWidth(),
                         headlineContent = {
                             Text(result.name, fontWeight = FontWeight.Medium)
                         },
@@ -368,13 +387,14 @@ internal fun ScheduleDockedSearch(
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
+                    }
                 }
                 if (favorites.isEmpty() && otherResults.isEmpty() &&
                     !state.isSearching && state.searchQuery.isBlank()
                 ) {
                     item(key = "empty-favorites") {
                         Text(
-                            "Здесь появятся избранные расписания. Начните вводить название для поиска.",
+                            "Начните вводить группу, преподавателя или аудиторию. Избранные расписания появятся здесь.",
                             modifier = Modifier.padding(20.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
