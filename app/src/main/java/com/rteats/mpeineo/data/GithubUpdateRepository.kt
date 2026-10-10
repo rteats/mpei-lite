@@ -491,7 +491,7 @@ internal fun parseDevUpdateManifest(json: String, gson: Gson): GithubReleaseInfo
     val data = gson.fromJson(json, DevUpdateManifest::class.java)
         ?: error("Empty Dev update manifest")
     require(data.versionCode > 0) { "Invalid Dev versionCode" }
-    val match = Regex("""^\\d+\\.\\d+\\.\\d+-dev\\.(\\d+)$""")
+    val match = Regex("""^\d+\.\d+\.\d+-dev\.(\d+)$""")
         .matchEntire(data.versionName)
     require(match != null && match.groupValues[1].toIntOrNull() == data.versionCode) {
         "Invalid Dev versionName"
