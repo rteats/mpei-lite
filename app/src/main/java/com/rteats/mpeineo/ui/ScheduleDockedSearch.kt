@@ -66,6 +66,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -120,6 +122,7 @@ internal fun ScheduleDockedSearch(
     }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val searchFocusRequester = remember { FocusRequester() }
 
     fun closeSearch() {
         expanded = false
@@ -430,6 +433,7 @@ internal fun ScheduleDockedSearch(
                     },
                     modifier = Modifier.fillMaxWidth()
                         .testTag("schedule-docked-search")
+                        .focusRequester(searchFocusRequester)
                         .onFocusChanged { focus ->
                             if (focus.isFocused && !searchHasFocus) {
                                 searchHasFocus = true
@@ -465,21 +469,34 @@ internal fun ScheduleDockedSearch(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
+                    // Keep the touch target a constant 48dp on both sides
+                    // of the transition. Crossfade only equally sized glyphs:
+                    // swapping an Icon for a whole IconButton made the search
+                    // symbol jump to a corner while measuring two layouts.
                     leadingIcon = {
-                        Crossfade(
-                            targetState = expanded,
-                            animationSpec = tween(160),
-                            label = "schedule-search-leading",
-                        ) { isExpanded ->
-                            if (isExpanded) {
-                                IconButton(onClick = ::closeSearch) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Закрыть поиск",
-                                    )
+                        IconButton(
+                            onClick = {
+                                if (expanded) closeSearch()
+                                else {
+                                    searchFocusRequester.requestFocus()
+                                    keyboard?.show()
                                 }
-                            } else {
-                                Icon(Icons.Default.Search, contentDescription = null)
+                            },
+                        ) {
+                            Crossfade(
+                                targetState = expanded,
+                                animationSpec = tween(160),
+                                label = "schedule-search-leading",
+                            ) { isExpanded ->
+                                Icon(
+                                    imageVector = if (isExpanded) {
+                                        Icons.AutoMirrored.Filled.ArrowBack
+                                    } else Icons.Default.Search,
+                                    contentDescription = if (isExpanded) {
+                                        "Закрыть поиск"
+                                    } else "Найти расписание",
+                                    modifier = Modifier.size(24.dp),
+                                )
                             }
                         }
                     },

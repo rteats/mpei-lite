@@ -1,5 +1,11 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -87,6 +93,11 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
     // targetPage changes during a gesture or programmatic animation; settledPage
     // waits until the animation finishes, visibly delaying the nav indicator.
     val currentTab = AppTab.entries[pager.targetPage]
+    // Keep navigation absent for the entire search interaction, including
+    // the keyboard dismissal animation. On return, animate its height rather
+    // than inserting a full-height bar in a single frame.
+    val showNavigation = !keyboardVisible &&
+        !(currentTab == AppTab.SCHEDULE && searchExpanded)
 
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }
@@ -117,7 +128,18 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (!keyboardVisible) ShortNavigationBar(
+            AnimatedVisibility(
+                visible = showNavigation,
+                enter = expandVertically(
+                    expandFrom = Alignment.Bottom,
+                    animationSpec = tween(240),
+                ) + fadeIn(animationSpec = tween(190)),
+                exit = shrinkVertically(
+                    shrinkTowards = Alignment.Bottom,
+                    animationSpec = tween(165),
+                ) + fadeOut(animationSpec = tween(120)),
+            ) {
+            ShortNavigationBar(
                 arrangement = ShortNavigationBarArrangement.EqualWeight,
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ) {
@@ -168,6 +190,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
                     label = null,
                 )
+            }
             }
         },
     ) { innerPadding ->
