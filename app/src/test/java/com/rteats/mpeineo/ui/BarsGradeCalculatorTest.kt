@@ -14,6 +14,18 @@ class BarsGradeCalculatorTest {
             markAndDate = mark,
         )
 
+    @Test fun aggregateAssessmentHidesAutomaticForecast() {
+        assertFalse(shouldShowGradeForecastForAssessment("Зачёт (по совокупности)"))
+        assertFalse(shouldShowGradeForecastForAssessment("ЭКЗАМЕН (ПО  СОВОКУПНОСТИ)"))
+        assertFalse(shouldShowGradeForecastForAssessment("Зачет по совокупности"))
+    }
+
+    @Test fun ordinaryAssessmentKeepsAutomaticForecast() {
+        assertTrue(shouldShowGradeForecastForAssessment("Экзамен"))
+        assertTrue(shouldShowGradeForecastForAssessment("Зачёт"))
+        assertTrue(shouldShowGradeForecastForAssessment(""))
+    }
+
     @Test fun weightsAcceptFractionsAndPercentages() {
         assertEquals(0.25, parseBarsWeight("0,25")!!, 0.0001)
         assertEquals(0.25, parseBarsWeight("25%")!!, 0.0001)

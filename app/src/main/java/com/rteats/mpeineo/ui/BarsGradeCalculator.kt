@@ -28,6 +28,14 @@ internal sealed interface GradeForecast {
     data class Unavailable(val explanation: String) : GradeForecast
 }
 
+/**
+ * A (по совокупности) assessment is already calculated from aggregate work;
+ * showing the separate automatic-grade prediction would be misleading.
+ */
+internal fun shouldShowGradeForecastForAssessment(assessmentType: String): Boolean =
+    !Regex("""по\s+совокупности""", RegexOption.IGNORE_CASE)
+        .containsMatchIn(assessmentType)
+
 internal const val TARGET_EXAM_SUM = 4.2
 private const val MAX_COMBINATIONS = 5
 private const val MAX_STATES = 150_000
