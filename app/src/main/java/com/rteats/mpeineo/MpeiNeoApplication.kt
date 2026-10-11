@@ -81,7 +81,7 @@ class AppContainer(application: Application) {
     val diagnostics = DiagnosticLog(application)
     val mailRepository = MailRepository(application)
     val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
-    val barsSnapshots = BarsSnapshotStore(application)
+    internal val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)
     val updater = GithubUpdateRepository(
         application = application,
