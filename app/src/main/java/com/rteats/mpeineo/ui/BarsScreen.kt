@@ -1177,10 +1177,13 @@ private fun DisciplineCard(
  * destination. Its title stays pinned and collapses the card on tap.
  * Content can scroll within the card, without reaching other disciplines.
  */
+/**
+ * Discipline detail stays inside the BARS tab, with a pinned return header.
+ * Grade data is shown before supplementary control/assessment information.
+ */
 @Composable
 private fun DisciplineExpandedCard(
     discipline: BarsDiscipline,
-    state: BarsUiState,
     onCollapse: () -> Unit,
     onOpenBrowser: () -> Unit,
 ) {
@@ -1197,21 +1200,23 @@ private fun DisciplineExpandedCard(
             .testTag("bars-discipline-expanded"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Same card header expands and collapses the discipline in-place.
         Surface(
             onClick = onCollapse,
-            modifier = Modifier.fillMaxWidth()
-                .padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                    .padding(horizontal = 16.dp, vertical = 17.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "К списку дисциплин",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Text(
                     discipline.disciplineName,
                     modifier = Modifier.weight(1f),
@@ -1220,10 +1225,6 @@ private fun DisciplineExpandedCard(
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Icon(
-                    Icons.Default.KeyboardArrowUp,
-                    contentDescription = "Свернуть дисциплину",
-                )
             }
         }
 
@@ -1231,7 +1232,7 @@ private fun DisciplineExpandedCard(
             modifier = Modifier.fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -1239,65 +1240,82 @@ private fun DisciplineExpandedCard(
                 color = MaterialTheme.colorScheme.surfaceContainer,
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (discipline.assessmentType.isNotBlank()) {
-                        AssessmentTypeChip(discipline.assessmentType)
-                    }
-                    if (discipline.personName.isNotBlank()) {
+                    val subtitle = listOf(
+                        discipline.assessmentType,
+                        discipline.personName,
+                    ).filter(String::isNotBlank).joinToString(" · ")
+                    if (subtitle.isNotBlank()) {
                         Text(
-                            discipline.personName,
-                            style = MaterialTheme.typography.titleMedium,
+                            subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        discipline.finalMarkValue?.let {
-                            GradeChip("Итог: ${formatBarsGrade(it.toDouble())}", it)
-                        }
-                        discipline.currentScoreValue?.let {
-                            GradeChip("Текущий: ${formatBarsGrade(it.toDouble())}", it)
+                    Text(
+                        "Оценки",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (controls.isEmpty()) {
+                        Text(
+                            "Контрольных мероприятий нет",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            controls.forEach { control ->
+                                val mark = control.markValue
+                                if (mark != null) {
+                                    GradeChip(formatBarsGrade(mark.toDouble()), mark)
+                                } else {
+                                    NeutralChip("—")
+                                }
+                            }
                         }
                     }
-                    Text(
-                        "Оценено: ${controls.count { it.markValue != null }} / ${controls.size}" +
-                            if (controls.any { it.weekNum?.isNotBlank() == true }) {
-                                "  ·  Сроки указаны в контрольных мероприятиях"
-                            } else "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    discipline.finalMarkValue?.let { final ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "Итог",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            GradeChip(formatBarsGrade(final.toDouble()), final)
+                        }
+                    }
+                    discipline.currentScoreValue?.let { score ->
+                        Text(
+                            "Текущий балл БАРС: " +
+                                formatBarsGrade(score.toDouble()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+            // "По совокупности" assessments do not need an automatic-grade
+            // forecast. Hide the entire section, not merely its combinations.
+            if (shouldShowGradeForecastForAssessment(discipline.assessmentType)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
-                    Text("Данные студента",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
-                    if (state.profileName.isNotBlank()) {
-                        Text(state.profileName, style = MaterialTheme.typography.bodyLarge)
-                    }
-                    if (state.profileGroup.isNotBlank()) {
-                        Text("Группа: " + state.profileGroup)
-                    }
-                    if (state.semester.isNotBlank()) {
-                        Text("Семестр: " + state.semester)
-                    }
-                    state.studentDetails.forEach { field ->
-                        Text(field.label + ": " + field.value,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall)
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        GradeForecastSection(discipline)
                     }
                 }
             }
@@ -1308,16 +1326,6 @@ private fun DisciplineExpandedCard(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    GradeForecastSection(discipline)
-                }
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
                         "Контрольные мероприятия",
                         style = MaterialTheme.typography.titleMedium,
@@ -1333,9 +1341,11 @@ private fun DisciplineExpandedCard(
                     } else {
                         controls.forEachIndexed { index, activity ->
                             ActivityDetailRow(activity)
-                            if (index < controls.lastIndex) HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
+                            if (index < controls.lastIndex) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -1347,17 +1357,19 @@ private fun DisciplineExpandedCard(
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "Другие данные БАРС",
+                            "Дополнительные оценки",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
                         otherActivities.forEachIndexed { index, activity ->
                             ActivityDetailRow(activity)
-                            if (index < otherActivities.lastIndex) HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
+                            if (index < otherActivities.lastIndex) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            }
                         }
                     }
                 }
