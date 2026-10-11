@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +51,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -331,17 +333,17 @@ internal fun SettingsScreen(
                     Text("Интервал проверки",
                         modifier = Modifier.padding(start = 12.dp, top = 4.dp),
                         style = MaterialTheme.typography.labelLarge)
-                    // Connected M3 Expressive single-choice buttons.
-                    // Checked shape morphs into a pill while adjacent
-                    // unchecked buttons retain their connected end shapes.
-                    Row(
+                    // Compose Material Catalog's single-select FlowRow
+                    // using connected shapes and visible tonal segments.
+                    val intervals = listOf(15, 30, 60)
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(
                             ButtonGroupDefaults.ConnectedSpaceBetween,
                         ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        val intervals = listOf(15, 30, 60)
                         intervals.forEachIndexed { index, minutes ->
                             ToggleButton(
                                 checked = pollMinutes == minutes,
@@ -351,20 +353,20 @@ internal fun SettingsScreen(
                                         MailNotificationScheduler.changeInterval(context, minutes)
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
-                                    .semantics { role = Role.RadioButton },
+                                modifier = Modifier.semantics { role = Role.RadioButton },
                                 shapes = when (index) {
                                     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                                     intervals.lastIndex ->
                                         ButtonGroupDefaults.connectedTrailingButtonShapes()
                                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                                 },
+                                colors = ToggleButtonDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp),
                             ) {
-                                Text(
-                                    "$minutes мин",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
+                                Text("$minutes мин", maxLines = 1, softWrap = false)
                             }
                         }
                     }
