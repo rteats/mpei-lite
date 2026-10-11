@@ -738,6 +738,11 @@ internal fun BarsScreen(
             },
             update = { view ->
                 webView = view
+                // A background validation WebView must not consume taps or
+                // horizontal pager swipes. Keep JS/network running; only
+                // interactive login and the explicit browser accept input.
+                view.isEnabled = state.browserVisible ||
+                    state.authStage == BarsAuthStage.WEB_AUTH
             },
                 onRelease = { view ->
                     viewModel.logWebEvent(
