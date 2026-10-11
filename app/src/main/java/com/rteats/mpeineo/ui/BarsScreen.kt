@@ -48,17 +48,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -80,7 +77,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
@@ -165,6 +161,7 @@ internal fun BarsScreen(
 
     var browserWasVisible by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(state.browserVisible, webView) {
+        if (state.browserVisible) marksReadiness?.navigationStarted()
         if (browserWasVisible && !state.browserVisible) {
             webView?.let { view ->
                 if (BarsDocumentPolicy.isTrusted(view.url.orEmpty())) {
@@ -853,7 +850,6 @@ private fun BarsNativeDashboard(
             DisciplineExpandedCard(
                 discipline = expandedDiscipline,
                 onCollapse = { selectedDisciplineName = null },
-                onOpenBrowser = onOpenBrowser,
             )
         } else {
             val refreshState = rememberPullToRefreshState()
@@ -905,7 +901,7 @@ private fun BarsNativeDashboard(
                         }
                     }
                     item(key = "profile") {
-                        BarsUserHeader(state = state, onOpenBrowser = onOpenBrowser)
+                        BarsUserHeader(state = state)
                     }
 
                     state.error?.let { message ->
@@ -982,7 +978,6 @@ private fun BarsNativeDashboard(
 @Composable
 private fun BarsUserHeader(
     state: BarsUiState,
-    onOpenBrowser: () -> Unit,
 ) {
     var showStudentDetails by rememberSaveable { mutableStateOf(false) }
     Column(
@@ -1036,38 +1031,17 @@ private fun BarsUserHeader(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val height = ButtonDefaults.MediumContainerHeight
-            Button(
-                onClick = onOpenBrowser,
-                modifier = Modifier.heightIn(min = height),
-                contentPadding = ButtonDefaults.contentPaddingFor(
-                    height, hasEndIcon = true,
-                ),
-                shapes = ButtonDefaults.shapes(),
+        if (state.studentDetails.isNotEmpty()) {
+            TextButton(
+                onClick = { showStudentDetails = !showStudentDetails },
+                modifier = Modifier.padding(top = 5.dp),
             ) {
-                Text("БАРС", style = ButtonDefaults.textStyleFor(height))
-                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(height)))
+                Text("Данные студента")
                 Icon(
-                    Icons.Default.ArrowForward,
+                    if (showStudentDetails) Icons.Default.KeyboardArrowUp
+                    else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(height))
-                        .rotate(-45f),
                 )
-            }
-            if (state.studentDetails.isNotEmpty()) {
-                TextButton(onClick = { showStudentDetails = !showStudentDetails }) {
-                    Text("Данные студента")
-                    Icon(
-                        if (showStudentDetails) Icons.Default.KeyboardArrowUp
-                        else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                    )
-                }
             }
         }
         AnimatedVisibility(visible = showStudentDetails) {
@@ -1204,7 +1178,6 @@ private fun DisciplineCard(
 private fun DisciplineExpandedCard(
     discipline: BarsDiscipline,
     onCollapse: () -> Unit,
-    onOpenBrowser: () -> Unit,
 ) {
     val controls = discipline.activities.filter {
         it.type == BarsActivityType.CONTROL_ACTIVITY
@@ -1394,15 +1367,8 @@ private fun DisciplineExpandedCard(
                 }
             }
 
-            FilledTonalButton(
-                onClick = onOpenBrowser,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Открыть в БАРС")
-                Spacer(Modifier.size(6.dp))
-                Icon(Icons.Default.ArrowForward, contentDescription = null)
-            }
-            Spacer(Modifier.height(24.dp))
+            // Keep the bottom content above the shared floating portal action.
+            Spacer(Modifier.height(96.dp))
         }
     }
 }

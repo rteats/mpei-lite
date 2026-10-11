@@ -8,6 +8,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
@@ -81,6 +88,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
         factory = UpdateViewModel.factory(application.container),
     )
     val barsState by barsViewModel.state.collectAsState()
+    val mailState by mailViewModel.state.collectAsState()
     val scheduleState by viewModel.state.collectAsState()
     val pager = rememberPagerState(
         initialPage = if (initialMailTab) AppTab.MAIL.ordinal else 0,
@@ -180,14 +188,18 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                 ShortNavigationBarItem(
                     selected = currentTab == AppTab.MAIL,
                     onClick = {
-                        if (currentTab == AppTab.MAIL && mailWebVisible) {
-                            mailWebVisible = false
-                        } else {
-                            navigate(AppTab.MAIL)
+                        when {
+                            currentTab == AppTab.MAIL && mailWebVisible ->
+                                mailWebVisible = false
+                            currentTab == AppTab.MAIL && mailState.selected != null ->
+                                mailViewModel.closeMessage()
+                            else -> navigate(AppTab.MAIL)
                         }
                     },
                     icon = {
-                        if (currentTab == AppTab.MAIL && mailWebVisible) {
+                        if (currentTab == AppTab.MAIL &&
+                            (mailWebVisible || mailState.selected != null)
+                        ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Вернуться к входящим",
@@ -253,6 +265,29 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                     )
                 }
 
+                // One shared browser action above the short navbar on both tabs.
+                // Only native screens show it; login and session WebViews stay clear.
+                if (destination == AppTab.BARS &&
+                    barsState.authStage == BarsAuthStage.AUTHENTICATED &&
+                    !barsState.browserVisible
+                ) {
+                    PortalFloatingButton(
+                        label = "БАРС",
+                        onClick = barsViewModel::showBrowser,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp),
+                    )
+                } else if (destination == AppTab.MAIL &&
+                    !mailWebVisible && !keyboardVisible
+                ) {
+                    PortalFloatingButton(
+                        label = "ОСЭП",
+                        onClick = { mailWebVisible = true },
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp),
+                    )
+                }
+
                 if (destination == AppTab.SCHEDULE) {
                     ScheduleDockedSearch(
                         state = scheduleState,
@@ -295,6 +330,31 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                 }
             }
         }
+    }
+}
+
+/** Identically styled browser actions for the native Mail and BARS tabs. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PortalFloatingButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val height = ButtonDefaults.MediumContainerHeight
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = height).testTag("portal-floating-$label"),
+        contentPadding = ButtonDefaults.contentPaddingFor(height),
+        shapes = ButtonDefaults.shapes(),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_mail_open_owa),
+            contentDescription = null,
+            modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)),
+        )
+        Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(height)))
+        Text(label, style = ButtonDefaults.textStyleFor(height))
     }
 }
 

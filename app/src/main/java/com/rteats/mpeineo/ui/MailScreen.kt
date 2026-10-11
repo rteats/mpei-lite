@@ -2,10 +2,6 @@ package com.rteats.mpeineo.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -23,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,8 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -44,7 +37,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -66,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -97,19 +88,6 @@ internal fun MailScreen(
     var showCertificateDetails by remember { mutableStateOf(false) }
     val inboxScrollState = rememberLazyListState()
     val motion = MaterialTheme.motionScheme
-    val reading = state.selected != null
-    // Never add/remove a layout participant for the back arrow. Move the
-    // title's inset continuously while the arrow fades in a fixed 48dp slot.
-    val titleInset by animateDpAsState(
-        targetValue = if (reading) 56.dp else 0.dp,
-        animationSpec = motion.defaultSpatialSpec(),
-        label = "mail-toolbar-title-inset",
-    )
-    val backAlpha by animateFloatAsState(
-        targetValue = if (reading) 1f else 0f,
-        animationSpec = motion.defaultEffectsSpec(),
-        label = "mail-toolbar-back-opacity",
-    )
 
     BackHandler(enabled = active && (webVisible || state.selected != null)) {
         if (webVisible) onWebVisibleChange(false) else viewModel.closeMessage()
@@ -155,51 +133,6 @@ internal fun MailScreen(
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // Reserve one stable 48dp toolbar slot. The title and arrow
-                // share the same vertical center; neither changes the Row's
-                // measurement while navigating between inbox and message.
-                Box(modifier = Modifier.weight(1f).height(48.dp)) {
-                    Crossfade(
-                        targetState = reading,
-                        modifier = Modifier.align(Alignment.CenterStart).offset(x = titleInset),
-                        animationSpec = motion.defaultEffectsSpec(),
-                        label = "mail-toolbar-title",
-                    ) { showingMessage ->
-                        Text(
-                            if (showingMessage) "Письмо" else "Входящие",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                        )
-                    }
-                    IconButton(
-                        onClick = viewModel::closeMessage,
-                        enabled = reading,
-                        modifier = Modifier.align(Alignment.CenterStart)
-                            .graphicsLayer { alpha = backAlpha },
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (reading) "Назад к входящим" else null,
-                        )
-                    }
-                }
-                if (state.selected == null && state.configured) {
-                    IconButton(onClick = viewModel::refresh, enabled = !state.loading) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить почту")
-                    }
-                }
-                IconButton(onClick = { onWebVisibleChange(true) }) {
-                    Icon(painterResource(R.drawable.ic_mail_open_owa), contentDescription = "Открыть OWA")
-                }
-            }
-        },
     ) { insets ->
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
             if (state.error != null) {
@@ -295,7 +228,7 @@ internal fun MailScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
                                     start = 12.dp, end = 12.dp,
-                                    top = 6.dp, bottom = 24.dp,
+                                    top = 12.dp, bottom = 100.dp,
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
@@ -509,6 +442,7 @@ private fun MailLogin(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.size(90.dp))
     }
 }
 
@@ -717,7 +651,7 @@ private fun MailMessage(
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
-            Spacer(Modifier.size(32.dp))
+            Spacer(Modifier.size(100.dp))
         }
     }
 }

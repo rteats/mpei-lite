@@ -48,6 +48,10 @@ class UiSmokeTest {
             .assertIsDisplayed()
 
         composeRule
+            .onNodeWithTag("portal-floating-ОСЭП")
+            .assertIsDisplayed()
+
+        composeRule
             .onNodeWithContentDescription("Настройки")
             .performClick()
 
