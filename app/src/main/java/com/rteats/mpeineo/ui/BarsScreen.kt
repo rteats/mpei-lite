@@ -1079,6 +1079,10 @@ private fun BarsUserHeader(
     }
 }
 
+/**
+ * Scannable subject-first card: title, real final mark, quiet metadata,
+ * then raw grades. The final mark must not be confused with an average.
+ */
 @Composable
 private fun DisciplineCard(
     discipline: BarsDiscipline,
@@ -1094,85 +1098,75 @@ private fun DisciplineCard(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = discipline.disciplineName,
+                    discipline.disciplineName,
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                androidx.compose.material3.Icon(
-                    Icons.Default.ArrowForward,
-                    contentDescription = "Подробности",
-                    modifier = Modifier.padding(top = 3.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-
-            if (discipline.assessmentType.isNotBlank()) {
-                AssessmentTypeChip(text = discipline.assessmentType)
-            }
-
-            if (discipline.personName.isNotBlank()) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "ПРЕПОДАВАТЕЛЬ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = discipline.personName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-            )
-            Text(
-                text = "ОЦЕНКИ",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            val finalMark = discipline.finalMarkValue
-            when {
-                finalMark != null -> {
-                    GradeChip(
-                        text = "Итог: ${finalMark.roundToInt()}",
-                        mark = finalMark,
-                    )
-                }
-
-                discipline.markValues.isNotEmpty() -> {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                val finalMark = discipline.finalMarkValue
+                if (finalMark != null) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        discipline.markValues.take(12).forEach { mark ->
-                            GradeChip(
-                                text = mark.roundToInt().toString(),
-                                mark = mark,
-                            )
-                        }
-                        if (discipline.markValues.size > 12) {
-                            NeutralChip("+${discipline.markValues.size - 12}")
-                        }
+                        Text(
+                            "Итог",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        GradeChip(formatBarsGrade(finalMark.toDouble()), finalMark)
+                    }
+                } else {
+                    Icon(
+                        Icons.Default.ArrowForward,
+                        contentDescription = "Подробнее",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            val subtitle = listOf(
+                discipline.assessmentType,
+                discipline.personName,
+            ).filter(String::isNotBlank).joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (discipline.markValues.isEmpty()) {
+                Text(
+                    "Оценок пока нет",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    discipline.markValues.take(8).forEach { mark ->
+                        GradeChip(formatBarsGrade(mark.toDouble()), mark)
+                    }
+                    if (discipline.markValues.size > 8) {
+                        NeutralChip("+" + (discipline.markValues.size - 8))
                     }
                 }
-
-                else -> NeutralChip("Нет оценок")
             }
         }
     }
