@@ -234,7 +234,6 @@ internal fun ScheduleDockedSearch(
                     // Schedule page leaves. Directly follows pager progress.
                     val reveal = dockRevealProgress().coerceIn(0f, 1f)
                     translationY = size.height * (1f - reveal)
-                    alpha = reveal
                 },
             shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
             color = MaterialTheme.colorScheme.surfaceContainer,

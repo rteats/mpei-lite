@@ -27,11 +27,31 @@ internal enum class UpdatePhase {
 
 internal data class UpdateUiState(
     val phase: UpdatePhase = UpdatePhase.IDLE,
+    val checking: Boolean = false,
     val release: GithubReleaseInfo? = null,
     val progressPercent: Int? = null,
     val downloadedApkPath: String? = null,
     val error: String? = null,
 )
+
+
+/** Preserve a verified downloaded APK when rechecking the same release. */
+internal fun UpdateUiState.afterReleaseCheck(
+    latest: GithubReleaseInfo,
+    installedVersionCode: Int,
+): UpdateUiState {
+    if (latest.versionCode <= installedVersionCode) {
+        return UpdateUiState(phase = UpdatePhase.UP_TO_DATE, release = latest)
+    }
+    val keepDownloaded = phase == UpdatePhase.READY_TO_INSTALL &&
+        release?.versionCode == latest.versionCode &&
+        !downloadedApkPath.isNullOrBlank()
+    return if (keepDownloaded) {
+        copy(checking = false, error = null, release = latest)
+    } else {
+        UpdateUiState(phase = UpdatePhase.AVAILABLE, release = latest)
+    }
+}
 
 internal class UpdateViewModel(
     private val container: AppContainer,
@@ -41,37 +61,29 @@ internal class UpdateViewModel(
     val state: StateFlow<UpdateUiState> = _state.asStateFlow()
 
     fun checkForUpdates() {
-        if (_state.value.phase == UpdatePhase.CHECKING) return
+        // A recheck must not cancel/replace an in-progress APK download.
+        // Available and ready-to-install actions stay visible while checking.
+        if (_state.value.checking || _state.value.phase == UpdatePhase.DOWNLOADING) return
 
         container.diagnostics.log("UPDATE", "manual check requested channel=${BuildConfig.UPDATE_CHANNEL}")
+        _state.update { it.copy(checking = true, error = null) }
         viewModelScope.launch {
-            _state.update {
-                it.copy(
-                    phase = UpdatePhase.CHECKING,
-                    progressPercent = null,
-                    error = null,
-                )
-            }
-
             try {
-                val release = container.updater.getLatestRelease(BuildConfig.UPDATE_CHANNEL)
-                _state.value = if (release.versionCode > BuildConfig.VERSION_CODE) {
-                    UpdateUiState(
-                        phase = UpdatePhase.AVAILABLE,
-                        release = release,
-                    )
-                } else {
-                    UpdateUiState(
-                        phase = UpdatePhase.UP_TO_DATE,
-                        release = release,
-                    )
+                val latest = container.updater.getLatestRelease(BuildConfig.UPDATE_CHANNEL)
+                _state.update { current ->
+                    current.afterReleaseCheck(latest, BuildConfig.VERSION_CODE)
                 }
             } catch (error: CancellationException) {
+                _state.update { it.copy(checking = false) }
                 throw error
             } catch (error: Throwable) {
                 _state.update {
                     it.copy(
-                        phase = UpdatePhase.ERROR,
+                        checking = false,
+                        phase = if (it.phase == UpdatePhase.IDLE ||
+                            it.phase == UpdatePhase.CHECKING ||
+                            it.phase == UpdatePhase.UP_TO_DATE
+                        ) UpdatePhase.ERROR else it.phase,
                         error = error.message ?: "Не удалось проверить обновления",
                     )
                 }
@@ -85,7 +97,11 @@ internal class UpdateViewModel(
             "UPDATE",
             "download requested version=${release.versionName} code=${release.versionCode}",
         )
-        if (_state.value.phase == UpdatePhase.DOWNLOADING) return
+        if (_state.value.phase == UpdatePhase.DOWNLOADING ||
+            _state.value.phase == UpdatePhase.READY_TO_INSTALL ||
+            _state.value.checking ||
+            release.versionCode <= BuildConfig.VERSION_CODE
+        ) return
 
         viewModelScope.launch {
             _state.update {

@@ -84,21 +84,12 @@ import com.rteats.mpeineo.data.MailNotificationScheduler
  * switches/actions. Original Compose implementation using Material You colors.
  */
 @Composable
-private fun SettingsBadge(
-    iconRes: Int,
-    inverted: Boolean = false,
-    neutralIcon: Boolean = false,
-) {
+private fun SettingsBadge(iconRes: Int) {
     Surface(
         modifier = Modifier.size(44.dp),
         shape = CircleShape,
-        color = if (inverted) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = when {
-            inverted -> MaterialTheme.colorScheme.onPrimary
-            neutralIcon -> MaterialTheme.colorScheme.onSurface
-            else -> MaterialTheme.colorScheme.primary
-        },
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.primary,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(painterResource(iconRes), contentDescription = null,
@@ -135,7 +126,7 @@ private fun SettingsExpansion(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                SettingsBadge(iconRes, inverted = expanded)
+                SettingsBadge(iconRes)
                 Icon(
                     if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = if (expanded) "Свернуть" else "Развернуть",
@@ -168,21 +159,43 @@ private fun SettingsAction(
     iconRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+    downloading: Boolean = false,
+    progressPercent: Int? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SettingsBadge(iconRes)
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(title, fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodyLarge)
             Text(detail, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (downloading) {
+                if (progressPercent != null) {
+                    LinearProgressIndicator(
+                        progress = { (progressPercent / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+        if (busy) {
+            ContainedLoadingIndicator(modifier = Modifier.size(28.dp))
         }
     }
 }
@@ -325,7 +338,7 @@ internal fun SettingsScreen(
                 SettingsSwitchRow(
                     "Уведомления о новых письмах",
                     "Фоновая проверка IMAP, без постоянного подключения",
-                    R.drawable.ic_nav_mail,
+                    R.drawable.ic_settings_notifications,
                     notificationsEnabled, mailState.configured,
                     ::toggleNotifications,
                 )
@@ -416,13 +429,13 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Локальный кэш",
                 "Расписание доступно без сети",
-                R.drawable.ic_settings_update,
+                R.drawable.ic_settings_cache,
                 storageExpanded, { changeSection("storage", !storageExpanded) },
             ) {
                 SettingsAction(
                     if (cacheCleared) "Кэш очищен" else "Очистить кэш",
                     "Удалить сохранённые недели расписания",
-                    R.drawable.ic_settings_update,
+                    R.drawable.ic_settings_clear_cache,
                     onClick = { onClearCache(); cacheCleared = true },
                 )
             }
@@ -437,7 +450,7 @@ internal fun SettingsScreen(
                 SettingsAction(
                     if (copied) "Скопировано" else "Копировать журнал",
                     "Скопировать диагностические события",
-                    R.drawable.ic_settings_diagnostics,
+                    R.drawable.ic_settings_copy_log,
                     onClick = {
                         val content = diagnostics.readText().ifBlank { "Журнал пока пуст." }
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
@@ -449,7 +462,7 @@ internal fun SettingsScreen(
                     },
                 )
                 SettingsAction("Очистить журнал", "Удалить диагностические события",
-                    R.drawable.ic_settings_diagnostics,
+                    R.drawable.ic_settings_clear_log,
                     onClick = {
                         diagnostics.clear()
                         diagnostics.log("DIAGNOSTICS", "log cleared by user")
@@ -462,7 +475,7 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "О приложении",
                 "MPEI Neo · " + BuildConfig.VERSION_NAME,
-                R.drawable.ic_nav_bars,
+                R.drawable.ic_settings_about,
                 aboutExpanded, { changeSection("about", !aboutExpanded) },
             ) {
                 Text(
@@ -485,26 +498,6 @@ internal fun SettingsScreen(
 }
 
 
-@Composable
-private fun SettingsActionButton(
-    onClick: () -> Unit,
-    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            content = content,
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun UpdateCard(
@@ -513,146 +506,74 @@ private fun UpdateCard(
     onDownload: () -> Unit,
     onInstall: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // A neutral action icon, not a second active-section badge.
-                SettingsBadge(R.drawable.ic_settings_update, neutralIcon = true)
-                Column(
-                    modifier = Modifier
-                        .padding(start = 14.dp)
-                        .weight(1f),
-                ) {
-                    Text(
-                        "Обновления приложения",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        if (BuildConfig.UPDATE_CHANNEL == "dev") {
-                            "Канал Dev: автоматические сборки из main."
-                        } else {
-                            "Канал Stable: проверенные GitHub Releases."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+    val available = state.release?.versionCode?.let {
+        it > BuildConfig.VERSION_CODE
+    } == true
+    val downloading = state.phase == UpdatePhase.DOWNLOADING
+    val readyToInstall = state.phase == UpdatePhase.READY_TO_INSTALL &&
+        !state.downloadedApkPath.isNullOrBlank()
 
-            when (state.phase) {
-                UpdatePhase.IDLE -> {
-                    Text(
-                        "Текущая версия: ${BuildConfig.VERSION_NAME}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    SettingsActionButton(onClick = onCheck) {
-                        Text("Проверить обновления")
-                    }
-                }
+    // All updater actions share the exact same row treatment as other
+    // settings. Checking leaves a discovered/verified update intact.
+    SettingsAction(
+        title = "Проверить обновления",
+        detail = when {
+            state.checking -> "Проверяем GitHub Releases…"
+            state.phase == UpdatePhase.UP_TO_DATE -> "Установлена актуальная версия"
+            available -> "Доступна версия ${state.release?.versionName.orEmpty()}"
+            else -> "Текущая версия: ${BuildConfig.VERSION_NAME}"
+        },
+        iconRes = R.drawable.ic_settings_check_updates,
+        onClick = onCheck,
+        enabled = !state.checking && !downloading,
+        busy = state.checking,
+    )
 
-                UpdatePhase.CHECKING -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        ContainedLoadingIndicator()
-                        Text("Проверяем GitHub Releases…")
-                    }
-                }
+    if (available) {
+        SettingsAction(
+            title = when {
+                readyToInstall -> "Установить обновление"
+                downloading -> "Скачивание обновления"
+                else -> "Скачать обновление"
+            },
+            detail = when {
+                readyToInstall -> "APK скачан и проверен. Открыть установщик Android"
+                downloading && state.progressPercent != null ->
+                    "Загружено: ${state.progressPercent}%"
+                downloading -> "Получаем APK…"
+                else -> "Версия ${state.release?.versionName.orEmpty()}"
+            },
+            iconRes = if (readyToInstall) {
+                R.drawable.ic_settings_install_update
+            } else {
+                R.drawable.ic_settings_download_update
+            },
+            onClick = if (readyToInstall) onInstall else onDownload,
+            enabled = !downloading && !state.checking,
+            downloading = downloading,
+            progressPercent = state.progressPercent,
+        )
+    }
 
-                UpdatePhase.UP_TO_DATE -> {
-                    Text(
-                        "Установлена актуальная версия.",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    state.release?.let {
-                        Text(
-                            "Последний релиз: ${it.versionName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    SettingsActionButton(onClick = onCheck) {
-                        Text("Проверить снова")
-                    }
-                }
+    state.error?.let { error ->
+        Text(
+            error,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
 
-                UpdatePhase.AVAILABLE -> {
-                    val release = state.release
-                    Text(
-                        "Доступно обновление ${release?.versionName.orEmpty()}",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    release?.notes
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { notes ->
-                            Text(
-                                text = notes,
-                                maxLines = 6,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    SettingsActionButton(onClick = onDownload) {
-                        Text("Скачать обновление")
-                    }
-                }
-
-                UpdatePhase.DOWNLOADING -> {
-                    val progress = state.progressPercent
-                    if (progress != null) {
-                        LinearProgressIndicator(
-                            progress = { progress / 100f },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            "Скачивание: ${progress}%",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text(
-                            "Скачивание APK…",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-
-                UpdatePhase.READY_TO_INSTALL -> {
-                    Text(
-                        "APK скачан и проверен. Android откроет системный установщик.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    SettingsActionButton(onClick = onInstall) {
-                        Text("Установить обновление")
-                    }
-                }
-
-                UpdatePhase.ERROR -> {
-                    Text(
-                        state.error ?: "Не удалось обновить приложение",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    if (state.release != null) {
-                        SettingsActionButton(onClick = onDownload) {
-                            Text("Повторить загрузку")
-                        }
-                    } else {
-                        SettingsActionButton(onClick = onCheck) {
-                            Text("Повторить проверку")
-                        }
-                    }
-                }
-            }
+    if (available && !downloading) {
+        state.release?.notes?.takeIf(String::isNotBlank)?.let { notes ->
+            Text(
+                notes,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

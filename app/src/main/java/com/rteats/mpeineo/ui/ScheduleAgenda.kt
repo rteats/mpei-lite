@@ -342,15 +342,13 @@ private fun WeekPullIndicator(
     )
     val color by animateColorAsState(
         targetValue = if (armed) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else MaterialTheme.colorScheme.surfaceContainer,
         animationSpec = tween(durationMillis = 150),
         label = "week-cue-color",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (armed) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else MaterialTheme.colorScheme.onSecondaryContainer,
+        targetValue = MaterialTheme.colorScheme.onSurface,
         animationSpec = tween(durationMillis = 150),
         label = "week-cue-content-color",
     )
