@@ -5,8 +5,22 @@ import android.webkit.JavascriptInterface
 /** Official BARS page recognition and structured marks extraction. */
 internal const val BARS_JS_INTERFACE = "MpeiNeoBars"
 
-internal const val BARS_STOP_STATE_OBSERVER_SCRIPT =
-    "if (window.__mpeiNeoBarsStateTimer) { clearInterval(window.__mpeiNeoBarsStateTimer); window.__mpeiNeoBarsStateTimer = null; }"
+internal val BARS_STOP_STATE_OBSERVER_SCRIPT = """
+    (function() {
+        if (window.__mpeiNeoBarsStateObserver) {
+            window.__mpeiNeoBarsStateObserver.disconnect();
+            window.__mpeiNeoBarsStateObserver = null;
+        }
+        if (window.__mpeiNeoBarsStateDebounce) {
+            clearTimeout(window.__mpeiNeoBarsStateDebounce);
+            window.__mpeiNeoBarsStateDebounce = null;
+        }
+        if (window.__mpeiNeoBarsStateTimer) {
+            clearInterval(window.__mpeiNeoBarsStateTimer);
+            window.__mpeiNeoBarsStateTimer = null;
+        }
+    })();
+""".trimIndent()
 
 internal class BarsJavascriptBridge(
     private val onPageState: (String) -> Unit,
@@ -25,17 +39,33 @@ internal class BarsJavascriptBridge(
 
 internal val BARS_PAGE_STATE_SCRIPT = """
     (function() {
+        // If injected again into the same document, replace the old observer.
+        if (window.__mpeiNeoBarsStateObserver) {
+            window.__mpeiNeoBarsStateObserver.disconnect();
+        }
+        if (window.__mpeiNeoBarsStateDebounce) {
+            clearTimeout(window.__mpeiNeoBarsStateDebounce);
+            window.__mpeiNeoBarsStateDebounce = null;
+        }
+        if (window.__mpeiNeoBarsStateTimer) {
+            clearInterval(window.__mpeiNeoBarsStateTimer);
+            window.__mpeiNeoBarsStateTimer = null;
+        }
+
+        let lastSignature = null;
         function reportState() {
             try {
                 const path = (window.location.pathname || "").toLowerCase();
                 const hasPassword = !!document.querySelector('input[type="password"]');
                 const marks = !!document.getElementById("div-Student_SemesterSheet__Mark");
                 const studentList = path.indexOf("/student/liststudent") >= 0;
-                const bodyText = ((document.body && document.body.textContent) || "").toLowerCase();
                 const hasOneTimeCodeInput = !!document.querySelector(
                     'input[autocomplete="one-time-code"], ' +
                     'input[name*="code" i], input[id*="code" i]'
                 );
+                // Text search is a fallback for BARS' custom 2FA modal.
+                const bodyText = hasOneTimeCodeInput ? "" :
+                    ((document.body && document.body.textContent) || "").toLowerCase();
                 const hasTwoFactorUi =
                     hasOneTimeCodeInput ||
                     (
@@ -45,34 +75,45 @@ internal val BARS_PAGE_STATE_SCRIPT = """
                          bodyText.indexOf("одноразов") >= 0) &&
                         !!document.querySelector("form, .modal, [role='dialog']")
                     );
-                const authFlow =
-                    path.indexOf("/auth") >= 0 ||
-                    hasTwoFactorUi;
-
-                MpeiNeoBars.onPageState(JSON.stringify({
+                const payload = {
                     url: window.location.href,
                     path: path,
                     isLoginPage: hasPassword,
-                    isAuthFlow: authFlow,
+                    isAuthFlow: path.indexOf("/auth") >= 0 || hasTwoFactorUi,
                     isStudentList: studentList,
                     isMarksPage: marks
-                }));
-
-                if (marks && window.__mpeiNeoBarsStateTimer) {
-                    window.clearInterval(window.__mpeiNeoBarsStateTimer);
-                    window.__mpeiNeoBarsStateTimer = null;
+                };
+                const signature = JSON.stringify(payload);
+                if (signature !== lastSignature) {
+                    lastSignature = signature;
+                    MpeiNeoBars.onPageState(signature);
+                }
+                if (marks && window.__mpeiNeoBarsStateObserver) {
+                    window.__mpeiNeoBarsStateObserver.disconnect();
+                    window.__mpeiNeoBarsStateObserver = null;
                 }
             } catch (error) {
                 MpeiNeoBars.onError("Не удалось определить страницу БАРС");
             }
         }
 
-        reportState();
-
-        if (!window.__mpeiNeoBarsStateTimer) {
-            window.__mpeiNeoBarsStateTimer =
-                window.setInterval(reportState, 1000);
+        // Only inspect DOM changes, not once per second forever.
+        // Debounce bursts from BARS' AJAX page rendering.
+        const observer = new MutationObserver(function() {
+            if (window.__mpeiNeoBarsStateDebounce) return;
+            window.__mpeiNeoBarsStateDebounce = setTimeout(function() {
+                window.__mpeiNeoBarsStateDebounce = null;
+                reportState();
+            }, 180);
+        });
+        window.__mpeiNeoBarsStateObserver = observer;
+        if (document.documentElement) {
+            observer.observe(document.documentElement, {
+                childList: true, subtree: true, characterData: true,
+                attributes: true, attributeFilter: ["class", "type"]
+            });
         }
+        reportState();
     })();
 """.trimIndent()
 

@@ -113,15 +113,12 @@ internal fun BarsScreen(
     val state by viewModel.state.collectAsState()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var navigationController by remember { mutableStateOf<BarsNavigationController?>(null) }
+    var marksReadiness by remember { mutableStateOf<BarsMarksReadiness?>(null) }
     var retryNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var redirectingToMarks by remember { mutableStateOf(false) }
     var marksExtractionStarted by remember { mutableStateOf(false) }
     var needsFullViewport by remember { mutableStateOf(true) }
     var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
-    var marksMissingPolls by remember { mutableStateOf(0) }
-    var marksRouteRecoveryAttempted by remember { mutableStateOf(false) }
-    var marksWaitLogged by remember { mutableStateOf(false) }
-    var marksFailureReported by remember { mutableStateOf(false) }
     var mainFrameFailed by remember { mutableStateOf(false) }
 
     val cacheFresh = state.hasFreshCache()
@@ -163,10 +160,9 @@ internal fun BarsScreen(
             BarsAuthStage.CHECKING -> BarsCheckingState(
                 error = state.error,
                 onRetry = {
-                    marksRouteRecoveryAttempted = false
-                    marksFailureReported = false
                     mainFrameFailed = false
                     needsFullViewport = true
+                    marksReadiness?.reset()
                     viewModel.checking()
                     retryNavigation?.invoke()
                 },
@@ -181,14 +177,16 @@ internal fun BarsScreen(
                 active = active,
                 onRefresh = {
                     redirectingToMarks = false
-                    marksRouteRecoveryAttempted = false
-                    marksFailureReported = false
                     mainFrameFailed = false
                     needsFullViewport = true
+                    marksReadiness?.reset()
                     viewModel.startRefresh()
                     retryNavigation?.invoke()
                 },
-                onOpenBrowser = viewModel::showBrowser,
+                onOpenBrowser = {
+                    marksReadiness?.navigationStarted()
+                    viewModel.showBrowser()
+                },
             )
         }
 
@@ -269,6 +267,28 @@ internal fun BarsScreen(
                         fallbackUrl: String? = null,
                     ) = controller.load(targetUrl, reason, fallbackUrl)
 
+                    val readiness = BarsMarksReadiness(
+                        schedule = { callback, delayMs -> view.postDelayed(callback, delayMs) },
+                        cancel = { callback -> view.removeCallbacks(callback) },
+                        onRecover = {
+                            viewModel.logWebEvent(
+                                "marks DOM timeout; bootstrapping through BARS root",
+                            )
+                            loadBarsWithWatchdog(
+                                targetUrl = BARS_LOGIN_URL,
+                                reason = "marks DOM recovery",
+                            )
+                        },
+                        onFailure = {
+                            needsFullViewport = false
+                            view.evaluateJavascript(BARS_STOP_STATE_OBSERVER_SCRIPT, null)
+                            viewModel.extractionFailed(
+                                "БАРС открыл страницу оценок, но таблица не загрузилась.",
+                            )
+                        },
+                    )
+                    marksReadiness = readiness
+
                     // The Retry action must use this same timeout-protected
                     // navigation path rather than calling WebView.loadUrl directly.
                     retryNavigation = {
@@ -344,84 +364,39 @@ internal fun BarsScreen(
                                     }
 
                                     if (state.browserVisible) {
+                                        readiness.navigationStarted()
                                         viewModel.logWebEvent(
                                             "browser mode; leaving navigation untouched path=$currentLocation",
                                         )
                                         return@post
                                     }
 
-                                    when {
-                                        page.isMarksPage -> {
+                                    when (classifyBarsPage(page)) {
+                                        BarsPageKind.MARKS_READY -> {
                                             redirectingToMarks = false
-                                            marksMissingPolls = 0
-                                            marksWaitLogged = false
-                                            marksFailureReported = false
+                                            readiness.reset()
                                             if (!marksExtractionStarted) {
                                                 marksExtractionStarted = true
                                                 viewModel.authenticatedPage(page.url)
                                                 view.evaluateJavascript(BARS_EXTRACT_SCRIPT, null)
                                             }
                                         }
-
-                                        page.isLoginPage ||
-                                            page.isAuthFlow ||
-                                            page.isStudentList -> {
+                                        BarsPageKind.AUTH_FLOW -> {
                                             redirectingToMarks = false
-                                            marksMissingPolls = 0
-                                            marksWaitLogged = false
-                                            marksRouteRecoveryAttempted = false
-                                            marksFailureReported = false
+                                            readiness.reset()
                                             viewModel.webAuth(page.url)
                                         }
-
-                                        page.url.startsWith(BARS_BASE_URL) &&
-                                            currentLocation == marksLocation -> {
+                                        BarsPageKind.MARKS_LOADING -> {
                                             redirectingToMarks = false
                                             viewModel.waitingForMarks(page.url)
-                                            marksMissingPolls += 1
-
-                                            if (!marksWaitLogged) {
-                                                marksWaitLogged = true
+                                            if (readiness.waitForMarks()) {
                                                 viewModel.logWebEvent(
                                                     "marks route loaded; waiting for marks DOM",
                                                 )
                                             }
-
-                                            when {
-                                                marksMissingPolls >= 5 &&
-                                                    !marksRouteRecoveryAttempted -> {
-                                                    marksRouteRecoveryAttempted = true
-                                                    marksMissingPolls = 0
-                                                    marksWaitLogged = false
-                                                    viewModel.logWebEvent(
-                                                        "marks DOM timeout; bootstrapping through BARS root",
-                                                    )
-                                                    loadBarsWithWatchdog(
-                                                        targetUrl = BARS_LOGIN_URL,
-                                                        reason = "marks DOM recovery",
-                                                        fallbackUrl = null,
-                                                    )
-                                                }
-
-                                                marksMissingPolls >= 10 &&
-                                                    marksRouteRecoveryAttempted &&
-                                                    !marksFailureReported -> {
-                                                    marksFailureReported = true
-                                                    needsFullViewport = false
-                                                    view.evaluateJavascript(
-                                                        BARS_STOP_STATE_OBSERVER_SCRIPT,
-                                                        null,
-                                                    )
-                                                    viewModel.extractionFailed(
-                                                        "БАРС открыл страницу оценок, но таблица не загрузилась.",
-                                                    )
-                                                }
-                                            }
                                         }
-
-                                        page.url.startsWith(BARS_BASE_URL) -> {
-                                            marksMissingPolls = 0
-                                            marksWaitLogged = false
+                                        BarsPageKind.OTHER_BARS_PAGE -> {
+                                            readiness.navigationStarted()
                                             if (!redirectingToMarks) {
                                                 redirectingToMarks = true
                                                 viewModel.waitingForMarks(page.url)
@@ -435,12 +410,8 @@ internal fun BarsScreen(
                                                 )
                                             }
                                         }
-
-                                        else -> {
-                                            needsFullViewport = false
-                                            viewModel.extractionFailed(
-                                                "БАРС открыл неожиданную страницу",
-                                            )
+                                        BarsPageKind.UNTRUSTED -> {
+                                            viewModel.logWebEvent("ignored untrusted page state")
                                         }
                                     }
                                 }
@@ -449,8 +420,7 @@ internal fun BarsScreen(
                                 view.post {
                                     if (webView !== view) return@post
                                     needsFullViewport = false
-                                    marksRouteRecoveryAttempted = false
-                                    marksFailureReported = false
+                                    readiness.reset()
                                     viewModel.logWebEvent("extraction bridge returned data")
                                     CookieManager.getInstance().flush()
                                     viewModel.extractionReceived(json)
@@ -460,6 +430,7 @@ internal fun BarsScreen(
                                 view.post {
                                     if (webView !== view) return@post
                                     needsFullViewport = false
+                                    readiness.navigationStarted()
                                     viewModel.logWebEvent("javascript error=$message")
                                     viewModel.extractionFailed(message)
                                 }
@@ -509,8 +480,7 @@ internal fun BarsScreen(
                         ) {
                             if (webView !== view) return
                             marksExtractionStarted = false
-                            marksMissingPolls = 0
-                            marksWaitLogged = false
+                            readiness.navigationStarted()
                             if (isTrustedBarsDocument(url)) mainFrameFailed = false
                             controller.onStarted(url)
                             needsFullViewport = true
@@ -577,6 +547,7 @@ internal fun BarsScreen(
                                 )
                                 viewModel.probeNetwork("main-http-$code")
                                 if (code >= 400 && !mainFrameFailed) {
+                                    readiness.navigationStarted()
                                     mainFrameFailed = true
                                     val retryScheduled = controller.onMainFrameFailure(
                                         url = request.url.toString(),
@@ -622,6 +593,7 @@ internal fun BarsScreen(
                             }
 
                             if (mainFrameFailed) return
+                            readiness.navigationStarted()
                             mainFrameFailed = true
                             view.evaluateJavascript(
                                 BARS_STOP_STATE_OBSERVER_SCRIPT,
@@ -698,6 +670,10 @@ internal fun BarsScreen(
                             "path=${safeBarsLocation(view.url.orEmpty())} progress=${view.progress}",
                     )
                     if (webView === view) retryNavigation = null
+                    if (webView === view) {
+                        marksReadiness?.dispose()
+                        marksReadiness = null
+                    }
                     if (navigationController?.belongsTo(view) == true) {
                         navigationController?.close()
                         navigationController = null
