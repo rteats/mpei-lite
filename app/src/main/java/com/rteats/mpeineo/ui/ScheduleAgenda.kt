@@ -274,7 +274,7 @@ internal fun ScheduleAgenda(
                     // The floating search dock is drawn over the schedule.
                     // Reserve enough scrollable space for the last lessons to
                     // move fully above it, including larger font/display sizes.
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 148.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 124.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     for (dayIndex in 0..6) {
