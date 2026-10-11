@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -166,23 +168,22 @@ internal fun MailScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier.padding(start = titleInset),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Crossfade(
-                            targetState = reading,
-                            animationSpec = motion.defaultEffectsSpec(),
-                            label = "mail-toolbar-title",
-                        ) { showingMessage ->
-                            Text(
-                                if (showingMessage) "Письмо" else "Входящие",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                            )
-                        }
+                // Reserve one stable 48dp toolbar slot. The title and arrow
+                // share the same vertical center; neither changes the Row's
+                // measurement while navigating between inbox and message.
+                Box(modifier = Modifier.weight(1f).height(48.dp)) {
+                    Crossfade(
+                        targetState = reading,
+                        modifier = Modifier.align(Alignment.CenterStart).offset(x = titleInset),
+                        animationSpec = motion.defaultEffectsSpec(),
+                        label = "mail-toolbar-title",
+                    ) { showingMessage ->
+                        Text(
+                            if (showingMessage) "Письмо" else "Входящие",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
                     }
                     IconButton(
                         onClick = viewModel::closeMessage,
@@ -192,7 +193,7 @@ internal fun MailScreen(
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (reading) "Назад к письмам" else null,
+                            contentDescription = if (reading) "Назад к входящим" else null,
                         )
                     }
                 }
@@ -317,7 +318,9 @@ internal fun MailScreen(
                                     MailInboxRow(
                                         summary = item,
                                         onClick = { viewModel.open(item) },
-                                        modifier = Modifier.animateItem(),
+                                        // The screen transition owns row movement; avoid
+                                        // competing lazy-item placement animations on reentry.
+                                        modifier = Modifier,
                                     )
                                 }
                             }
