@@ -494,59 +494,99 @@ private fun MailLogin(
     }
 }
 
+/**
+ * Compact inbox surfaces have separate shapes and muted tonal emphasis.
+ * Unread state remains explicit in typography, without badges or extra labels.
+ */
 @Composable
-private fun MailInboxRow(summary: MailSummary, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        headlineContent = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    summary.sender.ifBlank { "Неизвестный отправитель" },
-                    modifier = Modifier.weight(1f),
-                    fontWeight = if (summary.unread) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    DateFormat.getDateInstance(DateFormat.SHORT).format(Date(summary.sentAt)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        supportingContent = {
-            Text(
-                summary.subject.ifBlank { "Без темы" },
-                fontWeight = if (summary.unread) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+private fun MailInboxRow(
+    summary: MailSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = if (summary.unread) {
+            lerp(
+                MaterialTheme.colorScheme.surfaceContainerLow,
+                MaterialTheme.colorScheme.primaryContainer,
+                0.20f,
             )
-        },
-        leadingContent = {
-            Surface(
-                modifier = Modifier.size(48.dp),
-                color = if (summary.unread) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = CircleShape,
+        } else MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            MailSenderAvatar(summary.sender, summary.unread)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
-                        summary.sender.take(1).uppercase().ifBlank { "@" },
-                        style = MaterialTheme.typography.titleMedium,
+                        summary.sender.ifBlank { "Неизвестный отправитель" },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (summary.unread) {
+                            FontWeight.Bold
+                        } else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        DateFormat.getDateInstance(DateFormat.SHORT)
+                            .format(Date(summary.sentAt)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Text(
+                    summary.subject.ifBlank { "Без темы" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (summary.unread) {
+                        FontWeight.SemiBold
+                    } else FontWeight.Normal,
+                    color = if (summary.unread) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-        },
-        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
-        trailingContent = {
-            // A full multipart may contain no actual attachments; do not
-            // show a misleading paperclip based on MIME alone.
-        },
-    )
-    // The transparent tap layer preserves standard ListItem layout without
-    // adding a click target to any individual text.
+        }
+    }
 }
 
+@Composable
+private fun MailSenderAvatar(sender: String, unread: Boolean) {
+    Surface(
+        modifier = Modifier.size(46.dp),
+        shape = CircleShape,
+        color = if (unread) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (unread) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                sender.trim().take(1).uppercase().ifBlank { "@" },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun MailMessage(
     state: MailUiState,
@@ -556,27 +596,46 @@ private fun MailMessage(
     val detail = state.message
     when {
         state.loadingMessage -> Box(modifier, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            ContainedLoadingIndicator()
         }
         detail == null -> Box(modifier, contentAlignment = Alignment.Center) {
             Text("Письмо не загружено")
         }
         else -> Column(
-            modifier = modifier.verticalScroll(rememberScrollState()).padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = modifier.verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
                 detail.subject.ifBlank { "Без темы" },
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(detail.sender, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                DateFormat.getDateTimeInstance().format(Date(detail.sentAt)),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                MailSenderAvatar(detail.sender, unread = false)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        detail.sender,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        DateFormat.getDateTimeInstance().format(Date(detail.sentAt)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
             )
-            HorizontalDivider()
             if (detail.attachments.isNotEmpty()) {
                 Text(
                     "Вложения",
@@ -584,21 +643,37 @@ private fun MailMessage(
                     fontWeight = FontWeight.SemiBold,
                 )
                 detail.attachments.forEach { attachment ->
-                    Card(onClick = { onDownload(attachment) }, modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        onClick = { onDownload(attachment) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(
+                                horizontal = 14.dp,
+                                vertical = 13.dp,
+                            ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(painterResource(R.drawable.ic_mail_attachment), contentDescription = null)
+                            Icon(
+                                painterResource(R.drawable.ic_mail_attachment),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                             Text(
                                 attachment.name,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
                             )
                             if (state.savingAttachment == attachment.partPath) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                ContainedLoadingIndicator(
+                                    modifier = Modifier.size(26.dp),
+                                )
                             } else Icon(
                                 painterResource(R.drawable.ic_mail_download),
                                 contentDescription = "Сохранить в Загрузки",
@@ -611,11 +686,16 @@ private fun MailMessage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                HorizontalDivider()
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                )
             }
             SelectionContainer {
                 Text(
-                    annotatedMailLinks(detail.body),
+                    annotatedMailLinks(
+                        detail.body,
+                        linkColor = MaterialTheme.colorScheme.primary,
+                    ),
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
@@ -625,7 +705,7 @@ private fun MailMessage(
 }
 
 /** Compose's URL links use Android's browser handler; no embedded WebView. */
-private fun annotatedMailLinks(plain: String) = buildAnnotatedString {
+private fun annotatedMailLinks(plain: String, linkColor: Color) = buildAnnotatedString {
     append(plain)
     val expression = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
     expression.findAll(plain).forEach { match ->
@@ -633,7 +713,7 @@ private fun annotatedMailLinks(plain: String) = buildAnnotatedString {
         if (clean.isNotEmpty()) {
             addLink(LinkAnnotation.Url(clean), match.range.first, match.range.first + clean.length)
             addStyle(
-                SpanStyle(color = androidx.compose.ui.graphics.Color(0xFF3D77C5), textDecoration = TextDecoration.Underline),
+                SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
                 match.range.first,
                 match.range.first + clean.length,
             )
