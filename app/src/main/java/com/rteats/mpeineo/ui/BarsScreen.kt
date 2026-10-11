@@ -120,6 +120,8 @@ internal fun BarsScreen(
     var needsFullViewport by remember { mutableStateOf(true) }
     var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
     var mainFrameFailed by remember { mutableStateOf(false) }
+    val extractionGate = remember { BarsExtractionGate() }
+    val autoRefreshGate = remember { BarsAutoRefreshGate() }
 
     val cacheFresh = state.hasFreshCache()
     // A pager may precompose and immediately discard an off-screen BARS page.
@@ -138,6 +140,26 @@ internal fun BarsScreen(
     androidx.compose.runtime.LaunchedEffect(active, webView) {
         webView?.let { view ->
             if (active) view.onResume() else view.onPause()
+            if (active && state.authStage == BarsAuthStage.AUTHENTICATED &&
+                autoRefreshGate.shouldRefresh(
+                    nowElapsedMs = SystemClock.elapsedRealtime(),
+                    sessionReady = navigationController?.hasCompletedDocument == true &&
+                        retryNavigation != null,
+                    hasCachedGrades = state.lastUpdatedAtMillis > 0L &&
+                        state.disciplines.isNotEmpty(),
+                    cacheFresh = state.hasFreshCache(),
+                    isLoading = state.isLoading,
+                    browserVisible = state.browserVisible,
+                )
+            ) {
+                viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
+                redirectingToMarks = false
+                mainFrameFailed = false
+                needsFullViewport = true
+                marksReadiness?.reset()
+                viewModel.startRefresh()
+                retryNavigation?.invoke()
+            }
         }
     }
 
@@ -205,15 +227,6 @@ internal fun BarsScreen(
             factory = { context ->
                 WebView(context).also { view ->
                     webView = view
-                    if (
-                        state.authStage == BarsAuthStage.AUTHENTICATED &&
-                        !cacheFresh &&
-                        !state.isLoading &&
-                        !state.browserVisible
-                    ) {
-                        viewModel.startRefresh()
-                    }
-
                     val hasBarsCookies =
                         !CookieManager.getInstance().getCookie(BARS_BASE_URL).isNullOrBlank()
                     val provider = WebView.getCurrentWebViewPackage()
@@ -265,7 +278,10 @@ internal fun BarsScreen(
                         targetUrl: String,
                         reason: String,
                         fallbackUrl: String? = null,
-                    ) = controller.load(targetUrl, reason, fallbackUrl)
+                    ) {
+                        extractionGate.invalidate()
+                        controller.load(targetUrl, reason, fallbackUrl)
+                    }
 
                     val readiness = BarsMarksReadiness(
                         schedule = { callback, delayMs -> view.postDelayed(callback, delayMs) },
@@ -378,7 +394,14 @@ internal fun BarsScreen(
                                             if (!marksExtractionStarted) {
                                                 marksExtractionStarted = true
                                                 viewModel.authenticatedPage(page.url)
-                                                view.evaluateJavascript(BARS_EXTRACT_SCRIPT, null)
+                                                val extractionId = extractionGate.begin()
+                                                view.evaluateJavascript(
+                                                    BARS_EXTRACT_SCRIPT.replace(
+                                                        BARS_EXTRACT_TOKEN_PLACEHOLDER,
+                                                        extractionId.toString(),
+                                                    ),
+                                                    null,
+                                                )
                                             }
                                         }
                                         BarsPageKind.AUTH_FLOW -> {
@@ -416,9 +439,17 @@ internal fun BarsScreen(
                                     }
                                 }
                             },
-                            onData = { json ->
+                            onData = { token, json ->
                                 view.post {
                                     if (webView !== view) return@post
+                                    if (!extractionGate.consume(token) ||
+                                        !BarsDocumentPolicy.isCurrent(
+                                            view.url.orEmpty(), BARS_MARKS_URL,
+                                        ) || state.browserVisible || mainFrameFailed
+                                    ) {
+                                        viewModel.logWebEvent("ignored stale extraction result")
+                                        return@post
+                                    }
                                     needsFullViewport = false
                                     readiness.reset()
                                     viewModel.logWebEvent("extraction bridge returned data")
@@ -426,13 +457,32 @@ internal fun BarsScreen(
                                     viewModel.extractionReceived(json)
                                 }
                             },
+                            onExtractionError = { token, message ->
+                                view.post {
+                                    if (webView !== view || !extractionGate.consume(token)) {
+                                        return@post
+                                    }
+                                    if (!BarsDocumentPolicy.isCurrent(
+                                            view.url.orEmpty(), BARS_MARKS_URL,
+                                        ) || state.browserVisible || mainFrameFailed
+                                    ) return@post
+                                    needsFullViewport = false
+                                    readiness.navigationStarted()
+                                    viewModel.logWebEvent("extraction error=$message")
+                                    viewModel.extractionFailed(message)
+                                }
+                            },
                             onError = { message ->
                                 view.post {
                                     if (webView !== view) return@post
-                                    needsFullViewport = false
-                                    readiness.navigationStarted()
-                                    viewModel.logWebEvent("javascript error=$message")
-                                    viewModel.extractionFailed(message)
+                                    // Errors from an obsolete page observer must not
+                                    // overwrite successfully cached marks.
+                                    viewModel.logWebEvent("javascript page observer error")
+                                    if (state.isLoading) {
+                                        needsFullViewport = false
+                                        readiness.navigationStarted()
+                                        viewModel.extractionFailed(message)
+                                    }
                                 }
                             },
                         ),
@@ -480,6 +530,7 @@ internal fun BarsScreen(
                         ) {
                             if (webView !== view) return
                             marksExtractionStarted = false
+                            extractionGate.invalidate()
                             readiness.navigationStarted()
                             if (isTrustedBarsDocument(url)) mainFrameFailed = false
                             controller.onStarted(url)
@@ -671,6 +722,7 @@ internal fun BarsScreen(
                     )
                     if (webView === view) retryNavigation = null
                     if (webView === view) {
+                        extractionGate.invalidate()
                         marksReadiness?.dispose()
                         marksReadiness = null
                     }

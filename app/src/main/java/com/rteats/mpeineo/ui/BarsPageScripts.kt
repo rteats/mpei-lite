@@ -4,6 +4,7 @@ import android.webkit.JavascriptInterface
 
 /** Official BARS page recognition and structured marks extraction. */
 internal const val BARS_JS_INTERFACE = "MpeiNeoBars"
+internal const val BARS_EXTRACT_TOKEN_PLACEHOLDER = "__MPEI_NEO_EXTRACT_TOKEN__"
 
 internal val BARS_STOP_STATE_OBSERVER_SCRIPT = """
     (function() {
@@ -24,14 +25,18 @@ internal val BARS_STOP_STATE_OBSERVER_SCRIPT = """
 
 internal class BarsJavascriptBridge(
     private val onPageState: (String) -> Unit,
-    private val onData: (String) -> Unit,
+    private val onData: (Int, String) -> Unit,
+    private val onExtractionError: (Int, String) -> Unit,
     private val onError: (String) -> Unit,
 ) {
     @JavascriptInterface
     fun onPageState(json: String) = onPageState.invoke(json)
 
     @JavascriptInterface
-    fun onData(json: String) = onData.invoke(json)
+    fun onData(token: Int, json: String) = onData.invoke(token, json)
+
+    @JavascriptInterface
+    fun onExtractionError(token: Int, message: String) = onExtractionError.invoke(token, message)
 
     @JavascriptInterface
     fun onError(message: String) = onError.invoke(message)
@@ -123,6 +128,8 @@ internal val BARS_PAGE_STATE_SCRIPT = """
  */
 internal val BARS_EXTRACT_SCRIPT = """
     (function() {
+        // This token belongs to this specific script execution, not the page globally.
+        const extractionToken = __MPEI_NEO_EXTRACT_TOKEN__;
         function clean(value) {
             return (value || "").replace(/\s+/g, " ").trim();
         }
@@ -187,8 +194,8 @@ internal val BARS_EXTRACT_SCRIPT = """
                         window.setTimeout(function() { extract(attempt + 1); }, 400);
                         return;
                     }
-                    MpeiNeoBars.onError(
-                        "Страница БАРС загрузилась, но таблица оценок не найдена."
+                    MpeiNeoBars.onExtractionError(
+                        extractionToken, "Страница БАРС загрузилась, но таблица оценок не найдена."
                     );
                     return;
                 }
@@ -302,7 +309,19 @@ internal val BARS_EXTRACT_SCRIPT = """
                     document.querySelector(".filter-option-inner-inner");
                 const semester = semesterNode ? clean(semesterNode.textContent) : "";
 
-                MpeiNeoBars.onData(JSON.stringify({
+                // The container may arrive before AJAX has populated its subjects.
+                if (disciplines.length === 0) {
+                    if (attempt < 8) {
+                        window.setTimeout(function() { extract(attempt + 1); }, 400);
+                        return;
+                    }
+                    MpeiNeoBars.onExtractionError(
+                        extractionToken, "БАРС не вернул ни одной дисциплины."
+                    );
+                    return;
+                }
+
+                MpeiNeoBars.onData(extractionToken, JSON.stringify({
                     name: name,
                     group: group,
                     semester: semester,
@@ -310,8 +329,8 @@ internal val BARS_EXTRACT_SCRIPT = """
                     disciplines: disciplines
                 }));
             } catch (error) {
-                MpeiNeoBars.onError(
-                    "Не удалось прочитать оценки из текущей сессии БАРС."
+                MpeiNeoBars.onExtractionError(
+                    extractionToken, "Не удалось прочитать оценки из текущей сессии БАРС."
                 );
             }
         }

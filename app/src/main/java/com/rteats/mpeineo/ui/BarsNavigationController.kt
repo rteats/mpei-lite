@@ -34,6 +34,10 @@ internal class BarsNavigationController(
     var retryCount: Int = 0
         private set
 
+    // Prevent foreground auto-refresh from interrupting a newly-created WebView.
+    var hasCompletedDocument: Boolean = false
+        private set
+
     val requestId: Int get() = attempt?.id ?: generation
 
     fun belongsTo(other: WebView): Boolean = view === other
@@ -90,6 +94,7 @@ internal class BarsNavigationController(
             cancelCallbacks()
         }
         retryCount = 0
+        hasCompletedDocument = true
         return true
     }
 
