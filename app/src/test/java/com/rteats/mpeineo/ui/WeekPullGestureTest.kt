@@ -1,6 +1,8 @@
 package com.rteats.mpeineo.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WeekPullGestureTest {
@@ -59,4 +61,28 @@ class WeekPullGestureTest {
         assertEquals(0, weekDeltaForPull(50f, threshold))
         assertEquals(0, weekDeltaForPull(-50f, threshold))
     }
+    @Test fun crossingThresholdTriggersOneHapticPerGesture() {
+        assertFalse(shouldTickWeekPull(0f, 75f, threshold, alreadyTicked = false))
+        assertTrue(shouldTickWeekPull(75f, 76f, threshold, alreadyTicked = false))
+        assertFalse(shouldTickWeekPull(76f, 120f, threshold, alreadyTicked = true))
+        assertFalse(shouldTickWeekPull(110f, 50f, threshold, alreadyTicked = true))
+        assertFalse(shouldTickWeekPull(50f, 90f, threshold, alreadyTicked = true))
+        // Releasing starts a new gesture and permits one new threshold tick.
+        assertTrue(shouldTickWeekPull(0f, -80f, threshold, alreadyTicked = false))
+    }
+
+    @Test fun adjacentWeekPreviewUsesRealMondaySundayBounds() {
+        val monday = java.time.LocalDate.of(2026, 12, 28)
+        assertEquals(
+            java.time.LocalDate.of(2026, 12, 21) to
+                java.time.LocalDate.of(2026, 12, 27),
+            weekRange(monday, -1),
+        )
+        assertEquals(
+            java.time.LocalDate.of(2027, 1, 4) to
+                java.time.LocalDate.of(2027, 1, 10),
+            weekRange(monday, 1),
+        )
+    }
+
 }

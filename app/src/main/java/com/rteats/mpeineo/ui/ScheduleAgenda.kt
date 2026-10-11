@@ -36,6 +36,7 @@ import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +61,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.model.ScheduleDay
@@ -97,6 +100,7 @@ internal fun ScheduleAgenda(
     }
     val locale = remember { Locale.forLanguageTag("ru") }
     val weekDateFormat = remember { DateTimeFormatter.ofPattern("d MMM", locale) }
+    val haptic = LocalHapticFeedback.current
     val overscrollThreshold = with(LocalDensity.current) { 76.dp.toPx() }
     val overscrollMax = with(LocalDensity.current) { 180.dp.toPx() }
 
@@ -129,13 +133,15 @@ internal fun ScheduleAgenda(
                 ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
         },
     ) { displayedWeek ->
-        val weekStart = monday.plusWeeks(displayedWeek.toLong())
-        val weekEnd = weekStart.plusDays(6)
+        val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
         // Only this distance determines both the week switch and visual feedback.
         var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
+        var thresholdTicked by remember(displayedWeek) {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
         val visualPull by animateFloatAsState(
             targetValue = pullDistance,
             animationSpec = tween(durationMillis = if (pullDistance == 0f) 220 else 65),
@@ -143,7 +149,7 @@ internal fun ScheduleAgenda(
         )
 
         val pullConnection = remember(
-            displayedWeek, listState, overscrollMax,
+            displayedWeek, listState, overscrollMax, overscrollThreshold, haptic,
         ) {
             object : NestedScrollConnection {
                 private fun pull(deltaY: Float): Offset {
@@ -155,6 +161,16 @@ internal fun ScheduleAgenda(
                         atEnd = !listState.canScrollForward,
                         maxDistance = overscrollMax,
                     )
+                    if (shouldTickWeekPull(
+                            oldDistance = pullDistance,
+                            newDistance = step.distance,
+                            threshold = overscrollThreshold,
+                            alreadyTicked = thresholdTicked,
+                        )
+                    ) {
+                        thresholdTicked = true
+                        haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                    }
                     pullDistance = step.distance
                     return Offset(0f, step.consumedY)
                 }
@@ -192,8 +208,27 @@ internal fun ScheduleAgenda(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                IconButton(onClick = { onRefreshWeek(displayedWeek) }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Обновить эту неделю")
+                val refreshing = displayedWeek in state.agendaLoadingOffsets
+                IconButton(
+                    onClick = { onRefreshWeek(displayedWeek) },
+                    enabled = !refreshing,
+                ) {
+                    Crossfade(
+                        targetState = refreshing,
+                        animationSpec = motion.defaultEffectsSpec(),
+                        label = "schedule-week-refresh",
+                    ) { loading ->
+                        if (loading) {
+                            LoadingIndicator(
+                                modifier = Modifier.size(24.dp),
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Обновить эту неделю",
+                            )
+                        }
+                    }
                 }
             }
             Box(
@@ -227,6 +262,7 @@ internal fun ScheduleAgenda(
                                 }
                             } finally {
                                 pullDistance = 0f
+                                thresholdTicked = false
                             }
                         }
                     },
@@ -262,6 +298,9 @@ internal fun ScheduleAgenda(
                 // can stick after release, cancellation or a week transition.
                 WeekPullIndicator(
                     previous = true,
+                    destination = weekRange(monday, displayedWeek - 1).let { (start, end) ->
+                        start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
+                    },
                     progress = (pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance >= overscrollThreshold,
                     modifier = Modifier.align(Alignment.TopCenter)
@@ -269,6 +308,9 @@ internal fun ScheduleAgenda(
                 )
                 WeekPullIndicator(
                     previous = false,
+                    destination = weekRange(monday, displayedWeek + 1).let { (start, end) ->
+                        start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
+                    },
                     progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance <= -overscrollThreshold,
                     modifier = Modifier.align(Alignment.BottomCenter)
@@ -281,13 +323,14 @@ internal fun ScheduleAgenda(
 }
 
 /**
- * Fixed-size expressive cue: drag progress controls a subtle fade/slide, and
- * the icon crossfades to a check when the release threshold has been reached.
- * The label never reflows during the gesture.
+ * A destination preview instead of a loading-like pull cue. Gesture progress
+ * controls reveal; the target dates do not change while the finger moves.
+ * At threshold the arrow crossfades to a check and a single haptic tick fires.
  */
 @Composable
 private fun WeekPullIndicator(
     previous: Boolean,
+    destination: String,
     progress: Float,
     armed: Boolean,
     modifier: Modifier = Modifier,
@@ -304,6 +347,13 @@ private fun WeekPullIndicator(
         animationSpec = tween(durationMillis = 150),
         label = "week-cue-color",
     )
+    val contentColor by animateColorAsState(
+        targetValue = if (armed) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else MaterialTheme.colorScheme.onSecondaryContainer,
+        animationSpec = tween(durationMillis = 150),
+        label = "week-cue-content-color",
+    )
     Surface(
         modifier = modifier.graphicsLayer {
             alpha = reveal.coerceIn(0f, 1f)
@@ -314,6 +364,7 @@ private fun WeekPullIndicator(
         },
         shape = RoundedCornerShape(24.dp),
         color = color,
+        contentColor = contentColor,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
@@ -335,11 +386,18 @@ private fun WeekPullIndicator(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Text(
-                if (previous) "Предыдущая неделя" else "Следующая неделя",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                    if (previous) "Предыдущая неделя" else "Следующая неделя",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.78f),
+                )
+                Text(
+                    destination,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }

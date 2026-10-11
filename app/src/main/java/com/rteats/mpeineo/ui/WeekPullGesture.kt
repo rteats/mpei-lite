@@ -46,3 +46,23 @@ internal fun weekDeltaForPull(distance: Float, threshold: Float): Int {
         else -> 0
     }
 }
+
+/**
+ * Preview date range for an adjacent week. The navigation cue uses the same
+ * Monday-to-Sunday boundaries as the visible agenda, including year changes.
+ */
+internal fun weekRange(monday: java.time.LocalDate, offset: Int):
+    Pair<java.time.LocalDate, java.time.LocalDate> {
+    val start = monday.plusWeeks(offset.toLong())
+    return start to start.plusDays(6)
+}
+
+/** Fire only when a deliberate pull first crosses the switch threshold. */
+internal fun shouldTickWeekPull(
+    oldDistance: Float,
+    newDistance: Float,
+    threshold: Float,
+    alreadyTicked: Boolean,
+): Boolean = !alreadyTicked &&
+    weekDeltaForPull(oldDistance, threshold) == 0 &&
+    weekDeltaForPull(newDistance, threshold) != 0
