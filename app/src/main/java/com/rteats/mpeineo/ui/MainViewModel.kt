@@ -14,6 +14,7 @@ import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -181,9 +182,12 @@ class MainViewModel(
                     }
                 }
             } finally {
-                agendaJobs.remove(offset)
-                _state.update {
-                    it.copy(agendaLoadingOffsets = it.agendaLoadingOffsets - offset)
+                // A cancelled request must not clear its replacement's loading state.
+                if (agendaJobs[offset] === currentCoroutineContext()[Job]) {
+                    agendaJobs.remove(offset)
+                    _state.update {
+                        it.copy(agendaLoadingOffsets = it.agendaLoadingOffsets - offset)
+                    }
                 }
             }
         }
@@ -224,9 +228,12 @@ class MainViewModel(
                     }
                 }
             } finally {
-                agendaJobs.remove(offset)
-                _state.update {
-                    it.copy(agendaLoadingOffsets = it.agendaLoadingOffsets - offset)
+                // A cancelled request must not clear its replacement's loading state.
+                if (agendaJobs[offset] === currentCoroutineContext()[Job]) {
+                    agendaJobs.remove(offset)
+                    _state.update {
+                        it.copy(agendaLoadingOffsets = it.agendaLoadingOffsets - offset)
+                    }
                 }
             }
         }

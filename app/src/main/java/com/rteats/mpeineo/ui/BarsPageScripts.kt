@@ -1,0 +1,280 @@
+package com.rteats.mpeineo.ui
+
+import android.webkit.JavascriptInterface
+
+/** Official BARS page recognition and structured marks extraction. */
+internal const val BARS_JS_INTERFACE = "MpeiNeoBars"
+
+internal const val BARS_STOP_STATE_OBSERVER_SCRIPT =
+    "if (window.__mpeiNeoBarsStateTimer) { clearInterval(window.__mpeiNeoBarsStateTimer); window.__mpeiNeoBarsStateTimer = null; }"
+
+internal class BarsJavascriptBridge(
+    private val onPageState: (String) -> Unit,
+    private val onData: (String) -> Unit,
+    private val onError: (String) -> Unit,
+) {
+    @JavascriptInterface
+    fun onPageState(json: String) = onPageState.invoke(json)
+
+    @JavascriptInterface
+    fun onData(json: String) = onData.invoke(json)
+
+    @JavascriptInterface
+    fun onError(message: String) = onError.invoke(message)
+}
+
+internal val BARS_PAGE_STATE_SCRIPT = """
+    (function() {
+        function reportState() {
+            try {
+                const path = (window.location.pathname || "").toLowerCase();
+                const hasPassword = !!document.querySelector('input[type="password"]');
+                const marks = !!document.getElementById("div-Student_SemesterSheet__Mark");
+                const studentList = path.indexOf("/student/liststudent") >= 0;
+                const bodyText = ((document.body && document.body.textContent) || "").toLowerCase();
+                const hasOneTimeCodeInput = !!document.querySelector(
+                    'input[autocomplete="one-time-code"], ' +
+                    'input[name*="code" i], input[id*="code" i]'
+                );
+                const hasTwoFactorUi =
+                    hasOneTimeCodeInput ||
+                    (
+                        (bodyText.indexOf("двухфактор") >= 0 ||
+                         bodyText.indexOf("код подтверждения") >= 0 ||
+                         bodyText.indexOf("получить код") >= 0 ||
+                         bodyText.indexOf("одноразов") >= 0) &&
+                        !!document.querySelector("form, .modal, [role='dialog']")
+                    );
+                const authFlow =
+                    path.indexOf("/auth") >= 0 ||
+                    hasTwoFactorUi;
+
+                MpeiNeoBars.onPageState(JSON.stringify({
+                    url: window.location.href,
+                    path: path,
+                    isLoginPage: hasPassword,
+                    isAuthFlow: authFlow,
+                    isStudentList: studentList,
+                    isMarksPage: marks
+                }));
+
+                if (marks && window.__mpeiNeoBarsStateTimer) {
+                    window.clearInterval(window.__mpeiNeoBarsStateTimer);
+                    window.__mpeiNeoBarsStateTimer = null;
+                }
+            } catch (error) {
+                MpeiNeoBars.onError("Не удалось определить страницу БАРС");
+            }
+        }
+
+        reportState();
+
+        if (!window.__mpeiNeoBarsStateTimer) {
+            window.__mpeiNeoBarsStateTimer =
+                window.setInterval(reportState, 1000);
+        }
+    })();
+""".trimIndent()
+
+/*
+ * DOM extraction is based on the same public BARS markup used by MpeiX's former
+ * statics/bars/extract.js implementation, but is intentionally self-contained here.
+ */
+internal val BARS_EXTRACT_SCRIPT = """
+    (function() {
+        function clean(value) {
+            return (value || "").replace(/\s+/g, " ").trim();
+        }
+
+        function parseRow(row) {
+            const columns = Array.from(row.querySelectorAll("td")).map(function(cell) {
+                return clean(cell.textContent);
+            });
+
+            if (columns.length === 0) return { type: "UNDEFINED" };
+
+            if (columns.length === 4) {
+                return {
+                    type: "CONTROL_ACTIVITY",
+                    name: clean(columns[0].replace(/[(]критерии[)]\s*$/i, "")),
+                    weight: columns[1] || null,
+                    weekNum: columns[2] || null,
+                    markAndDate: columns[3] || null
+                };
+            }
+
+            const title = columns[0] || "";
+            if (title.indexOf("Балл текущего") === 0) {
+                return {
+                    type: "CURRENT_SCORE",
+                    name: title,
+                    markAndDate: columns[1] || null
+                };
+            }
+            if (title.indexOf("Контрольная неделя №") === 0) {
+                return {
+                    type: "CONTROL_WEEK",
+                    name: title,
+                    weekNum: columns[1] || null,
+                    markAndDate: columns[2] || null
+                };
+            }
+            if (title.indexOf("Промежуточная") === 0) {
+                return {
+                    type: "INTERMEDIATE_MARK",
+                    name: title,
+                    markAndDate: columns[1] || null
+                };
+            }
+            if (title.indexOf("Итоговая") === 0) {
+                return {
+                    type: "FINAL_MARK",
+                    name: title,
+                    markAndDate: columns[1] || null
+                };
+            }
+            return { type: "UNDEFINED", name: title };
+        }
+
+        function extract(attempt) {
+            try {
+                const marksContainer =
+                    document.getElementById("div-Student_SemesterSheet__Mark");
+
+                if (!marksContainer) {
+                    if (attempt < 8) {
+                        window.setTimeout(function() { extract(attempt + 1); }, 400);
+                        return;
+                    }
+                    MpeiNeoBars.onError(
+                        "Страница БАРС загрузилась, но таблица оценок не найдена."
+                    );
+                    return;
+                }
+
+                const blocks = Array.from(marksContainer.children || []);
+                const disciplines = [];
+
+                for (let i = 0; i < blocks.length; i++) {
+                    const block = blocks[i];
+                    if (!block.classList || !block.classList.contains("collapse") || i === 0) {
+                        continue;
+                    }
+
+                    const headerParts = clean(blocks[i - 1].textContent)
+                        .split(",")
+                        .map(clean)
+                        .filter(Boolean);
+
+                    const assessmentIndex = headerParts.findLastIndex(function(part) {
+                        return /(экзамен|зач[её]т|аттестаци|дифференц)/i.test(part);
+                    });
+
+                    let disciplineName = "";
+                    let personName = "";
+                    let assessmentType = "";
+
+                    if (assessmentIndex > 0) {
+                        personName = headerParts[assessmentIndex - 1] || "";
+                        assessmentType = headerParts[assessmentIndex] || "";
+                        disciplineName = headerParts
+                            .slice(0, Math.max(assessmentIndex - 1, 1))
+                            .join(", ");
+                    } else if (headerParts.length >= 4) {
+                        disciplineName = headerParts.slice(0, -3).join(", ");
+                        personName = headerParts[headerParts.length - 3] || "";
+                        assessmentType = headerParts[headerParts.length - 2] || "";
+                    } else {
+                        disciplineName = headerParts[0] || "";
+                        personName = headerParts[1] || "";
+                        assessmentType = headerParts[2] || "";
+                    }
+
+                    const activities = Array.from(block.querySelectorAll("tr"))
+                        .filter(function(row) {
+                            return !row.classList.contains("collapse");
+                        })
+                        .map(parseRow);
+
+                    disciplines.push({
+                        disciplineName: clean(disciplineName),
+                        personName: clean(personName),
+                        assessmentType: clean(assessmentType),
+                        activities: activities
+                    });
+                }
+
+                const metadata =
+                    document.querySelector("#div-FormHeader .row .col-sm") ||
+                    document.querySelector("#div-FormHeader .form-row .col-sm");
+
+                let name = "";
+                let group = "";
+
+                if (metadata) {
+                    const lines = Array.from(metadata.children || [])
+                        .map(function(node) { return clean(node.textContent); })
+                        .filter(Boolean);
+
+                    if (lines.length > 0) {
+                        const combined = lines[0].match(/^(.*?)\s*\((.*?)\)\s*$/);
+                        if (combined) {
+                            name = clean(combined[1]);
+                            group = clean(combined[2]);
+                        } else {
+                            name = clean(lines[0].replace(/\(.*\)$/g, ""));
+                            if (lines.length > 1) group = clean(lines[1]);
+                        }
+                    }
+                }
+
+                // Collect labelled, visible student fields, never hidden form
+                // inputs, passwords, cookies or arbitrary body content.
+                const studentDetails = [];
+                const allowed = /^(институт|факультет|курс|форма обучения|направление|специальность|профиль|кафедра|статус|уровень образования|номер зачетной книжки|зач[её]тная книжка|группа|семестр)$/i;
+                function addField(rawLabel, rawValue) {
+                    const label = clean(rawLabel).replace(/:$/, "");
+                    const value = clean(rawValue);
+                    if (!allowed.test(label) || !value || value.length > 140 ||
+                        studentDetails.some(function(field) { return field.label === label; })) return;
+                    studentDetails.push({ label: label, value: value });
+                }
+                ["#div-FormHeader", "#div-StudentInfo", "#div-Student_Info",
+                    ".student-info", ".student-profile"].forEach(function(selector) {
+                    const section = document.querySelector(selector);
+                    if (!section) return;
+                    Array.from(section.querySelectorAll("tr")).forEach(function(row) {
+                        const cells = Array.from(row.querySelectorAll("th, td"));
+                        if (cells.length === 2) addField(cells[0].textContent, cells[1].textContent);
+                    });
+                    Array.from(section.querySelectorAll("dt")).forEach(function(dt) {
+                        if (dt.nextElementSibling && dt.nextElementSibling.tagName === "DD")
+                            addField(dt.textContent, dt.nextElementSibling.textContent);
+                    });
+                    Array.from(section.querySelectorAll("label")).forEach(function(label) {
+                        const next = label.nextElementSibling;
+                        if (next && !next.matches("input, select, textarea"))
+                            addField(label.textContent, next.textContent);
+                    });
+                });
+                const semesterNode =
+                    document.querySelector(".filter-option-inner-inner");
+                const semester = semesterNode ? clean(semesterNode.textContent) : "";
+
+                MpeiNeoBars.onData(JSON.stringify({
+                    name: name,
+                    group: group,
+                    semester: semester,
+                    studentDetails: studentDetails.slice(0, 18),
+                    disciplines: disciplines
+                }));
+            } catch (error) {
+                MpeiNeoBars.onError(
+                    "Не удалось прочитать оценки из текущей сессии БАРС."
+                );
+            }
+        }
+
+        extract(0);
+    })();
+""".trimIndent()

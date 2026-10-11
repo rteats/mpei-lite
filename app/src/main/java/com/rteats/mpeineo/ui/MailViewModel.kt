@@ -12,6 +12,7 @@ import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,12 +43,15 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
     val state: StateFlow<MailUiState> = _state.asStateFlow()
     private var inMemoryCredentials: MailCredentials? = initialAuth
     private var attemptedCredentials: MailCredentials? = initialAuth
+    private var sessionVersion = 0L
 
     init {
         if (initialAuth != null) {
+            val version = sessionVersion
             viewModelScope.launch {
                 val cached = repository.cachedInbox(initialAuth.username)
-                if (inMemoryCredentials?.username == initialAuth.username && cached.isNotEmpty()) {
+                if (version == sessionVersion &&
+                    inMemoryCredentials?.username == initialAuth.username && cached.isNotEmpty()) {
                     _state.update { it.copy(items = cached) }
                 }
                 refresh()
@@ -62,20 +66,22 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         }
         val auth = MailCredentials(username.trim(), password)
         attemptedCredentials = auth
+        val version = ++sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, notice = null, certificate = null) }
-            runCatching {
-                val messages = repository.refreshInbox(auth)
-                repository.credentials.save(auth)
-                messages
-            }.onSuccess { items ->
-                inMemoryCredentials = auth
-                _state.update {
-                    it.copy(configured = true, username = auth.username, items = items, loading = false, certificate = null)
+            runCatching { repository.refreshInbox(auth) }
+                .onSuccess { items ->
+                    if (version != sessionVersion) return@onSuccess
+                    // An obsolete login must never restore credentials after logout.
+                    repository.credentials.save(auth)
+                    inMemoryCredentials = auth
+                    _state.update {
+                        it.copy(configured = true, username = auth.username, items = items, loading = false, certificate = null)
+                    }
+                }.onFailure { cause ->
+                    if (version != sessionVersion) return@onFailure
+                    handleConnectionFailure(cause, version)
                 }
-            }.onFailure { cause ->
-                handleConnectionFailure(cause)
-            }
         }
     }
 
@@ -83,21 +89,30 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         val auth = inMemoryCredentials ?: return
         attemptedCredentials = auth
         if (_state.value.loading) return
+        val version = sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching { repository.refreshInbox(auth) }
-                .onSuccess { items -> _state.update { it.copy(items = items, loading = false) } }
-                .onFailure { cause -> handleConnectionFailure(cause) }
+                .onSuccess { items ->
+                    if (version == sessionVersion) {
+                        _state.update { it.copy(items = items, loading = false) }
+                    }
+                }
+                .onFailure { cause ->
+                    if (version == sessionVersion) handleConnectionFailure(cause, version)
+                }
         }
     }
 
     fun open(summary: MailSummary) {
         val auth = inMemoryCredentials ?: return
+        val version = sessionVersion
         _state.update {
             it.copy(selected = summary, message = null, loadingMessage = true, error = null, notice = null)
         }
         viewModelScope.launch {
             val cached = repository.cachedMessage(auth.username, summary.uid, summary.uidValidity)
+            if (version != sessionVersion) return@launch
             if (cached != null) {
                 _state.update { current ->
                     if (current.selected?.uid == summary.uid &&
@@ -109,6 +124,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
             }
             runCatching { repository.readMessage(auth, summary.uid, summary.uidValidity) }
                 .onSuccess { body ->
+                    if (version != sessionVersion) return@onSuccess
                     _state.update { current ->
                         if (current.selected?.uid != summary.uid ||
                             current.selected?.uidValidity != summary.uidValidity
@@ -117,6 +133,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                     }
                 }
                 .onFailure { cause ->
+                    if (version != sessionVersion) return@onFailure
                     _state.update { current ->
                         if (current.selected?.uid != summary.uid ||
                             current.selected?.uidValidity != summary.uidValidity
@@ -139,6 +156,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
 
     fun download(attachment: MailAttachment) {
         val auth = inMemoryCredentials ?: return
+        val version = sessionVersion
         val summary = _state.value.selected ?: return
         if (_state.value.savingAttachment != null) return
         viewModelScope.launch {
@@ -146,14 +164,20 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
             runCatching {
                 repository.saveAttachment(auth, summary.uid, summary.uidValidity, attachment)
             }.onSuccess { destination ->
-                _state.update { it.copy(savingAttachment = null, notice = "Сохранено: $destination") }
+                if (version == sessionVersion) {
+                    _state.update { it.copy(savingAttachment = null, notice = "Сохранено: $destination") }
+                }
             }.onFailure { cause ->
-                _state.update { it.copy(savingAttachment = null, error = readableError(cause)) }
+                if (version == sessionVersion) {
+                    _state.update { it.copy(savingAttachment = null, error = readableError(cause)) }
+                }
             }
         }
     }
 
     fun logout() {
+        sessionVersion++
+        viewModelScope.coroutineContext.cancelChildren()
         MailNotificationScheduler.stopAndClear(repository.contextForNotifications)
         inMemoryCredentials?.username?.let(repository::clearCachedMail)
         repository.credentials.clear()
@@ -170,6 +194,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
     fun approveCertificate() {
         val candidate = _state.value.certificate ?: return
         val auth = attemptedCredentials ?: return
+        val version = sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching {
@@ -180,11 +205,14 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                 require(live.currentlyValid && live.matchesMailHostname) {
                     "Сертификат просрочен либо не принадлежит mail.mpei.ru."
                 }
+                if (version != sessionVersion) return@runCatching
                 repository.trustCertificate(live)
             }.onSuccess {
+                if (version != sessionVersion) return@onSuccess
                 _state.update { it.copy(loading = false, certificate = null) }
                 if (_state.value.configured) refresh() else login(auth.username, auth.password)
             }.onFailure { problem ->
+                if (version != sessionVersion) return@onFailure
                 _state.update {
                     it.copy(
                         loading = false,
@@ -200,7 +228,8 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         _state.update { it.copy(certificate = null, inspectingCertificate = false) }
     }
 
-    private suspend fun handleConnectionFailure(cause: Throwable) {
+    private suspend fun handleConnectionFailure(cause: Throwable, version: Long) {
+        if (version != sessionVersion) return
         val descriptions = generateSequence(cause) { it.cause }
             .take(8).mapNotNull { it.message }.joinToString(" ")
         val likelyTlsIssue = descriptions.contains("certificate", ignoreCase = true) ||
@@ -224,11 +253,13 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         }
         runCatching { repository.inspectServerCertificate() }
             .onSuccess { cert ->
+                if (version != sessionVersion) return@onSuccess
                 _state.update {
                     it.copy(certificate = cert, inspectingCertificate = false)
                 }
             }
             .onFailure { failure ->
+                if (version != sessionVersion) return@onFailure
                 _state.update {
                     it.copy(
                         inspectingCertificate = false,

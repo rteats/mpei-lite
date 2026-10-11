@@ -112,6 +112,7 @@ internal fun BarsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var navigationController by remember { mutableStateOf<BarsNavigationController?>(null) }
     var retryNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var redirectingToMarks by remember { mutableStateOf(false) }
     var marksExtractionStarted by remember { mutableStateOf(false) }
@@ -122,7 +123,6 @@ internal fun BarsScreen(
     var marksWaitLogged by remember { mutableStateOf(false) }
     var marksFailureReported by remember { mutableStateOf(false) }
     var mainFrameFailed by remember { mutableStateOf(false) }
-    var mainFrameRetryCount by remember { mutableStateOf(0) }
 
     val cacheFresh = state.hasFreshCache()
     // A pager may precompose and immediately discard an off-screen BARS page.
@@ -165,7 +165,6 @@ internal fun BarsScreen(
                 onRetry = {
                     marksRouteRecoveryAttempted = false
                     marksFailureReported = false
-                    mainFrameRetryCount = 0
                     mainFrameFailed = false
                     needsFullViewport = true
                     viewModel.checking()
@@ -184,7 +183,6 @@ internal fun BarsScreen(
                     redirectingToMarks = false
                     marksRouteRecoveryAttempted = false
                     marksFailureReported = false
-                    mainFrameRetryCount = 0
                     mainFrameFailed = false
                     needsFullViewport = true
                     viewModel.startRefresh()
@@ -248,75 +246,27 @@ internal fun BarsScreen(
                         setAcceptCookie(true)
                         setAcceptThirdPartyCookies(view, false)
                     }
-                    var programmaticRequestToken = 0
-                    var programmaticStartedToken = -1
-                    var programmaticFinishedToken = -1
-                    var lastLoadStartedAt = SystemClock.elapsedRealtime()
-                    var lastNavigationProgress = -1
-                    var subresourceErrorCount = 0
+                    val controller = BarsNavigationController(
+                        view = view,
+                        log = viewModel::logWebEvent,
+                        probe = viewModel::probeNetwork,
+                        onTimeout = {
+                            if (!state.browserVisible) {
+                                needsFullViewport = false
+                                viewModel.extractionFailed(
+                                    "Тайм-аут подключения к БАРС. Сессия не сброшена. " +
+                                        "Проверьте bars.mpei.ru в браузере или попробуйте другую сеть.",
+                                )
+                            }
+                        },
+                    )
+                    navigationController = controller
 
                     fun loadBarsWithWatchdog(
                         targetUrl: String,
                         reason: String,
                         fallbackUrl: String? = null,
-                    ) {
-                        programmaticRequestToken += 1
-                        val token = programmaticRequestToken
-                        // An aborted navigation can report onPageFinished after the next
-                        // loadUrl. Its callback must not mark the new request completed.
-                        programmaticStartedToken = -1
-                        programmaticFinishedToken = -1
-                        lastLoadStartedAt = SystemClock.elapsedRealtime()
-                        lastNavigationProgress = -1
-                        viewModel.logWebEvent(
-                            "load requested id=$token reason=$reason " +
-                                "path=${safeBarsLocation(targetUrl)} " +
-                                "priorPath=${safeBarsLocation(view.url.orEmpty())} " +
-                                "browser=${state.browserVisible} loading=${state.isLoading} " +
-                                "viewProgress=${view.progress}",
-                        )
-                        view.stopLoading()
-                        view.loadUrl(targetUrl)
-
-                        view.postDelayed(
-                            {
-                                if (
-                                    webView !== view ||
-                                    programmaticRequestToken != token ||
-                                    programmaticFinishedToken == token
-                                ) {
-                                    return@postDelayed
-                                }
-
-                                val started = programmaticStartedToken == token
-                                viewModel.logWebEvent(
-                                    "load watchdog fired id=$token " +
-                                        "path=${safeBarsLocation(targetUrl)} " +
-                                        "started=$started elapsedMs=${SystemClock.elapsedRealtime() - lastLoadStartedAt} " +
-                                        "currentPath=${safeBarsLocation(view.url.orEmpty())} " +
-                                        "progress=${view.progress} lastProgressBucket=$lastNavigationProgress " +
-                                        "failed=$mainFrameFailed browser=${state.browserVisible}",
-                                )
-                                viewModel.probeNetwork("watchdog-id-$token")
-                                view.stopLoading()
-
-                                if (fallbackUrl != null) {
-                                    loadBarsWithWatchdog(
-                                        targetUrl = fallbackUrl,
-                                        reason = "watchdog fallback",
-                                        fallbackUrl = null,
-                                    )
-                                } else if (!state.browserVisible) {
-                                    needsFullViewport = false
-                                    viewModel.extractionFailed(
-                                        "Тайм-аут подключения к БАРС. Сессия не сброшена. " +
-                                            "Проверьте bars.mpei.ru в браузере или попробуйте другую сеть.",
-                                    )
-                                }
-                            },
-                            12_000L,
-                        )
-                    }
+                    ) = controller.load(targetUrl, reason, fallbackUrl)
 
                     // The Retry action must use this same timeout-protected
                     // navigation path rather than calling WebView.loadUrl directly.
@@ -526,12 +476,11 @@ internal fun BarsScreen(
                                 newProgress >= 25 -> 25
                                 else -> 0
                             }
-                            if (bucket != lastNavigationProgress) {
-                                lastNavigationProgress = bucket
+                            if (controller.recordProgress(bucket)) {
                                 viewModel.logWebEvent(
                                     "progress=$newProgress bucket=$bucket " +
                                         "path=${safeBarsLocation(view.url.orEmpty())} " +
-                                        "elapsedMs=${SystemClock.elapsedRealtime() - lastLoadStartedAt}",
+                                        "elapsedMs=${SystemClock.elapsedRealtime() - controller.lastLoadStartedAt}",
                                 )
                             }
                         }
@@ -561,15 +510,12 @@ internal fun BarsScreen(
                             marksExtractionStarted = false
                             marksMissingPolls = 0
                             marksWaitLogged = false
-                            if (url.startsWith(BARS_BASE_URL)) {
-                                mainFrameFailed = false
-                                programmaticStartedToken = programmaticRequestToken
-                            }
+                            if (isTrustedBarsDocument(url)) mainFrameFailed = false
+                            controller.onStarted(url)
                             needsFullViewport = true
                             viewModel.updateSessionUrl(url)
-                            lastLoadStartedAt = SystemClock.elapsedRealtime()
                             viewModel.logWebEvent(
-                                "page started id=$programmaticRequestToken path=${safeBarsLocation(url)} " +
+                                "page started id=${controller.requestId} path=${safeBarsLocation(url)} " +
                                     "browser=${state.browserVisible} progress=${view.progress}",
                             )
                         }
@@ -578,9 +524,9 @@ internal fun BarsScreen(
                             if (webView !== view) return
                             viewModel.updateSessionUrl(url)
                             viewModel.logWebEvent(
-                                "page finished id=$programmaticRequestToken " +
+                                "page finished id=${controller.requestId} " +
                                     "path=${safeBarsLocation(url)} " +
-                                    "elapsedMs=${SystemClock.elapsedRealtime() - lastLoadStartedAt} " +
+                                    "elapsedMs=${SystemClock.elapsedRealtime() - controller.lastLoadStartedAt} " +
                                     "progress=${view.progress} currentPath=${safeBarsLocation(view.url.orEmpty())}",
                             )
 
@@ -594,12 +540,10 @@ internal fun BarsScreen(
                                 return
                             }
 
-                            // A cancelled navigation can finish after the watchdog starts
-                            // a fallback. Do not let it complete the fallback's token.
-                            if (programmaticStartedToken == programmaticRequestToken) {
-                                programmaticFinishedToken = programmaticRequestToken
+                            if (!controller.onFinished(url)) {
+                                viewModel.logWebEvent("ignoring stale page completion")
+                                return
                             }
-                            mainFrameRetryCount = 0
                             view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
                         }
 
@@ -625,11 +569,25 @@ internal fun BarsScreen(
                             errorResponse: WebResourceResponse,
                         ) {
                             if (request.isForMainFrame) {
+                                val code = errorResponse.statusCode
                                 viewModel.logWebEvent(
-                                    "main-frame HTTP error status=${errorResponse.statusCode} " +
+                                    "main-frame HTTP error status=$code " +
                                         "path=${safeBarsLocation(request.url.toString())}",
                                 )
-                                viewModel.probeNetwork("main-http-${errorResponse.statusCode}")
+                                viewModel.probeNetwork("main-http-$code")
+                                if (code >= 400 && !mainFrameFailed) {
+                                    mainFrameFailed = true
+                                    val retryScheduled = controller.onMainFrameFailure(
+                                        url = request.url.toString(),
+                                        retryable = code in 500..599,
+                                    )
+                                    if (!retryScheduled && !state.browserVisible) {
+                                        needsFullViewport = false
+                                        viewModel.extractionFailed(
+                                            "Сервер БАРС вернул ошибку HTTP $code. Повторите позже.",
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -662,6 +620,7 @@ internal fun BarsScreen(
                                 return
                             }
 
+                            if (mainFrameFailed) return
                             mainFrameFailed = true
                             view.evaluateJavascript(
                                 BARS_STOP_STATE_OBSERVER_SCRIPT,
@@ -669,46 +628,17 @@ internal fun BarsScreen(
                             )
 
                             val failedUrl = request.url.toString()
-                            val canRetry =
-                                isRetryableBarsWebError(error.errorCode) &&
-                                    failedUrl.startsWith(BARS_BASE_URL) &&
-                                    mainFrameRetryCount < 1
-
-                            viewModel.logWebEvent(
-                                "main-frame error path=${safeBarsLocation(failedUrl)} " +
-                                    "code=${error.errorCode} retry=$canRetry " +
-                                    "progress=${view.progress} elapsedMs=${SystemClock.elapsedRealtime() - lastLoadStartedAt}",
+                            val canRetry = controller.onMainFrameFailure(
+                                url = failedUrl,
+                                retryable = isRetryableBarsWebError(error.errorCode),
                             )
-                            viewModel.probeNetwork("webview-error-${error.errorCode}")
-
-                            if (canRetry) {
-                                mainFrameRetryCount += 1
-                                // Network timeouts are not evidence of an expired
-                                // cookie. Retry the same page, never jump to the
-                                // marks route based on cookie presence alone.
-                                val retryUrl = failedUrl
-
-                                viewModel.logWebEvent(
-                                    "retrying BARS main frame in 1500ms target=${safeBarsLocation(retryUrl)}",
-                                )
-                                view.postDelayed(
-                                    {
-                                        if (webView === view) {
-                                            mainFrameFailed = false
-                                            viewModel.logWebEvent(
-                                                "retry fired target=${safeBarsLocation(retryUrl)}",
-                                            )
-                                            loadBarsWithWatchdog(
-                                                targetUrl = retryUrl,
-                                                reason = "main-frame retry",
-                                                fallbackUrl = null,
-                                            )
-                                        }
-                                    },
-                                    1_500L,
-                                )
-                                return
-                            }
+                            viewModel.logWebEvent(
+                                "main-frame error path=" + safeBarsLocation(failedUrl) +
+                                    " code=" + error.errorCode + " retry=" + canRetry +
+                                    " progress=" + view.progress,
+                            )
+                            viewModel.probeNetwork("webview-error-" + error.errorCode)
+                            if (canRetry) return
 
                             if (!state.browserVisible) {
                                 needsFullViewport = false
@@ -767,6 +697,10 @@ internal fun BarsScreen(
                             "path=${safeBarsLocation(view.url.orEmpty())} progress=${view.progress}",
                     )
                     if (webView === view) retryNavigation = null
+                    if (navigationController?.belongsTo(view) == true) {
+                        navigationController?.close()
+                        navigationController = null
+                    }
                     view.stopLoading()
                     view.removeJavascriptInterface(BARS_JS_INTERFACE)
                     view.webViewClient = WebViewClient()
@@ -1677,11 +1611,7 @@ private fun safeBarsLocation(rawUrl: String): String =
     }.getOrDefault("unparseable")
 
 private fun isTrustedBarsDocument(url: String): Boolean =
-    runCatching {
-        val uri = Uri.parse(url)
-        uri.scheme == "https" &&
-            uri.host.equals("bars.mpei.ru", ignoreCase = true)
-    }.getOrDefault(false)
+    BarsDocumentPolicy.isTrusted(url)
 
 private fun isRetryableBarsWebError(errorCode: Int): Boolean =
     errorCode == WebViewClient.ERROR_TIMEOUT ||
@@ -1689,278 +1619,3 @@ private fun isRetryableBarsWebError(errorCode: Int): Boolean =
         errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
         errorCode == WebViewClient.ERROR_UNKNOWN
 
-private const val BARS_JS_INTERFACE = "MpeiNeoBars"
-
-private const val BARS_STOP_STATE_OBSERVER_SCRIPT =
-    "if (window.__mpeiNeoBarsStateTimer) { clearInterval(window.__mpeiNeoBarsStateTimer); window.__mpeiNeoBarsStateTimer = null; }"
-
-private class BarsJavascriptBridge(
-    private val onPageState: (String) -> Unit,
-    private val onData: (String) -> Unit,
-    private val onError: (String) -> Unit,
-) {
-    @JavascriptInterface
-    fun onPageState(json: String) = onPageState.invoke(json)
-
-    @JavascriptInterface
-    fun onData(json: String) = onData.invoke(json)
-
-    @JavascriptInterface
-    fun onError(message: String) = onError.invoke(message)
-}
-
-private val BARS_PAGE_STATE_SCRIPT = """
-    (function() {
-        function reportState() {
-            try {
-                const path = (window.location.pathname || "").toLowerCase();
-                const hasPassword = !!document.querySelector('input[type="password"]');
-                const marks = !!document.getElementById("div-Student_SemesterSheet__Mark");
-                const studentList = path.indexOf("/student/liststudent") >= 0;
-                const bodyText = ((document.body && document.body.textContent) || "").toLowerCase();
-                const hasOneTimeCodeInput = !!document.querySelector(
-                    'input[autocomplete="one-time-code"], ' +
-                    'input[name*="code" i], input[id*="code" i]'
-                );
-                const hasTwoFactorUi =
-                    hasOneTimeCodeInput ||
-                    (
-                        (bodyText.indexOf("двухфактор") >= 0 ||
-                         bodyText.indexOf("код подтверждения") >= 0 ||
-                         bodyText.indexOf("получить код") >= 0 ||
-                         bodyText.indexOf("одноразов") >= 0) &&
-                        !!document.querySelector("form, .modal, [role='dialog']")
-                    );
-                const authFlow =
-                    path.indexOf("/auth") >= 0 ||
-                    hasTwoFactorUi;
-
-                MpeiNeoBars.onPageState(JSON.stringify({
-                    url: window.location.href,
-                    path: path,
-                    isLoginPage: hasPassword,
-                    isAuthFlow: authFlow,
-                    isStudentList: studentList,
-                    isMarksPage: marks
-                }));
-
-                if (marks && window.__mpeiNeoBarsStateTimer) {
-                    window.clearInterval(window.__mpeiNeoBarsStateTimer);
-                    window.__mpeiNeoBarsStateTimer = null;
-                }
-            } catch (error) {
-                MpeiNeoBars.onError("Не удалось определить страницу БАРС");
-            }
-        }
-
-        reportState();
-
-        if (!window.__mpeiNeoBarsStateTimer) {
-            window.__mpeiNeoBarsStateTimer =
-                window.setInterval(reportState, 1000);
-        }
-    })();
-""".trimIndent()
-
-/*
- * DOM extraction is based on the same public BARS markup used by MpeiX's former
- * statics/bars/extract.js implementation, but is intentionally self-contained here.
- */
-private val BARS_EXTRACT_SCRIPT = """
-    (function() {
-        function clean(value) {
-            return (value || "").replace(/\s+/g, " ").trim();
-        }
-
-        function parseRow(row) {
-            const columns = Array.from(row.querySelectorAll("td")).map(function(cell) {
-                return clean(cell.textContent);
-            });
-
-            if (columns.length === 0) return { type: "UNDEFINED" };
-
-            if (columns.length === 4) {
-                return {
-                    type: "CONTROL_ACTIVITY",
-                    name: clean(columns[0].replace(/[(]критерии[)]\s*$/i, "")),
-                    weight: columns[1] || null,
-                    weekNum: columns[2] || null,
-                    markAndDate: columns[3] || null
-                };
-            }
-
-            const title = columns[0] || "";
-            if (title.indexOf("Балл текущего") === 0) {
-                return {
-                    type: "CURRENT_SCORE",
-                    name: title,
-                    markAndDate: columns[1] || null
-                };
-            }
-            if (title.indexOf("Контрольная неделя №") === 0) {
-                return {
-                    type: "CONTROL_WEEK",
-                    name: title,
-                    weekNum: columns[1] || null,
-                    markAndDate: columns[2] || null
-                };
-            }
-            if (title.indexOf("Промежуточная") === 0) {
-                return {
-                    type: "INTERMEDIATE_MARK",
-                    name: title,
-                    markAndDate: columns[1] || null
-                };
-            }
-            if (title.indexOf("Итоговая") === 0) {
-                return {
-                    type: "FINAL_MARK",
-                    name: title,
-                    markAndDate: columns[1] || null
-                };
-            }
-            return { type: "UNDEFINED", name: title };
-        }
-
-        function extract(attempt) {
-            try {
-                const marksContainer =
-                    document.getElementById("div-Student_SemesterSheet__Mark");
-
-                if (!marksContainer) {
-                    if (attempt < 8) {
-                        window.setTimeout(function() { extract(attempt + 1); }, 400);
-                        return;
-                    }
-                    MpeiNeoBars.onError(
-                        "Страница БАРС загрузилась, но таблица оценок не найдена."
-                    );
-                    return;
-                }
-
-                const blocks = Array.from(marksContainer.children || []);
-                const disciplines = [];
-
-                for (let i = 0; i < blocks.length; i++) {
-                    const block = blocks[i];
-                    if (!block.classList || !block.classList.contains("collapse") || i === 0) {
-                        continue;
-                    }
-
-                    const headerParts = clean(blocks[i - 1].textContent)
-                        .split(",")
-                        .map(clean)
-                        .filter(Boolean);
-
-                    const assessmentIndex = headerParts.findLastIndex(function(part) {
-                        return /(экзамен|зач[её]т|аттестаци|дифференц)/i.test(part);
-                    });
-
-                    let disciplineName = "";
-                    let personName = "";
-                    let assessmentType = "";
-
-                    if (assessmentIndex > 0) {
-                        personName = headerParts[assessmentIndex - 1] || "";
-                        assessmentType = headerParts[assessmentIndex] || "";
-                        disciplineName = headerParts
-                            .slice(0, Math.max(assessmentIndex - 1, 1))
-                            .join(", ");
-                    } else if (headerParts.length >= 4) {
-                        disciplineName = headerParts.slice(0, -3).join(", ");
-                        personName = headerParts[headerParts.length - 3] || "";
-                        assessmentType = headerParts[headerParts.length - 2] || "";
-                    } else {
-                        disciplineName = headerParts[0] || "";
-                        personName = headerParts[1] || "";
-                        assessmentType = headerParts[2] || "";
-                    }
-
-                    const activities = Array.from(block.querySelectorAll("tr"))
-                        .filter(function(row) {
-                            return !row.classList.contains("collapse");
-                        })
-                        .map(parseRow);
-
-                    disciplines.push({
-                        disciplineName: clean(disciplineName),
-                        personName: clean(personName),
-                        assessmentType: clean(assessmentType),
-                        activities: activities
-                    });
-                }
-
-                const metadata =
-                    document.querySelector("#div-FormHeader .row .col-sm") ||
-                    document.querySelector("#div-FormHeader .form-row .col-sm");
-
-                let name = "";
-                let group = "";
-
-                if (metadata) {
-                    const lines = Array.from(metadata.children || [])
-                        .map(function(node) { return clean(node.textContent); })
-                        .filter(Boolean);
-
-                    if (lines.length > 0) {
-                        const combined = lines[0].match(/^(.*?)\s*\((.*?)\)\s*$/);
-                        if (combined) {
-                            name = clean(combined[1]);
-                            group = clean(combined[2]);
-                        } else {
-                            name = clean(lines[0].replace(/\(.*\)$/g, ""));
-                            if (lines.length > 1) group = clean(lines[1]);
-                        }
-                    }
-                }
-
-                // Collect labelled, visible student fields, never hidden form
-                // inputs, passwords, cookies or arbitrary body content.
-                const studentDetails = [];
-                const allowed = /^(институт|факультет|курс|форма обучения|направление|специальность|профиль|кафедра|статус|уровень образования|номер зачетной книжки|зач[её]тная книжка|группа|семестр)$/i;
-                function addField(rawLabel, rawValue) {
-                    const label = clean(rawLabel).replace(/:$/, "");
-                    const value = clean(rawValue);
-                    if (!allowed.test(label) || !value || value.length > 140 ||
-                        studentDetails.some(function(field) { return field.label === label; })) return;
-                    studentDetails.push({ label: label, value: value });
-                }
-                ["#div-FormHeader", "#div-StudentInfo", "#div-Student_Info",
-                    ".student-info", ".student-profile"].forEach(function(selector) {
-                    const section = document.querySelector(selector);
-                    if (!section) return;
-                    Array.from(section.querySelectorAll("tr")).forEach(function(row) {
-                        const cells = Array.from(row.querySelectorAll("th, td"));
-                        if (cells.length === 2) addField(cells[0].textContent, cells[1].textContent);
-                    });
-                    Array.from(section.querySelectorAll("dt")).forEach(function(dt) {
-                        if (dt.nextElementSibling && dt.nextElementSibling.tagName === "DD")
-                            addField(dt.textContent, dt.nextElementSibling.textContent);
-                    });
-                    Array.from(section.querySelectorAll("label")).forEach(function(label) {
-                        const next = label.nextElementSibling;
-                        if (next && !next.matches("input, select, textarea"))
-                            addField(label.textContent, next.textContent);
-                    });
-                });
-                const semesterNode =
-                    document.querySelector(".filter-option-inner-inner");
-                const semester = semesterNode ? clean(semesterNode.textContent) : "";
-
-                MpeiNeoBars.onData(JSON.stringify({
-                    name: name,
-                    group: group,
-                    semester: semester,
-                    studentDetails: studentDetails.slice(0, 18),
-                    disciplines: disciplines
-                }));
-            } catch (error) {
-                MpeiNeoBars.onError(
-                    "Не удалось прочитать оценки из текущей сессии БАРС."
-                );
-            }
-        }
-
-        extract(0);
-    })();
-""".trimIndent()
