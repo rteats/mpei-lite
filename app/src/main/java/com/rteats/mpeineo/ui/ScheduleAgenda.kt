@@ -1,6 +1,10 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -25,6 +29,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -127,34 +134,47 @@ internal fun ScheduleAgenda(
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
-        var overscroll by remember(displayedWeek) { mutableFloatStateOf(0f) }
+        // Only this distance determines both the week switch and visual feedback.
+        var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
+        val visualPull by animateFloatAsState(
+            targetValue = pullDistance,
+            animationSpec = tween(durationMillis = if (pullDistance == 0f) 220 else 65),
+            label = "schedule-week-pull-stretch",
+        )
 
-        val overscrollConnection = remember(
-            displayedWeek, listState, overscrollThreshold, overscrollMax,
+        val pullConnection = remember(
+            displayedWeek, listState, overscrollMax,
         ) {
             object : NestedScrollConnection {
+                private fun pull(deltaY: Float): Offset {
+                    if (displayedWeek != visibleWeek || deltaY == 0f) return Offset.Zero
+                    val step = advanceWeekPull(
+                        distance = pullDistance,
+                        deltaY = deltaY,
+                        atStart = !listState.canScrollBackward,
+                        atEnd = !listState.canScrollForward,
+                        maxDistance = overscrollMax,
+                    )
+                    pullDistance = step.distance
+                    return Offset(0f, step.consumedY)
+                }
+
                 override fun onPreScroll(
                     available: Offset,
                     source: NestedScrollSource,
-                ): Offset {
-                    if (displayedWeek != visibleWeek ||
-                        source != NestedScrollSource.UserInput || available.y == 0f
-                    ) return Offset.Zero
+                ): Offset = if (source == NestedScrollSource.UserInput) {
+                    pull(available.y)
+                } else Offset.Zero
 
-                    // Check the LazyColumn's *actual* scroll boundaries before
-                    // overscroll effects consume the remaining pointer movement.
-                    // In-week vertical scrolling is never intercepted.
-                    val atPreviousEdge = available.y > 0f && !listState.canScrollBackward
-                    val atNextEdge = available.y < 0f && !listState.canScrollForward
-                    if (atPreviousEdge || atNextEdge) {
-                        overscroll = (overscroll + available.y)
-                            .coerceIn(-overscrollMax, overscrollMax)
-                    } else {
-                        overscroll = 0f
-                    }
-                    return Offset.Zero
-                }
-
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset = if (source == NestedScrollSource.UserInput) {
+                    // Include the unconsumed portion of a drag that reaches the
+                    // first/last day after starting inside the list.
+                    pull(available.y)
+                } else Offset.Zero
             }
         }
 
@@ -178,51 +198,42 @@ internal fun ScheduleAgenda(
             }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth()
-                    .nestedScroll(overscrollConnection)
+                    .nestedScroll(pullConnection)
                     .pointerInput(displayedWeek, selectedId, selectedType) {
-                        // Watch the pointer stream without consuming scroll events.
-                        // Unlike onPostFling, UP is delivered even after a slow
-                        // pull or when a teacher has an almost-empty week.
+                        // Nested scroll is the sole pull accumulator. This
+                        // observer only decides on finger-up and always clears
+                        // the gesture (including canceled/interrupted input).
                         awaitEachGesture {
                             awaitFirstDown(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial,
                             )
-                            var edgePull = 0f
-                            do {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                event.changes.forEach { change ->
-                                    if (!change.pressed) return@forEach
-                                    val deltaY = change.position.y - change.previousPosition.y
-                                    if (deltaY > 0f && !listState.canScrollBackward) {
-                                        edgePull = (edgePull + deltaY).coerceAtLeast(0f)
-                                    } else if (deltaY < 0f && !listState.canScrollForward) {
-                                        edgePull = (edgePull + deltaY).coerceAtMost(0f)
-                                    } else {
-                                        edgePull = 0f
-                                    }
-                                }
-                            } while (event.changes.any { it.pressed })
+                            try {
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                } while (event.changes.any { it.pressed })
 
-                            if (displayedWeek == visibleWeek) {
-                                when {
-                                    edgePull >= overscrollThreshold -> {
-                                        entryDay = 6
-                                        visibleWeek = displayedWeek - 1
-                                    }
-                                    edgePull <= -overscrollThreshold -> {
-                                        entryDay = 0
-                                        visibleWeek = displayedWeek + 1
+                                if (displayedWeek == visibleWeek) {
+                                    when (weekDeltaForPull(pullDistance, overscrollThreshold)) {
+                                        -1 -> {
+                                            entryDay = 6
+                                            visibleWeek = displayedWeek - 1
+                                        }
+                                        1 -> {
+                                            entryDay = 0
+                                            visibleWeek = displayedWeek + 1
+                                        }
                                     }
                                 }
+                            } finally {
+                                pullDistance = 0f
                             }
-                            overscroll = 0f
                         }
                     },
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize()
-                        .graphicsLayer { translationY = overscroll * 0.22f },
+                        .graphicsLayer { translationY = visualPull * 0.22f },
                     state = listState,
                     // The floating search dock is drawn over the schedule.
                     // Reserve enough scrollable space for the last lessons to
@@ -255,29 +266,89 @@ internal fun ScheduleAgenda(
                         }
                     }
                 }
-                if (overscroll != 0f) {
-                    val previous = overscroll > 0f
-                    Surface(
-                        modifier = Modifier.align(
-                            if (previous) Alignment.TopCenter else Alignment.BottomCenter,
-                        ).padding(
-                            start = 8.dp, end = 8.dp,
-                            top = 8.dp, bottom = if (previous) 8.dp else 138.dp,
-                        ),
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Text(
-                            if (previous) "Предыдущая неделя" else "Следующая неделя",
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    }
-                }
+                // Both indicators stay composed while fading out. Neither
+                // can stick after release, cancellation or a week transition.
+                WeekPullIndicator(
+                    previous = true,
+                    progress = (pullDistance / overscrollThreshold).coerceIn(0f, 1f),
+                    armed = pullDistance >= overscrollThreshold,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+                WeekPullIndicator(
+                    previous = false,
+                    progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
+                    armed = pullDistance <= -overscrollThreshold,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                        .padding(start = 8.dp, end = 8.dp, bottom = 138.dp),
+                )
             }
         }
     }
+    }
+}
+
+/**
+ * Fixed-size expressive cue: drag progress controls a subtle fade/slide, and
+ * the icon crossfades to a check when the release threshold has been reached.
+ * The label never reflows during the gesture.
+ */
+@Composable
+private fun WeekPullIndicator(
+    previous: Boolean,
+    progress: Float,
+    armed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val reveal by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = if (progress == 0f) 190 else 80),
+        label = if (previous) "previous-week-cue" else "next-week-cue",
+    )
+    val color by animateColorAsState(
+        targetValue = if (armed) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else MaterialTheme.colorScheme.secondaryContainer,
+        animationSpec = tween(durationMillis = 150),
+        label = "week-cue-color",
+    )
+    Surface(
+        modifier = modifier.graphicsLayer {
+            alpha = reveal.coerceIn(0f, 1f)
+            translationY = (if (previous) -1f else 1f) *
+                (1f - reveal) * 12.dp.toPx()
+            scaleX = 0.96f + 0.04f * reveal
+            scaleY = 0.96f + 0.04f * reveal
+        },
+        shape = RoundedCornerShape(24.dp),
+        color = color,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Crossfade(
+                targetState = armed,
+                animationSpec = tween(durationMillis = 150),
+                label = if (previous) "previous-week-ready" else "next-week-ready",
+            ) { ready ->
+                Icon(
+                    imageVector = when {
+                        ready -> Icons.Default.Check
+                        previous -> Icons.Default.ArrowDownward
+                        else -> Icons.Default.ArrowUpward
+                    },
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(
+                if (previous) "Предыдущая неделя" else "Следующая неделя",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
