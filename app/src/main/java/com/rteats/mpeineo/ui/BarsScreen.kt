@@ -81,6 +81,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -214,7 +215,10 @@ internal fun BarsScreen(
 
         if (shouldHaveWebView) {
             AndroidView(
-                modifier = when {
+                // On refresh BARS needs a full-size WebView to lay out its DOM.
+                // Transparent AndroidViews still intercept input when layered on top.
+                // Only the explicit session browser or login should cover native UI.
+                modifier = (when {
                     state.browserVisible -> Modifier.fillMaxSize()
                     state.authStage == BarsAuthStage.WEB_AUTH -> Modifier.fillMaxSize()
                     needsFullViewport -> Modifier
@@ -223,7 +227,11 @@ internal fun BarsScreen(
                     else -> Modifier
                         .size(1.dp)
                         .alpha(0f)
-                },
+                }).zIndex(
+                    if (state.authStage == BarsAuthStage.AUTHENTICATED &&
+                        !state.browserVisible
+                    ) -1f else 1f,
+                ),
             factory = { context ->
                 WebView(context).also { view ->
                     webView = view
