@@ -71,6 +71,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
         factory = BarsViewModel.factory(
             application.container.diagnostics,
             application.container.barsNetworkDiagnostics,
+            application.container.barsSnapshots,
         ),
     )
     val mailViewModel: MailViewModel = composeViewModel(
@@ -119,7 +120,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
         }
     }
 
-    val barsIsWeb = barsState.authStage != BarsAuthStage.AUTHENTICATED ||
+    val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
         barsState.browserVisible
     val nativeSwipeAllowed = !searchExpanded && when (pager.settledPage) {
         AppTab.MAIL.ordinal -> !mailWebVisible
@@ -178,12 +179,25 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                 )
                 ShortNavigationBarItem(
                     selected = currentTab == AppTab.MAIL,
-                    onClick = { navigate(AppTab.MAIL) },
+                    onClick = {
+                        if (currentTab == AppTab.MAIL && mailWebVisible) {
+                            mailWebVisible = false
+                        } else {
+                            navigate(AppTab.MAIL)
+                        }
+                    },
                     icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_nav_mail),
-                            contentDescription = "Почта",
-                        )
+                        if (currentTab == AppTab.MAIL && mailWebVisible) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Вернуться к входящим",
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_nav_mail),
+                                contentDescription = "Почта",
+                            )
+                        }
                     },
                     label = null,
                 )

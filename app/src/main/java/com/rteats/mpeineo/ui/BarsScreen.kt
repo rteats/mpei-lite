@@ -129,12 +129,10 @@ internal fun BarsScreen(
     // Only establish a connection while its tab is settled/visible. Once loaded,
     // retain the same WebView for the entire visible BARS session, even when the
     // extracted grades are cached, instead of destroying it after extraction.
-    val shouldHaveWebView = webView != null || (active && (
-        state.authStage != BarsAuthStage.AUTHENTICATED ||
-            state.browserVisible ||
-            state.isLoading ||
-            !cacheFresh
-        ))
+    // Keep the cached dashboard visible while first-session validation
+    // happens in a full-size, background WebView. Validation starts only once
+    // the BARS page is actually selected, not while the pager precomposes it.
+    val shouldHaveWebView = webView != null || active
 
     // The WebView remains mounted when switching to Mail/Settings. Suspend
     // page activity while hidden, but do not destroy its session or JS bridge.
@@ -142,6 +140,7 @@ internal fun BarsScreen(
         webView?.let { view ->
             if (active) view.onResume() else view.onPause()
             if (active && state.authStage == BarsAuthStage.AUTHENTICATED &&
+                !state.loginRequired &&
                 autoRefreshGate.shouldRefresh(
                     nowElapsedMs = SystemClock.elapsedRealtime(),
                     sessionReady = navigationController?.hasCompletedDocument == true &&
@@ -162,6 +161,20 @@ internal fun BarsScreen(
                 retryNavigation?.invoke()
             }
         }
+    }
+
+    var browserWasVisible by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(state.browserVisible, webView) {
+        if (browserWasVisible && !state.browserVisible) {
+            webView?.let { view ->
+                if (BarsDocumentPolicy.isTrusted(view.url.orEmpty())) {
+                    // Login/2FA may have finished while showing the official
+                    // browser. Recheck its final page when returning to grades.
+                    view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
+                }
+            }
+        }
+        browserWasVisible = state.browserVisible
     }
 
     BackHandler(enabled = active && state.browserVisible) {
@@ -201,10 +214,14 @@ internal fun BarsScreen(
                 onRefresh = {
                     redirectingToMarks = false
                     mainFrameFailed = false
-                    needsFullViewport = true
-                    marksReadiness?.reset()
-                    viewModel.startRefresh()
-                    retryNavigation?.invoke()
+                    if (state.loginRequired) {
+                        viewModel.showBrowser()
+                    } else {
+                        needsFullViewport = true
+                        marksReadiness?.reset()
+                        viewModel.startRefresh()
+                        retryNavigation?.invoke()
+                    }
                 },
                 onOpenBrowser = {
                     marksReadiness?.navigationStarted()
@@ -228,8 +245,8 @@ internal fun BarsScreen(
                         .size(1.dp)
                         .alpha(0f)
                 }).zIndex(
-                    if (state.authStage == BarsAuthStage.AUTHENTICATED &&
-                        !state.browserVisible
+                    if (!state.browserVisible &&
+                        state.authStage != BarsAuthStage.WEB_AUTH
                     ) -1f else 1f,
                 ),
             factory = { context ->
@@ -856,6 +873,32 @@ private fun BarsNativeDashboard(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (state.loginRequired) {
+                        item(key = "session-expired") {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                shape = MaterialTheme.shapes.large,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "Сессия БАРС истекла. Сохранённые оценки доступны.",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                    TextButton(onClick = onOpenBrowser) {
+                                        Text("Войти")
+                                    }
+                                }
+                            }
+                        }
+                    }
                     item(key = "profile") {
                         BarsUserHeader(state = state, onOpenBrowser = onOpenBrowser)
                     }

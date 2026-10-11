@@ -7,6 +7,9 @@ import android.os.SystemClock
 import com.google.gson.Gson
 import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
+import com.rteats.mpeineo.data.BarsSnapshotStore
+import com.rteats.mpeineo.data.BarsCachedSnapshot
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +38,7 @@ internal data class BarsUiState(
     val sessionUrl: String = BARS_MARKS_URL,
     val lastUpdatedAtMillis: Long = 0L,
     val error: String? = null,
+    val loginRequired: Boolean = false,
 ) {
     fun hasFreshCache(nowMillis: Long = System.currentTimeMillis()): Boolean =
         lastUpdatedAtMillis > 0L &&
@@ -172,9 +176,23 @@ internal object BarsPayloadParser {
 internal class BarsViewModel(
     private val diagnostics: DiagnosticLog,
     private val network: BarsNetworkDiagnostics,
+    private val snapshots: BarsSnapshotStore,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(BarsUiState())
+    private val _state = MutableStateFlow(
+        snapshots.read()?.let { cached ->
+            BarsUiState(
+                authStage = BarsAuthStage.AUTHENTICATED,
+                profileName = cached.payload.name,
+                profileGroup = cached.payload.group,
+                semester = cached.payload.semester,
+                studentDetails = cached.payload.studentDetails.orEmpty(),
+                disciplines = cached.payload.disciplines,
+                lastUpdatedAtMillis = cached.updatedAtMillis,
+                isLoading = true,
+            )
+        } ?: BarsUiState()
+    )
     val state: StateFlow<BarsUiState> = _state.asStateFlow()
 
     private var lastWebEvent: String? = null
@@ -212,15 +230,27 @@ internal class BarsViewModel(
             return
         }
 
-        diagnostics.log("BARS", "state=WEB_AUTH")
+        diagnostics.log("BARS", "state=WEB_AUTH cached=" + current.disciplines.isNotEmpty())
         _state.update {
-            it.copy(
-                authStage = BarsAuthStage.WEB_AUTH,
-                isLoading = false,
-                browserVisible = false,
-                sessionUrl = url,
-                error = null,
-            )
+            if (it.disciplines.isNotEmpty()) {
+                it.copy(
+                    authStage = BarsAuthStage.AUTHENTICATED,
+                    isLoading = false,
+                    browserVisible = false,
+                    sessionUrl = url,
+                    loginRequired = true,
+                    error = null,
+                )
+            } else {
+                it.copy(
+                    authStage = BarsAuthStage.WEB_AUTH,
+                    isLoading = false,
+                    browserVisible = false,
+                    sessionUrl = url,
+                    loginRequired = true,
+                    error = null,
+                )
+            }
         }
     }
 
@@ -231,6 +261,7 @@ internal class BarsViewModel(
                 authStage = BarsAuthStage.AUTHENTICATED,
                 isLoading = true,
                 sessionUrl = url,
+                loginRequired = false,
                 error = null,
             )
         }
@@ -244,10 +275,18 @@ internal class BarsViewModel(
     fun extractionReceived(json: String) {
         runCatching { BarsPayloadParser.parseExtraction(json) }
             .onSuccess { payload ->
+                if (payload.disciplines.isEmpty()) {
+                    extractionFailed("БАРС не вернул данных о дисциплинах.")
+                    return@onSuccess
+                }
                 diagnostics.log(
                     "BARS",
                     "extraction success disciplines=${payload.disciplines.size}",
                 )
+                val updatedAt = System.currentTimeMillis()
+                viewModelScope.launch(Dispatchers.IO) {
+                    snapshots.write(BarsCachedSnapshot(updatedAt, payload))
+                }
                 _state.update {
                     it.copy(
                         authStage = BarsAuthStage.AUTHENTICATED,
@@ -257,7 +296,8 @@ internal class BarsViewModel(
                         studentDetails = payload.studentDetails.orEmpty(),
                         disciplines = payload.disciplines,
                         isLoading = false,
-                        lastUpdatedAtMillis = System.currentTimeMillis(),
+                        lastUpdatedAtMillis = updatedAt,
+                        loginRequired = false,
                         error = null,
                     )
                 }
@@ -338,11 +378,12 @@ internal class BarsViewModel(
         fun factory(
             diagnostics: DiagnosticLog,
             network: BarsNetworkDiagnostics,
+            snapshots: BarsSnapshotStore,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    BarsViewModel(diagnostics, network) as T
+                    BarsViewModel(diagnostics, network, snapshots) as T
             }
     }
 }

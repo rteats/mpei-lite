@@ -368,7 +368,7 @@ private fun AgendaDaySection(
                         index > 0 &&
                         isOneHourBreak(day.lessons[index - 1], lesson)
                     ) {
-                        Spacer(Modifier.height(36.dp))
+                        Spacer(Modifier.height(18.dp))
                     }
                     LessonCard(lesson)
                 }

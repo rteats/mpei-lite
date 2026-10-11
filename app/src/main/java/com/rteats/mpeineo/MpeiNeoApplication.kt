@@ -3,6 +3,7 @@ package com.rteats.mpeineo
 import android.app.Application
 import com.google.gson.GsonBuilder
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
+import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.FileScheduleCache
 import com.rteats.mpeineo.data.GithubUpdateRepository
@@ -80,6 +81,7 @@ class AppContainer(application: Application) {
     val diagnostics = DiagnosticLog(application)
     val mailRepository = MailRepository(application)
     val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
+    val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)
     val updater = GithubUpdateRepository(
         application = application,

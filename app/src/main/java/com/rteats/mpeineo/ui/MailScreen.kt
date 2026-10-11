@@ -53,6 +53,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -114,22 +116,13 @@ internal fun MailScreen(
     }
 
     if (webVisible) {
-        Column(modifier = modifier.fillMaxSize().testTag("mail-webview")) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { onWebVisibleChange(false) }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Вернуться к входящим")
-                }
-                Text("OWA", style = MaterialTheme.typography.titleMedium)
-            }
-            WebPortalScreen(
-                url = "https://mail.mpei.ru/owa",
-                testTag = "portal-mail",
-                modifier = Modifier.weight(1f),
-            )
-        }
+        // The Mail nav item becomes the back button (same as BARS).
+        // The embedded OWA page owns the entire available content viewport.
+        WebPortalScreen(
+            url = "https://mail.mpei.ru/owa",
+            testTag = "portal-mail",
+            modifier = modifier.fillMaxSize().testTag("mail-webview"),
+        )
         return
     }
 
@@ -283,10 +276,19 @@ internal fun MailScreen(
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
+                        val refreshState = rememberPullToRefreshState()
                         PullToRefreshBox(
                             isRefreshing = state.loading,
                             onRefresh = viewModel::refresh,
+                            state = refreshState,
                             modifier = Modifier.fillMaxSize(),
+                            indicator = {
+                                PullToRefreshDefaults.LoadingIndicator(
+                                    state = refreshState,
+                                    isRefreshing = state.loading,
+                                    modifier = Modifier.align(Alignment.TopCenter),
+                                )
+                            },
                         ) {
                             LazyColumn(
                                 state = inboxScrollState,
