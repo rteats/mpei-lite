@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -48,7 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,6 +64,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -327,17 +331,41 @@ internal fun SettingsScreen(
                     Text("Интервал проверки",
                         modifier = Modifier.padding(start = 12.dp, top = 4.dp),
                         style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 10.dp)) {
-                        listOf(15, 30, 60).forEach { minutes ->
-                            FilterChip(
-                                selected = pollMinutes == minutes,
-                                onClick = {
-                                    pollMinutes = minutes
-                                    MailNotificationScheduler.changeInterval(context, minutes)
+                    // Connected M3 Expressive single-choice buttons.
+                    // Checked shape morphs into a pill while adjacent
+                    // unchecked buttons retain their connected end shapes.
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            ButtonGroupDefaults.ConnectedSpaceBetween,
+                        ),
+                    ) {
+                        val intervals = listOf(15, 30, 60)
+                        intervals.forEachIndexed { index, minutes ->
+                            ToggleButton(
+                                checked = pollMinutes == minutes,
+                                onCheckedChange = {
+                                    if (pollMinutes != minutes) {
+                                        pollMinutes = minutes
+                                        MailNotificationScheduler.changeInterval(context, minutes)
+                                    }
                                 },
-                                label = { Text(minutes.toString() + " мин") },
-                            )
+                                modifier = Modifier.weight(1f)
+                                    .semantics { role = Role.RadioButton },
+                                shapes = when (index) {
+                                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                    intervals.lastIndex ->
+                                        ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                                },
+                            ) {
+                                Text(
+                                    "$minutes мин",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
                         }
                     }
                     Text(
