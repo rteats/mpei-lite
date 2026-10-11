@@ -30,12 +30,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -84,6 +91,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Native BARS frontend backed by the official BARS web session.
@@ -815,128 +824,132 @@ private fun BarsNativeDashboard(
     onOpenBrowser: () -> Unit,
 ) {
     var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
+    val dashboardListState = rememberLazyListState()
     val selectedDiscipline = state.disciplines.firstOrNull {
         it.disciplineName == selectedDisciplineName
     }
+    val motion = MaterialTheme.motionScheme
 
-    // Expansion happens inside the BARS tab, rather than navigating to
-    // a separate screen. The pinned discipline header is the only collapse
-    // control; app-level horizontal paging continues to work.
-    val dashboardListState = rememberLazyListState()
-    if (selectedDiscipline != null) {
-        DisciplineExpandedCard(
-            discipline = selectedDiscipline,
-            state = state,
-            onCollapse = { selectedDisciplineName = null },
-            onOpenBrowser = onOpenBrowser,
-        )
-        return
-    }
+    // Android Back returns to the overview before leaving the tab.
+    // The official WebView keeps priority when the browser is visible.
+    BackHandler(
+        enabled = active && selectedDiscipline != null && !state.browserVisible,
+    ) { selectedDisciplineName = null }
 
-    val refreshState = rememberPullToRefreshState()
-    PullToRefreshBox(
-        isRefreshing = state.isLoading,
-        onRefresh = onRefresh,
-        state = refreshState,
-        indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
-                state = refreshState,
-                isRefreshing = state.isLoading,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-        },
+    AnimatedContent(
+        targetState = selectedDiscipline?.disciplineName,
         modifier = Modifier.fillMaxSize(),
-    ) {
-        LazyColumn(
-            state = dashboardListState,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            item {
-                BarsUserHeader(
-                    state = state,
-                    onOpenBrowser = onOpenBrowser,
-                )
-            }
+        contentKey = { it ?: "bars-overview" },
+        transitionSpec = {
+            val opening = targetState != null
+            (slideInHorizontally(
+                initialOffsetX = { if (opening) it / 7 else -it / 7 },
+                animationSpec = motion.defaultSpatialSpec(),
+            ) + fadeIn(animationSpec = motion.defaultEffectsSpec())) togetherWith
+                (slideOutHorizontally(
+                    targetOffsetX = { if (opening) -it / 7 else it / 7 },
+                    animationSpec = motion.defaultSpatialSpec(),
+                ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
+        },
+        label = "bars-discipline",
+    ) { expandedName ->
+        val expandedDiscipline = state.disciplines.firstOrNull {
+            it.disciplineName == expandedName
+        }
+        if (expandedDiscipline != null) {
+            DisciplineExpandedCard(
+                discipline = expandedDiscipline,
+                onCollapse = { selectedDisciplineName = null },
+                onOpenBrowser = onOpenBrowser,
+            )
+        } else {
+            val refreshState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = onRefresh,
+                state = refreshState,
+                indicator = {
+                    PullToRefreshDefaults.LoadingIndicator(
+                        state = refreshState,
+                        isRefreshing = state.isLoading,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                LazyColumn(
+                    state = dashboardListState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        bottom = 112.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "profile") {
+                        BarsUserHeader(state = state, onOpenBrowser = onOpenBrowser)
+                    }
 
-            if (state.disciplines.isNotEmpty()) {
-                item { BarsSemesterSummary(state) }
-            }
-
-            state.error?.let { message ->
-                item {
-                    val hasCachedGrades = state.disciplines.isNotEmpty()
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (hasCachedGrades) {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.errorContainer
-                            },
-                        ),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (hasCachedGrades) {
-                                Text(
-                                    text = "Не удалось обновить оценки. Показаны сохранённые данные.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = message,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            } else {
-                                Text(
-                                    text = message,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
-                            }
-                            TextButton(onClick = onRefresh) {
-                                Text("Повторить")
+                    state.error?.let { message ->
+                        item(key = "error") {
+                            val hasCachedGrades = state.disciplines.isNotEmpty()
+                            Surface(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 8.dp),
+                                shape = MaterialTheme.shapes.large,
+                                color = if (hasCachedGrades) {
+                                    MaterialTheme.colorScheme.surfaceContainer
+                                } else MaterialTheme.colorScheme.errorContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        if (hasCachedGrades) {
+                                            "Не удалось обновить. Показаны сохранённые оценки."
+                                        } else message,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (hasCachedGrades) {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        } else MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                    TextButton(onClick = onRefresh) { Text("Повторить") }
+                                }
                             }
                         }
                     }
-                }
-            }
 
-            if (state.isLoading && state.disciplines.isNotEmpty()) {
-                item {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
-            }
+                    if (state.isLoading && state.disciplines.isNotEmpty()) {
+                        item(key = "refreshing") {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 10.dp),
+                            )
+                        }
+                    }
 
-            if (state.disciplines.isEmpty() && !state.isLoading) {
-                item {
-                    EmptyBarsCard(
-                        text = "В текущем семестре дисциплины не найдены.",
-                    )
+                    if (state.disciplines.isEmpty() && !state.isLoading) {
+                        item(key = "empty") {
+                            EmptyBarsCard("В текущем семестре дисциплины не найдены.")
+                        }
+                    } else {
+                        items(
+                            items = state.disciplines,
+                            key = { it.disciplineName },
+                        ) { discipline ->
+                            DisciplineCard(
+                                discipline = discipline,
+                                onClick = {
+                                    selectedDisciplineName = discipline.disciplineName
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                                    .animateItem(),
+                            )
+                        }
+                    }
                 }
-            } else {
-                items(state.disciplines) { discipline ->
-                    DisciplineCard(
-                        discipline = discipline,
-                        onClick = { selectedDisciplineName = discipline.disciplineName },
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .padding(bottom = 8.dp),
-                    )
-                }
-            }
-
-            item {
-                // Scrollable trailing space lets the last discipline move above
-                // the overlaid floating toolbar without an opaque bottom footer.
-                Spacer(Modifier.size(112.dp))
             }
         }
     }
