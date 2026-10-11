@@ -29,8 +29,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -336,8 +336,8 @@ private fun WeekPullIndicator(
                 Icon(
                     imageVector = when {
                         ready -> Icons.Default.Check
-                        previous -> Icons.Default.ArrowDownward
-                        else -> Icons.Default.ArrowUpward
+                        previous -> Icons.Default.KeyboardArrowDown
+                        else -> Icons.Default.KeyboardArrowUp
                     },
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
