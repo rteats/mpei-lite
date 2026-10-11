@@ -4,11 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,7 +96,8 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
 
 /**
  * An anchored, expandable lesson. Number/title stay in place, while the
- * preview room fades into the detailed location row below.
+ * compact room yields its width immediately to the expanded title, while
+ * the full location row appears with the rest of the details below.
  * The app's expressive MotionScheme coordinates layout, color and shape.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -154,27 +153,20 @@ internal fun LessonCard(lesson: Lesson) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                 )
-                if (lesson.place.isNotBlank()) {
-                    AnimatedVisibility(
-                        visible = !expanded,
-                        enter = expandHorizontally(
-                            expandFrom = Alignment.End,
-                            animationSpec = motion.defaultSpatialSpec(),
-                        ) + fadeIn(animationSpec = motion.defaultEffectsSpec()),
-                        exit = shrinkHorizontally(
-                            shrinkTowards = Alignment.End,
-                            animationSpec = motion.defaultSpatialSpec(),
-                        ) + fadeOut(animationSpec = motion.defaultEffectsSpec()),
-                    ) {
-                        Text(
-                            lesson.place,
-                            modifier = Modifier.widthIn(max = 100.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                // Do not animate the room's *width* here. A shrinking
+                // trailing slot continuously remeasures the title, making
+                // a long name wrap into three lines mid-transition and
+                // settle into two. Release the full width on the first
+                // expansion frame; animate the vertical reveal below.
+                if (!expanded && lesson.place.isNotBlank()) {
+                    Text(
+                        lesson.place,
+                        modifier = Modifier.widthIn(max = 100.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             AnimatedVisibility(
