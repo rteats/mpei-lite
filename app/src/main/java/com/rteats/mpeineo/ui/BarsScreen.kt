@@ -965,111 +965,116 @@ private fun BarsUserHeader(
     state: BarsUiState,
     onOpenBrowser: () -> Unit,
 ) {
-    // A typographic section heading rather than another vivid card.
+    var showStudentDetails by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text = "МОЙ БАРС",
+            "МОЙ БАРС",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            text = state.profileName.ifBlank { "БАРС МЭИ" },
+            state.profileName.ifBlank { "БАРС МЭИ" },
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onBackground,
         )
-        if (state.profileGroup.isNotBlank() || state.semester.isNotBlank()) {
+        val identity = listOf(state.profileGroup, state.semester)
+            .filter { it.isNotBlank() }.joinToString(" · ")
+        if (identity.isNotBlank()) {
             Text(
-                text = listOf(state.profileGroup, state.semester)
-                    .filter { it.isNotBlank() }.joinToString(" · "),
+                identity,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        val buttonHeight = ButtonDefaults.MediumContainerHeight
-        Button(
-            onClick = onOpenBrowser,
-            modifier = Modifier.padding(top = 12.dp).heightIn(min = buttonHeight),
-            contentPadding = ButtonDefaults.contentPaddingFor(
-                buttonHeight, hasEndIcon = true,
-            ),
-            shapes = ButtonDefaults.shapes(),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("БАРС", style = ButtonDefaults.textStyleFor(buttonHeight))
-            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(buttonHeight)))
-            Icon(
-                Icons.Default.ArrowForward,
-                contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.iconSizeFor(buttonHeight))
-                    .rotate(-45f),
+            val graded = state.disciplines.count {
+                it.finalMarkValue != null || it.markValues.isNotEmpty()
+            }
+            Text(
+                state.disciplines.size.toString() + " дисциплин · " +
+                    graded + " с оценками",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state.lastUpdatedAtMillis > 0) {
+                Text(
+                    "Обновлено " + DateFormat.getTimeInstance(DateFormat.SHORT)
+                        .format(Date(state.lastUpdatedAtMillis)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-    }
-}
-
-@Composable
-private fun BarsSemesterSummary(state: BarsUiState) {
-    val gradedCount = state.disciplines.count {
-        it.finalMarkValue != null || it.markValues.isNotEmpty()
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        BarsSummaryStat(
-            value = state.disciplines.size,
-            label = "Дисциплин",
-            modifier = Modifier.weight(1f),
-        )
-        BarsSummaryStat(
-            value = gradedCount,
-            label = "С оценками",
-            modifier = Modifier.weight(1f),
-        )
-        BarsSummaryStat(
-            value = state.controlSchedule.size,
-            label = "Контрольных",
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun BarsSummaryStat(
-    value: Int,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = value.toString(),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-            )
+            val height = ButtonDefaults.MediumContainerHeight
+            Button(
+                onClick = onOpenBrowser,
+                modifier = Modifier.heightIn(min = height),
+                contentPadding = ButtonDefaults.contentPaddingFor(
+                    height, hasEndIcon = true,
+                ),
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text("БАРС", style = ButtonDefaults.textStyleFor(height))
+                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(height)))
+                Icon(
+                    Icons.Default.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(height))
+                        .rotate(-45f),
+                )
+            }
+            if (state.studentDetails.isNotEmpty()) {
+                TextButton(onClick = { showStudentDetails = !showStudentDetails }) {
+                    Text("Данные студента")
+                    Icon(
+                        if (showStudentDetails) Icons.Default.KeyboardArrowUp
+                        else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(visible = showStudentDetails) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.studentDetails.forEach { detail ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            detail.label,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            detail.value,
+                            modifier = Modifier.weight(1.4f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
         }
     }
 }
