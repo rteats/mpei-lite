@@ -152,6 +152,7 @@ private fun SettingsExpansion(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SettingsAction(
     title: String,
