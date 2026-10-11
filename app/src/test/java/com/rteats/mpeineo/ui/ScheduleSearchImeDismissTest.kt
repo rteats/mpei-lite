@@ -46,4 +46,24 @@ class ScheduleSearchImeDismissTest {
             keyboardVisible = false,
         ))
     }
+    @Test fun openingFavoritePopupDoesNotCollapseOnImeLoss() {
+        assertFalse(shouldCollapseSearchOnImeDismiss(
+            active = true,
+            expanded = true,
+            wasKeyboardVisible = true,
+            keyboardVisible = false,
+            childPopupActive = true,
+        ))
+    }
+
+    @Test fun keyboardDismissReturnsToNormalAfterPopupCloses() {
+        assertTrue(shouldCollapseSearchOnImeDismiss(
+            active = true,
+            expanded = true,
+            wasKeyboardVisible = true,
+            keyboardVisible = false,
+            childPopupActive = false,
+        ))
+    }
+
 }

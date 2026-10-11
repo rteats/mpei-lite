@@ -72,6 +72,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -102,10 +103,13 @@ internal fun ScheduleDockedSearch(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     active: Boolean = true,
+    dockRevealProgress: () -> Float = { 1f },
     modifier: Modifier = Modifier,
 ) {
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
     var renameDraft by remember { mutableStateOf("") }
+    var openedFavoriteMenuKey by remember { mutableStateOf<String?>(null) }
+    var childPopupDismissesIme by remember { mutableStateOf(false) }
     var fieldValue by remember { mutableStateOf(TextFieldValue(state.searchQuery)) }
     var searchHasFocus by remember { mutableStateOf(false) }
     // An expanded search may initially have no visible IME for several frames.
@@ -131,6 +135,9 @@ internal fun ScheduleDockedSearch(
     val searchFocusRequester = remember { FocusRequester() }
 
     fun closeSearch() {
+        openedFavoriteMenuKey = null
+        renameTarget = null
+        childPopupDismissesIme = false
         onExpandedChange(false)
         fieldValue = TextFieldValue("")
         onQueryChanged("")
@@ -143,26 +150,46 @@ internal fun ScheduleDockedSearch(
         closeSearch()
     }
 
-    LaunchedEffect(active, expanded, keyboardVisible) {
+    fun closeRenameDialog() {
+        // A dialog's own keyboard can outlive the dialog for a few frames.
+        childPopupDismissesIme = true
+        keyboardShownDuringSearch = false
+        renameTarget = null
+    }
+
+    LaunchedEffect(
+        active, expanded, keyboardVisible, openedFavoriteMenuKey,
+        renameTarget, childPopupDismissesIme,
+    ) {
+        val childPopupActive = openedFavoriteMenuKey != null ||
+            renameTarget != null || childPopupDismissesIme
         if (!active || !expanded) {
             keyboardShownDuringSearch = false
             if (!active && expanded) closeSearch()
-        } else if (keyboardVisible) {
-            keyboardShownDuringSearch = true
-        } else if (shouldCollapseSearchOnImeDismiss(
-                active = active,
-                expanded = expanded,
-                wasKeyboardVisible = keyboardShownDuringSearch,
-                keyboardVisible = keyboardVisible,
-            )
-        ) {
-            // System Back, a keyboard gesture, and the IME's dismiss button
-            // all restore the selected schedule's name in the collapsed field.
-            keyboardShownDuringSearch = false
-            closeSearch()
+        } else {
+            if (childPopupActive && !keyboardVisible) {
+                keyboardShownDuringSearch = false
+                childPopupDismissesIme = false
+            } else if (!childPopupActive && keyboardVisible) {
+                keyboardShownDuringSearch = true
+            }
+            if (shouldCollapseSearchOnImeDismiss(
+                    active = active,
+                    expanded = expanded,
+                    wasKeyboardVisible = keyboardShownDuringSearch,
+                    keyboardVisible = keyboardVisible,
+                    childPopupActive = childPopupActive,
+                )
+            ) {
+                keyboardShownDuringSearch = false
+                closeSearch()
+            }
         }
     }
-    BackHandler(enabled = active && expanded && renameTarget == null) { closeSearch() }
+    BackHandler(
+        enabled = active && expanded && renameTarget == null &&
+            openedFavoriteMenuKey == null,
+    ) { closeSearch() }
 
     val favorites = matchingFavorites(
         state.favorites, state.favoriteNames, state.searchQuery, state.searchType,
@@ -201,7 +228,14 @@ internal fun ScheduleDockedSearch(
         // Suggestions and the search field share one continuous tonal surface:
         // no detached popover, second shadow, seam, or discontinuous radii.
         Surface(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .graphicsLayer {
+                    // Move the tonal surface into the navigation bar as the
+                    // Schedule page leaves. Directly follows pager progress.
+                    val reveal = dockRevealProgress().coerceIn(0f, 1f)
+                    translationY = size.height * (1f - reveal)
+                    alpha = reveal
+                },
             shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
@@ -256,9 +290,8 @@ internal fun ScheduleDockedSearch(
                         )
                     }
                     items(favorites, key = { "favorite-${it.favoriteKey()}" }) { favorite ->
-                        var menuExpanded by remember(favorite.favoriteKey()) {
-                            mutableStateOf(false)
-                        }
+                        val favoriteKey = favorite.favoriteKey()
+                        val menuExpanded = openedFavoriteMenuKey == favoriteKey
                         val current = state.selected?.favoriteKey() == favorite.favoriteKey()
                         Surface(
                             onClick = { select(favorite) },
@@ -301,12 +334,19 @@ internal fun ScheduleDockedSearch(
                             },
                             trailingContent = {
                                 Box {
-                                    IconButton(onClick = { menuExpanded = true }) {
+                                    IconButton(onClick = {
+                                        // Opening the popup intentionally hides the IME.
+                                        childPopupDismissesIme = true
+                                        keyboardShownDuringSearch = false
+                                        openedFavoriteMenuKey = favoriteKey
+                                        focusManager.clearFocus(force = true)
+                                        keyboard?.hide()
+                                    }) {
                                         Icon(Icons.Default.MoreVert, contentDescription = "Изменить избранное")
                                     }
                                     DropdownMenu(
                                         expanded = menuExpanded,
-                                        onDismissRequest = { menuExpanded = false },
+                                        onDismissRequest = { openedFavoriteMenuKey = null },
                                         shape = MaterialTheme.shapes.large,
                                     ) {
                                         DropdownMenuItem(
@@ -315,7 +355,7 @@ internal fun ScheduleDockedSearch(
                                                 Icon(Icons.Default.Edit, contentDescription = null)
                                             },
                                             onClick = {
-                                                menuExpanded = false
+                                                openedFavoriteMenuKey = null
                                                 renameDraft = favorite.displayName(state.favoriteNames)
                                                 renameTarget = favorite
                                             },
@@ -326,7 +366,7 @@ internal fun ScheduleDockedSearch(
                                                 Icon(Icons.Outlined.Star, contentDescription = null)
                                             },
                                             onClick = {
-                                                menuExpanded = false
+                                                openedFavoriteMenuKey = null
                                                 onToggleFavorite(favorite)
                                             },
                                         )
@@ -535,7 +575,7 @@ internal fun ScheduleDockedSearch(
 
     renameTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { renameTarget = null },
+            onDismissRequest = { closeRenameDialog() },
             title = { Text("Название в избранном") },
             text = {
                 OutlinedTextField(
@@ -549,11 +589,11 @@ internal fun ScheduleDockedSearch(
             confirmButton = {
                 TextButton(onClick = {
                     onRenameFavorite(target, renameDraft)
-                    renameTarget = null
+                    closeRenameDialog()
                 }) { Text("Сохранить") }
             },
             dismissButton = {
-                TextButton(onClick = { renameTarget = null }) { Text("Отмена") }
+                TextButton(onClick = { closeRenameDialog() }) { Text("Отмена") }
             },
         )
     }
@@ -568,4 +608,6 @@ internal fun shouldCollapseSearchOnImeDismiss(
     expanded: Boolean,
     wasKeyboardVisible: Boolean,
     keyboardVisible: Boolean,
-): Boolean = active && expanded && wasKeyboardVisible && !keyboardVisible
+    childPopupActive: Boolean = false,
+): Boolean = active && expanded && wasKeyboardVisible && !keyboardVisible &&
+    !childPopupActive

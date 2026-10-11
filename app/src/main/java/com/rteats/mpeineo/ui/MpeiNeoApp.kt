@@ -250,6 +250,15 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                         expanded = searchExpanded,
                         onExpandedChange = { searchExpanded = it },
                         active = pager.currentPage == AppTab.SCHEDULE.ordinal,
+                        // Unlike an independent entrance animation, this tracks
+                        // horizontal pager progress in both directions, including
+                        // an interrupted or reversed edge swipe.
+                        dockRevealProgress = {
+                            scheduleDockRevealProgress(
+                                pager.currentPage,
+                                pager.currentPageOffsetFraction,
+                            )
+                        },
                         modifier = Modifier.fillMaxSize().align(Alignment.BottomCenter),
                     )
                 } else if (
@@ -317,3 +326,9 @@ private fun androidx.compose.foundation.layout.BoxScope.WebViewPageEdges(
             },
     )
 }
+
+/** Fraction of the search dock exposed above the short navigation bar. */
+internal fun scheduleDockRevealProgress(
+    currentPage: Int,
+    pageOffsetFraction: Float,
+): Float = (1f - kotlin.math.abs(currentPage + pageOffsetFraction)).coerceIn(0f, 1f)
