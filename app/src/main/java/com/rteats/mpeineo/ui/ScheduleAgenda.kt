@@ -247,20 +247,12 @@ internal fun ScheduleAgenda(
                             val dayData: ScheduleDay? =
                                 state.agendaWeeks[displayedWeek]?.days
                                     ?.firstOrNull { it.date == date.toString() }
-                                    ?: if (displayedWeek == state.weekOffset) {
-                                        state.week?.days?.firstOrNull {
-                                            it.date == date.toString()
-                                        }
-                                    } else null
                             AgendaDayCard(
                                 date = date,
                                 today = today,
                                 day = dayData,
-                                loading = displayedWeek in state.agendaLoadingOffsets ||
-                                    (displayedWeek == state.weekOffset && state.isLoading),
-                                failed = displayedWeek in state.agendaFailedOffsets ||
-                                    (displayedWeek == state.weekOffset &&
-                                        state.error != null && dayData == null),
+                                loading = displayedWeek in state.agendaLoadingOffsets,
+                                failed = displayedWeek in state.agendaFailedOffsets,
                                 onRetry = { onRetryWeek(displayedWeek) },
                             )
                         }
