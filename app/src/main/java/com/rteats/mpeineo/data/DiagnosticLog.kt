@@ -26,7 +26,9 @@ class DiagnosticLog(
         val safeMessage = message
             .replace('\n', ' ')
             .replace('\r', ' ')
-            .take(2_000)
+            // Preserve enough stack frames to diagnose a fatal Compose crash.
+            // Ordinary runtime entries remain bounded to 2 KB.
+            .take(if (safeCategory == "CRASH") 12_000 else 2_000)
 
         synchronized(lock) {
             directory.mkdirs()
