@@ -110,20 +110,31 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
             runCatching { repository.readMessage(auth, summary.uid, summary.uidValidity) }
                 .onSuccess { body ->
                     _state.update { current ->
-                        if (current.selected?.uid != summary.uid) current
+                        if (current.selected?.uid != summary.uid ||
+                            current.selected?.uidValidity != summary.uidValidity
+                        ) current
                         else current.copy(message = body, loadingMessage = false)
                     }
                 }
                 .onFailure { cause ->
-                    _state.update {
-                        it.copy(loadingMessage = false, error = readableError(cause))
+                    _state.update { current ->
+                        if (current.selected?.uid != summary.uid ||
+                            current.selected?.uidValidity != summary.uidValidity
+                        ) current
+                        else current.copy(loadingMessage = false, error = readableError(cause))
                     }
                 }
         }
     }
 
     fun closeMessage() {
-        _state.update { it.copy(selected = null, message = null, notice = null, error = null) }
+        // AnimatedContent keeps the outgoing message composed until its exit
+        // finishes. Retain its body so back navigation doesn't replace the
+        // outgoing message with a placeholder in the middle of the animation.
+        // open() and logout() clear the old body when appropriate.
+        _state.update {
+            it.copy(selected = null, loadingMessage = false, notice = null, error = null)
+        }
     }
 
     fun download(attachment: MailAttachment) {
