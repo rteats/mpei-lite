@@ -2,12 +2,12 @@ package com.rteats.mpeineo.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -92,6 +93,19 @@ internal fun MailScreen(
     var showCertificateDetails by remember { mutableStateOf(false) }
     val inboxScrollState = rememberLazyListState()
     val motion = MaterialTheme.motionScheme
+    val reading = state.selected != null
+    // Never add/remove a layout participant for the back arrow. Move the
+    // title's inset continuously while the arrow fades in a fixed 48dp slot.
+    val titleInset by animateDpAsState(
+        targetValue = if (reading) 56.dp else 0.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+        label = "mail-toolbar-title-inset",
+    )
+    val backAlpha by animateFloatAsState(
+        targetValue = if (reading) 1f else 0f,
+        animationSpec = motion.defaultEffectsSpec(),
+        label = "mail-toolbar-back-opacity",
+    )
 
     BackHandler(enabled = active && (webVisible || state.selected != null)) {
         if (webVisible) onWebVisibleChange(false) else viewModel.closeMessage()
@@ -152,36 +166,35 @@ internal fun MailScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AnimatedVisibility(
-                    visible = state.selected != null,
-                    enter = expandHorizontally(
-                        animationSpec = motion.defaultSpatialSpec(),
-                    ) + fadeIn(animationSpec = motion.defaultEffectsSpec()),
-                    exit = shrinkHorizontally(
-                        animationSpec = motion.defaultSpatialSpec(),
-                    ) + fadeOut(animationSpec = motion.defaultEffectsSpec()),
-                ) {
-                    IconButton(onClick = viewModel::closeMessage) {
+                Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier.padding(start = titleInset),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Crossfade(
+                            targetState = reading,
+                            animationSpec = motion.defaultEffectsSpec(),
+                            label = "mail-toolbar-title",
+                        ) { showingMessage ->
+                            Text(
+                                if (showingMessage) "Письмо" else "Входящие",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = viewModel::closeMessage,
+                        enabled = reading,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                            .graphicsLayer { alpha = backAlpha },
+                    ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Назад к письмам",
+                            contentDescription = if (reading) "Назад к письмам" else null,
                         )
                     }
-                }
-                AnimatedContent(
-                    targetState = state.selected != null,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(150)) togetherWith
-                            fadeOut(animationSpec = tween(90))
-                    },
-                    label = "mail-toolbar-title",
-                ) { reading ->
-                    Text(
-                        if (reading) "Письмо" else "Входящие",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
                 }
                 if (state.selected == null && state.configured) {
                     IconButton(onClick = viewModel::refresh, enabled = !state.loading) {
