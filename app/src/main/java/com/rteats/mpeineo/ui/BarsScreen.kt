@@ -246,6 +246,7 @@ internal fun BarsScreen(
                         setAcceptCookie(true)
                         setAcceptThirdPartyCookies(view, false)
                     }
+                    var subresourceErrorCount = 0
                     val controller = BarsNavigationController(
                         view = view,
                         log = viewModel::logWebEvent,
