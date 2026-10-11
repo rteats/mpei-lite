@@ -1388,7 +1388,11 @@ private fun DisciplineExpandedCard(
     }
 }
 
-/** Compact automatic-grade preview: existing grades, missing slots, minimal combinations. */
+/**
+ * Present and hypothetical marks occupy the same fixed-width columns.
+ * One horizontal scroll state keeps every combination aligned with the
+ * source slots, including in narrow display-size configurations.
+ */
 @Composable
 private fun GradeForecastSection(
     discipline: BarsDiscipline,
@@ -1400,7 +1404,7 @@ private fun GradeForecastSection(
     }
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
             "Автомат",
@@ -1408,68 +1412,72 @@ private fun GradeForecastSection(
             fontWeight = FontWeight.SemiBold,
         )
         if (controls.isNotEmpty()) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .horizontalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                controls.forEach { activity ->
-                    val grade = activity.markValue
-                    if (grade != null) {
-                        GradeChip(formatBarsGrade(grade.toDouble()), grade)
-                    } else {
-                        NeutralChip("—")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    controls.forEach { activity ->
+                        ForecastGradeSlot(activity.markValue)
                     }
+                }
+                if (forecast is GradeForecast.Available) {
+                    forecast.combinations
+                        .takeIf { forecast.remaining.isNotEmpty() }
+                        ?.forEach { combination ->
+                            var upcomingIndex = 0
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                controls.forEach { activity ->
+                                    val existing = activity.markValue
+                                    val mark = when {
+                                        existing != null -> existing
+                                        parseBarsWeight(activity.weight)
+                                            ?.let { it > 0.0 } == true &&
+                                            upcomingIndex < combination.marks.size ->
+                                            combination.marks[upcomingIndex++].toFloat()
+                                        else -> null
+                                    }
+                                    ForecastGradeSlot(mark)
+                                }
+                            }
+                        }
                 }
             }
         }
         when (forecast) {
-            is GradeForecast.Unavailable -> {
+            is GradeForecast.Unavailable -> Text(
+                "Недостаточно данных",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            is GradeForecast.Available -> if (forecast.combinations.isEmpty()) {
                 Text(
-                    "Недостаточно данных",
+                    "Недостижимо",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            is GradeForecast.Available -> {
-                if (forecast.combinations.isEmpty()) {
-                    Text(
-                        "Недостижимо",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else if (forecast.remaining.isNotEmpty()) {
-                    Spacer(Modifier.height(2.dp))
-                    forecast.combinations.forEach { combination ->
-                        var upcomingIndex = 0
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            controls.forEach { activity ->
-                                val existing = activity.markValue
-                                val value = when {
-                                    existing != null -> existing
-                                    parseBarsWeight(activity.weight)?.let { it > 0.0 } == true &&
-                                        upcomingIndex < combination.marks.size ->
-                                        combination.marks[upcomingIndex++].toFloat()
-                                    else -> null
-                                }
-                                if (value != null) {
-                                    GradeChip(formatBarsGrade(value.toDouble()), value)
-                                } else {
-                                    NeutralChip("—")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        }
+    }
+}
+
+@Composable
+private fun ForecastGradeSlot(mark: Float?) {
+    Box(
+        modifier = Modifier.width(52.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (mark == null) {
+            NeutralChip("—")
+        } else {
+            GradeChip(formatBarsGrade(mark.toDouble()), mark)
         }
     }
 }
