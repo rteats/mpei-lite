@@ -19,3 +19,4 @@ class MailNotificationFormattingTest {
         assertEquals("<Без темы>", mailNotificationLine("", ""))
         assertEquals("<Без темы> · Содержание", mailNotificationLine("", "Содержание"))
     }
+}
