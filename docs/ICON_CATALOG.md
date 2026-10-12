@@ -54,3 +54,9 @@ Specify `UI location → Material Symbols name`. Example:
 The replacement should update the checked-in Vector Drawable and this catalog,
 keeping the existing composable's dimensions, colors, content descriptions, animations,
 and actions. No font dependency or optical-size variants should be introduced.
+
+**Resource IDs must not be `const val`.** This project sets
+`android.nonFinalResIds=true`, and compile-time inlining can capture placeholder
+zero IDs. `AppIcons` deliberately uses `val X: Int get() = R.drawable.ms_x`
+to resolve the generated resource IDs at runtime. A device instrumentation
+test covers all catalog entries (`MaterialSymbolsResourceTest`).
