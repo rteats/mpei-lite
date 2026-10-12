@@ -141,38 +141,95 @@ object MailNotificationScheduler {
     }
 
     @SuppressLint("MissingPermission")
-    internal fun show(context: Context, newMessages: List<MailSummary>) {
+    internal fun show(
+        context: Context,
+        newMessages: List<MailSummary>,
+        previews: Map<Long, String> = emptyMap(),
+    ) {
         if (newMessages.isEmpty() || !canNotify(context)) return
         ensureChannel(context)
-        val latest = newMessages.last()
-        val pending = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                putExtra(MainActivity.EXTRA_OPEN_MAIL, true)
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val count = newMessages.size
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_nav_mail)
-            .setContentTitle(if (count == 1) "Новое письмо МЭИ" else "Новых писем МЭИ: " + count)
-            .setContentText(latest.sender + " · " + latest.subject)
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    if (count == 1) latest.sender + " · " + latest.subject
-                    else "Последнее: " + latest.sender + " · " + latest.subject,
-                ),
-            )
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setContentIntent(pending)
-            .setAutoCancel(true)
-            .setGroup("mpei_mail")
-            .build()
-        NotificationManagerCompat.from(context).notify(9821, notification)
+        val manager = NotificationManagerCompat.from(context)
+        val groupKey = "mpei_mail"
+        val messages = newMessages.sortedBy { it.uid }
+        // Replace the previous generic banner with sender-first message alerts.
+        manager.cancel(9821)
+
+        messages.forEach { message ->
+            val subject = mailNotificationSubject(message.subject)
+            val snippet = previews[message.uid].orEmpty()
+            val id = notificationId(message.uid, message.uidValidity)
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_nav_mail)
+                .setContentTitle(message.sender.ifBlank { "Неизвестный отправитель" })
+                .setContentText(mailNotificationLine(subject, snippet))
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .setBigContentTitle(
+                            message.sender.ifBlank { "Неизвестный отправитель" },
+                        )
+                        .bigText(if (snippet.isBlank()) subject else "$subject\n$snippet"),
+                )
+                .setSubText("Почта МЭИ")
+                .setWhen(message.sentAt)
+                .setShowWhen(true)
+                .setCategory(NotificationCompat.CATEGORY_EMAIL)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setContentIntent(mailNotificationIntent(context, message.uid, message.uidValidity, id))
+                .setAutoCancel(true)
+                .setGroup(groupKey)
+                .build()
+            manager.notify(id, notification)
+        }
+
+        if (messages.size > 1) {
+            val lines = messages.takeLast(5).asReversed().map { message ->
+                message.sender.ifBlank { "Неизвестный отправитель" } +
+                    " · " + mailNotificationSubject(message.subject)
+            }
+            val summary = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_nav_mail)
+                .setContentTitle("Новых писем: ${messages.size}")
+                .setContentText(lines.first())
+                .setStyle(NotificationCompat.InboxStyle().also { style ->
+                    lines.forEach { style.addLine(it) }
+                    style.setSummaryText("Почта МЭИ")
+                })
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setContentIntent(mailNotificationIntent(context, -1L, -1L, 9821))
+                .setAutoCancel(true)
+                .setGroup(groupKey)
+                .setGroupSummary(true)
+                .build()
+            manager.notify(9821, summary)
+        }
     }
 }
+
+private fun notificationId(uid: Long, validity: Long): Int =
+    (uid xor (uid ushr 32) xor validity xor (validity ushr 32))
+        .toInt().and(Int.MAX_VALUE).let { if (it == 9821 || it == 0) it + 9822 else it }
+
+private fun mailNotificationIntent(
+    context: Context,
+    uid: Long,
+    validity: Long,
+    requestCode: Int,
+): PendingIntent = PendingIntent.getActivity(
+    context,
+    requestCode,
+    Intent(context, MainActivity::class.java).apply {
+        action = "com.rteats.mpeineo.OPEN_MAIL.$validity.$uid"
+        putExtra(MainActivity.EXTRA_OPEN_MAIL, true)
+        if (uid > 0L && validity > 0L) {
+            putExtra(MainActivity.EXTRA_MAIL_UID, uid)
+            putExtra(MainActivity.EXTRA_MAIL_VALIDITY, validity)
+        }
+        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or
+            Intent.FLAG_ACTIVITY_NEW_TASK
+    },
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+)
 
 class MailNotificationWorker(
     context: Context,
@@ -193,7 +250,18 @@ class MailNotificationWorker(
                 val newMessages = prefs.checkpoint(
                     credentials.username, snapshot.uidValidity, snapshot.messages,
                 )
-                MailNotificationScheduler.show(applicationContext, newMessages)
+                if (newMessages.isNotEmpty()) {
+                    // Fetch bodies only after identifying new UIDs; preview
+                    // errors must not prevent ordinary new-mail notifications.
+                    val previews = runCatching {
+                        repository.notificationPreviews(
+                            credentials,
+                            snapshot.uidValidity,
+                            newMessages.map { it.uid },
+                        )
+                    }.getOrDefault(emptyMap())
+                    MailNotificationScheduler.show(applicationContext, newMessages, previews)
+                }
             }
             Result.success()
         } catch (_: Exception) {

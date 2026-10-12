@@ -144,6 +144,23 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         }
     }
 
+    /** Open the exact UID referenced by an email notification. */
+    fun openFromNotification(uid: Long, validity: Long) {
+        if (uid <= 0L || validity <= 0L || inMemoryCredentials == null) return
+        val summary = _state.value.items.firstOrNull {
+            it.uid == uid && it.uidValidity == validity
+        } ?: MailSummary(
+            uid = uid,
+            uidValidity = validity,
+            sender = "",
+            subject = "",
+            sentAt = 0L,
+            unread = true,
+            hasAttachment = false,
+        )
+        open(summary)
+    }
+
     fun closeMessage() {
         // AnimatedContent keeps the outgoing message composed until its exit
         // finishes. Retain its body so back navigation doesn't replace the

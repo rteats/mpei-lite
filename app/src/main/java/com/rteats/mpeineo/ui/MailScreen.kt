@@ -505,7 +505,7 @@ private fun MailInboxRow(
                     )
                 }
                 Text(
-                    summary.subject.ifBlank { "Без темы" },
+                    summary.subject.ifBlank { "<Без темы>" },
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (summary.unread) {
                         FontWeight.SemiBold
@@ -562,7 +562,7 @@ private fun MailMessage(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                detail.subject.ifBlank { "Без темы" },
+                detail.subject.ifBlank { "<Без темы>" },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
             )

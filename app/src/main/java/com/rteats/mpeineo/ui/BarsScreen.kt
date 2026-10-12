@@ -121,6 +121,15 @@ internal fun BarsScreen(
     var mainFrameFailed by remember { mutableStateOf(false) }
     val extractionGate = remember { BarsExtractionGate() }
     val autoRefreshGate = remember { BarsAutoRefreshGate() }
+    var manuallyRequestedConnection by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(autoRefreshEnabled) {
+        if (!autoRefreshEnabled && !manuallyRequestedConnection &&
+            state.disciplines.isNotEmpty()
+        ) {
+            viewModel.showCachedWithoutRefresh()
+        }
+    }
 
     val cacheFresh = state.hasFreshCache()
     // A pager may precompose and immediately discard an off-screen BARS page.
@@ -130,7 +139,10 @@ internal fun BarsScreen(
     // Keep the cached dashboard visible while first-session validation
     // happens in a full-size, background WebView. Validation starts only once
     // the BARS page is actually selected, not while the pager precomposes it.
-    val shouldHaveWebView = webView != null || active
+    // Cached-only mode stays offline until a manual refresh or portal open.
+    val connectionRequired = autoRefreshEnabled || state.disciplines.isEmpty() ||
+        manuallyRequestedConnection || state.browserVisible
+    val shouldHaveWebView = connectionRequired && (webView != null || active)
 
     // The WebView remains mounted when switching to Mail/Settings. Suspend
     // page activity while hidden, but do not destroy its session or JS bridge.
@@ -211,7 +223,9 @@ internal fun BarsScreen(
             BarsAuthStage.AUTHENTICATED -> BarsNativeDashboard(
                 state = state,
                 active = active,
+                showCachedRefreshErrors = autoRefreshEnabled || manuallyRequestedConnection,
                 onRefresh = {
+                    manuallyRequestedConnection = true
                     redirectingToMarks = false
                     mainFrameFailed = false
                     if (state.loginRequired) {
@@ -813,6 +827,7 @@ private fun BarsCheckingState(
 private fun BarsNativeDashboard(
     state: BarsUiState,
     active: Boolean,
+    showCachedRefreshErrors: Boolean,
     onRefresh: () -> Unit,
     onOpenBrowser: () -> Unit,
 ) {
@@ -907,7 +922,9 @@ private fun BarsNativeDashboard(
                         BarsUserHeader(state = state)
                     }
 
-                    state.error?.let { message ->
+                    state.error?.takeIf {
+                        state.disciplines.isEmpty() || showCachedRefreshErrors
+                    }?.let { message ->
                         item(key = "error") {
                             val hasCachedGrades = state.disciplines.isNotEmpty()
                             Surface(
@@ -939,7 +956,9 @@ private fun BarsNativeDashboard(
                         }
                     }
 
-                    if (state.isLoading && state.disciplines.isNotEmpty()) {
+                    if (state.isLoading && state.disciplines.isNotEmpty() &&
+                        showCachedRefreshErrors
+                    ) {
                         item(key = "refreshing") {
                             LinearProgressIndicator(
                                 modifier = Modifier.fillMaxWidth()

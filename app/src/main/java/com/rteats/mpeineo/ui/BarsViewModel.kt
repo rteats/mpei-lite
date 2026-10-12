@@ -322,6 +322,15 @@ internal class BarsViewModel(
         }
     }
 
+    /** Display an existing snapshot without implying a failed update. */
+    fun showCachedWithoutRefresh() {
+        _state.update { current ->
+            if (current.disciplines.isNotEmpty()) {
+                current.copy(isLoading = false, error = null)
+            } else current
+        }
+    }
+
     fun startRefresh() {
         diagnostics.log("BARS", "refresh requested")
         _state.update { it.copy(isLoading = true, error = null) }

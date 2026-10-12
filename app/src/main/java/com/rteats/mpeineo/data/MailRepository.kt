@@ -181,6 +181,29 @@ class MailRepository(private val context: Context) {
             }
         }
 
+    /**
+     * Fetch text snippets only for newly detected UIDs. The read-only PEEK
+     * session does not mark messages read, and attachments are not streamed.
+     */
+    suspend fun notificationPreviews(
+        auth: MailCredentials,
+        uidValidity: Long,
+        uids: List<Long>,
+    ): Map<Long, String> = withContext(Dispatchers.IO) {
+        if (uids.isEmpty()) return@withContext emptyMap()
+        withInbox(auth) { folder ->
+            if (folder.uidValidity != uidValidity) return@withInbox emptyMap()
+            uids.distinct().takeLast(8).mapNotNull { uid ->
+                runCatching {
+                    val message = folder.getMessageByUID(uid) ?: return@runCatching null
+                    val collector = BodyCollector()
+                    collectParts(message, emptyList(), collector)
+                    uid to mailNotificationSnippet(collector.plain ?: collector.html.orEmpty())
+                }.getOrNull()
+            }.toMap()
+        }
+    }
+
     suspend fun cachedInbox(username: String): List<MailSummary> =
         withContext(Dispatchers.IO) { cache.inbox(username)?.messages.orEmpty() }
 

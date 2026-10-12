@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.R
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,7 +80,11 @@ private enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
+fun MpeiNeoApp(
+    viewModel: MainViewModel,
+    initialMailTab: Boolean = false,
+    mailNotificationTarget: MailNotificationTarget? = null,
+) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
     val barsViewModel: BarsViewModel = composeViewModel(
         factory = BarsViewModel.factory(
@@ -147,6 +152,16 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
             .collect { page ->
                 if (page != AppTab.SCHEDULE.ordinal) searchExpanded = false
             }
+    }
+
+    LaunchedEffect(mailNotificationTarget?.requestId) {
+        val target = mailNotificationTarget ?: return@LaunchedEffect
+        pager.scrollToPage(AppTab.MAIL.ordinal)
+        if (target.uid > 0L && target.validity > 0L) {
+            mailViewModel.openFromNotification(target.uid, target.validity)
+        } else {
+            mailViewModel.closeMessage()
+        }
     }
 
     fun navigate(target: AppTab) {
