@@ -220,11 +220,17 @@ fun MpeiNeoApp(
 
     fun closeMailBrowser() {
         intendedPage = AppTab.MAIL.ordinal
-        // Keep the browser lock until the intended Mail page is restored.
-        // Dropping it synchronously could let a stale pager page win.
+        val request = ++navigationRequest
+        explicitNavigation = true
+        // Restore Mail before releasing the browser lock. Suppress the focus
+        // guard while this explicit scroll runs, so it cannot cancel the close.
         scope.launch {
-            pager.scrollToPage(AppTab.MAIL.ordinal)
-            mailWebVisible = false
+            try {
+                pager.scrollToPage(AppTab.MAIL.ordinal)
+                mailWebVisible = false
+            } finally {
+                if (navigationRequest == request) explicitNavigation = false
+            }
         }
     }
     val portalAction = when (currentTab) {
@@ -271,9 +277,15 @@ fun MpeiNeoApp(
                     onClick = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
                             intendedPage = AppTab.BARS.ordinal
+                            val request = ++navigationRequest
+                            explicitNavigation = true
                             scope.launch {
-                                pager.scrollToPage(AppTab.BARS.ordinal)
-                                barsViewModel.hideBrowser()
+                                try {
+                                    pager.scrollToPage(AppTab.BARS.ordinal)
+                                    barsViewModel.hideBrowser()
+                                } finally {
+                                    if (navigationRequest == request) explicitNavigation = false
+                                }
                             }
                         } else {
                             navigate(AppTab.BARS)
