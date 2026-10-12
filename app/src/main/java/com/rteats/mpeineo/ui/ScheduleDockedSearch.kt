@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -86,6 +89,11 @@ import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.displayName
 import com.rteats.mpeineo.model.favoriteKey
 import com.rteats.mpeineo.model.matchingFavorites
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 
 /**
  * Overlay search docked immediately above the bottom navigation bar.
@@ -100,6 +108,9 @@ internal fun ScheduleDockedSearch(
     onSelect: (ScheduleTarget) -> Unit,
     onToggleFavorite: (ScheduleTarget) -> Unit,
     onRenameFavorite: (ScheduleTarget, String) -> Unit,
+    visibleWeekOffset: Int,
+    onRefreshWeek: (Int) -> Unit,
+    showWeekInfo: Boolean,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     active: Boolean = true,
@@ -197,6 +208,14 @@ internal fun ScheduleDockedSearch(
     val favoriteKeys = favorites.map { it.favoriteKey() }.toSet()
     val otherResults = state.searchResults.filterNot { it.favoriteKey() in favoriteKeys }
     val selected = state.selected
+    val monday = remember {
+        LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    }
+    val (weekStart, weekEnd) = weekRange(monday, visibleWeekOffset)
+    val weekDateFormat = remember { DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("ru")) }
+    val weekInfoText = weekStart.format(weekDateFormat) + " – " +
+        weekEnd.format(weekDateFormat) + " · " +
+        studyWeekNumber(weekStart) + "-я учебная неделя"
     val alreadyFavorite = selected != null && state.favorites.any {
         it.favoriteKey() == selected.favoriteKey()
     }
@@ -470,12 +489,14 @@ internal fun ScheduleDockedSearch(
 
                 // Keep the actual search field pinned above the navigation bar,
                 // regardless of how many suggestions are currently displayed.
-                Box(
+                Row(
                     modifier = Modifier.fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(searchCorner),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(
@@ -567,7 +588,50 @@ internal fun ScheduleDockedSearch(
                     },
                 )
                     }
+                    if (!expanded && selected != null) {
+                        val refreshing = visibleWeekOffset in state.agendaLoadingOffsets
+                        FilledTonalIconButton(
+                            onClick = { onRefreshWeek(visibleWeekOffset) },
+                            enabled = !refreshing,
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Crossfade(
+                                targetState = refreshing,
+                                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                label = "schedule-week-refresh",
+                            ) { loading ->
+                                if (loading) {
+                                    LoadingIndicator(modifier = Modifier.size(24.dp))
+                                } else {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = "Обновить эту неделю",
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showWeekInfo && selected != null && !expanded && active,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(220)),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 2.dp,
+            ) {
+                Text(
+                    text = weekInfoText,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
             }
         }
     }

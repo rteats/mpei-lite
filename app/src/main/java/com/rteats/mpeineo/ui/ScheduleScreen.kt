@@ -51,6 +51,8 @@ internal fun ScheduleScreen(
     onEnsureAgendaWeek: (Int) -> Unit,
     onRefreshAgendaWeek: (Int) -> Unit,
     onRetryAgendaWeek: (Int) -> Unit,
+    onViewedAgendaWeek: (Int) -> Unit,
+    onAgendaScrollingChanged: (Boolean) -> Unit,
     todayJumpRequest: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -81,6 +83,8 @@ internal fun ScheduleScreen(
             onEnsureWeek = onEnsureAgendaWeek,
             onRefreshWeek = onRefreshAgendaWeek,
             onRetryWeek = onRetryAgendaWeek,
+            onViewedWeek = onViewedAgendaWeek,
+            onScrollInProgressChanged = onAgendaScrollingChanged,
             todayJumpRequest = todayJumpRequest,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         )

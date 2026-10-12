@@ -59,6 +59,7 @@ import com.rteats.mpeineo.R
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
 
@@ -102,6 +103,23 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
     // from the search field's own focus and keyboard state.
     var searchExpanded by remember { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
+    var viewedScheduleWeek by remember { mutableIntStateOf(0) }
+    var agendaScrolling by remember { mutableStateOf(false) }
+    var weekInfoVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(agendaScrolling) {
+        if (agendaScrolling) {
+            weekInfoVisible = true
+        } else {
+            delay(1800)
+            weekInfoVisible = false
+        }
+    }
+    LaunchedEffect(scheduleState.selected?.id, scheduleState.selected?.type) {
+        viewedScheduleWeek = 0
+        agendaScrolling = false
+        weekInfoVisible = false
+    }
 
     // targetPage changes during a gesture or programmatic animation; settledPage
     // waits until the animation finishes, visibly delaying the nav indicator.
@@ -239,6 +257,8 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                         onEnsureAgendaWeek = viewModel::ensureAgendaWeek,
                         onRefreshAgendaWeek = viewModel::refreshAgendaWeek,
                         onRetryAgendaWeek = viewModel::retryAgendaWeek,
+                        onViewedAgendaWeek = { viewedScheduleWeek = it },
+                        onAgendaScrollingChanged = { agendaScrolling = it },
                         todayJumpRequest = todayJumpRequest,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -297,6 +317,9 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                         onSelect = viewModel::selectTarget,
                         onToggleFavorite = viewModel::toggleFavorite,
                         onRenameFavorite = viewModel::renameFavorite,
+                        visibleWeekOffset = viewedScheduleWeek,
+                        onRefreshWeek = viewModel::refreshAgendaWeek,
+                        showWeekInfo = weekInfoVisible,
                         expanded = searchExpanded,
                         onExpandedChange = { searchExpanded = it },
                         active = pager.currentPage == AppTab.SCHEDULE.ordinal,

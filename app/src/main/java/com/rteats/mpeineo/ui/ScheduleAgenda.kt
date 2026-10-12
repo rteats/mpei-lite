@@ -48,6 +48,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,6 +85,8 @@ internal fun ScheduleAgenda(
     onEnsureWeek: (Int) -> Unit,
     onRefreshWeek: (Int) -> Unit,
     onRetryWeek: (Int) -> Unit,
+    onViewedWeek: (Int) -> Unit,
+    onScrollInProgressChanged: (Boolean) -> Unit,
     todayJumpRequest: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -105,6 +108,8 @@ internal fun ScheduleAgenda(
     val overscrollMax = with(LocalDensity.current) { 180.dp.toPx() }
 
     LaunchedEffect(selectedId, selectedType, visibleWeek) {
+        onViewedWeek(visibleWeek)
+        onScrollInProgressChanged(false)
         onEnsureWeek(visibleWeek)
         // Preload adjacent weeks without displaying their days.
         onEnsureWeek(visibleWeek - 1)
@@ -137,6 +142,13 @@ internal fun ScheduleAgenda(
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
+        LaunchedEffect(displayedWeek, visibleWeek, listState) {
+            if (displayedWeek == visibleWeek) {
+                snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+                    onScrollInProgressChanged(scrolling)
+                }
+            }
+        }
         // Only this distance determines both the week switch and visual feedback.
         var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
         var thresholdTicked by remember(displayedWeek) {
@@ -195,42 +207,6 @@ internal fun ScheduleAgenda(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    weekStart.format(weekDateFormat) + " – " + weekEnd.format(weekDateFormat),
-                    modifier = Modifier.weight(1f).padding(start = 10.dp),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val refreshing = displayedWeek in state.agendaLoadingOffsets
-                IconButton(
-                    onClick = { onRefreshWeek(displayedWeek) },
-                    enabled = !refreshing,
-                ) {
-                    Crossfade(
-                        targetState = refreshing,
-                        animationSpec = motion.defaultEffectsSpec(),
-                        label = "schedule-week-refresh",
-                    ) { loading ->
-                        if (loading) {
-                            LoadingIndicator(
-                                modifier = Modifier.size(24.dp),
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Обновить эту неделю",
-                            )
-                        }
-                    }
-                }
-            }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth()
                     .nestedScroll(pullConnection)

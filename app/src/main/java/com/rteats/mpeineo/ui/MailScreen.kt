@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -133,6 +134,8 @@ internal fun MailScreen(
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
+        // The app scaffold already handles safe-area insets; no second blank header.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
             if (state.error != null) {

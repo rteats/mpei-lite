@@ -71,6 +71,13 @@ class WeekPullGestureTest {
         assertTrue(shouldTickWeekPull(0f, -80f, threshold, alreadyTicked = false))
     }
 
+    @Test fun mpeiStudyWeeksFollowSemesterRatherThanIsoWeeks() {
+        assertEquals(1, studyWeekNumber(java.time.LocalDate.of(2026, 8, 31)))
+        assertEquals(7, studyWeekNumber(java.time.LocalDate.of(2026, 10, 12)))
+        assertEquals(1, studyWeekNumber(java.time.LocalDate.of(2027, 2, 1)))
+        assertEquals(2, studyWeekNumber(java.time.LocalDate.of(2027, 2, 8)))
+    }
+
     @Test fun adjacentWeekPreviewUsesRealMondaySundayBounds() {
         val monday = java.time.LocalDate.of(2026, 12, 28)
         assertEquals(

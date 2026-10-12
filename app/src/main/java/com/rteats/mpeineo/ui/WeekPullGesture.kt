@@ -66,3 +66,21 @@ internal fun shouldTickWeekPull(
 ): Boolean = !alreadyTicked &&
     weekDeltaForPull(oldDistance, threshold) == 0 &&
     weekDeltaForPull(newDistance, threshold) != 0
+
+/**
+ * Semester-relative study week (not the ISO week of the year). A semester's
+ * first week is the Monday–Sunday interval containing September 1 or
+ * February 1. Use Thursday so boundary weeks belong to the new semester.
+ */
+internal fun studyWeekNumber(weekMonday: java.time.LocalDate): Int {
+    val representativeDate = weekMonday.plusDays(3)
+    val semesterStart = when (representativeDate.monthValue) {
+        in 9..12 -> java.time.LocalDate.of(representativeDate.year, 9, 1)
+        1 -> java.time.LocalDate.of(representativeDate.year - 1, 9, 1)
+        else -> java.time.LocalDate.of(representativeDate.year, 2, 1)
+    }
+    val firstMonday = semesterStart.with(
+        java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY),
+    )
+    return java.time.temporal.ChronoUnit.WEEKS.between(firstMonday, weekMonday).toInt() + 1
+}
