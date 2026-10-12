@@ -166,8 +166,5 @@ class ScheduleRepositoryTest {
             value = week
         }
 
-        override suspend fun clear() {
-            value = null
-        }
     }
 }

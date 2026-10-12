@@ -247,13 +247,6 @@ class MainViewModel(
         }
     }
 
-    fun clearCache() {
-        viewModelScope.launch {
-            // Retain the currently visible week; the disk cache is cleared.
-            container.repository.clearCache()
-        }
-    }
-
     private fun scheduleSearch(delayMillis: Long) {
         searchJob?.cancel()
         val query = state.value.searchQuery.trim()

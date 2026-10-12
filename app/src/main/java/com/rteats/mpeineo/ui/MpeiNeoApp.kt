@@ -317,7 +317,6 @@ fun MpeiNeoApp(
                             barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
                             barsAutoRefreshEnabled = enabled
                         },
-                        onClearCache = viewModel::clearCache,
                         active = pager.currentPage == page,
                         modifier = Modifier.fillMaxSize(),
                     )

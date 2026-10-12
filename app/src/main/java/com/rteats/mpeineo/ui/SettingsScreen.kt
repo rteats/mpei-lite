@@ -232,7 +232,6 @@ internal fun SettingsScreen(
     mailViewModel: MailViewModel,
     barsAutoRefreshEnabled: Boolean,
     onBarsAutoRefreshEnabledChange: (Boolean) -> Unit,
-    onClearCache: () -> Unit,
     active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -249,7 +248,6 @@ internal fun SettingsScreen(
     var barsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("bars", false)) }
     var mailExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("mail", true)) }
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
-    var storageExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("storage", false)) }
     var logsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("logs", false)) }
     var aboutExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("about", false)) }
     fun changeSection(key: String, next: Boolean) {
@@ -258,13 +256,11 @@ internal fun SettingsScreen(
             "bars" -> barsExpanded = next
             "mail" -> mailExpanded = next
             "updates" -> updatesExpanded = next
-            "storage" -> storageExpanded = next
             "logs" -> logsExpanded = next
             "about" -> aboutExpanded = next
         }
     }
     var copied by remember { mutableStateOf(false) }
-    var cacheCleared by remember { mutableStateOf(false) }
     var notificationError by remember { mutableStateOf<String?>(null) }
     val notificationPrefs = remember(context) { MailNotificationPreferences(context) }
     var notificationsEnabled by remember { mutableStateOf(notificationPrefs.enabled) }
@@ -442,21 +438,6 @@ internal fun SettingsScreen(
             ) {
                 UpdateCard(updateState, updateViewModel::checkForUpdates,
                     updateViewModel::downloadUpdate, ::installDownloadedUpdate)
-            }
-        }
-        item {
-            SettingsExpansion(
-                "Локальный кэш",
-                "Расписание доступно без сети",
-                AppIcons.Storage,
-                storageExpanded, { changeSection("storage", !storageExpanded) },
-            ) {
-                SettingsAction(
-                    if (cacheCleared) "Кэш очищен" else "Очистить кэш",
-                    "Удалить сохранённые недели расписания",
-                    AppIcons.ClearCache,
-                    onClick = { onClearCache(); cacheCleared = true },
-                )
             }
         }
         item {

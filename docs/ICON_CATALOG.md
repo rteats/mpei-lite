@@ -9,6 +9,8 @@ All interface icons use **Google Material Symbols Outlined**, `FILL=0`,
 - Android resources: `app/src/main/res/drawable/ms_<symbol>.xml`
 - Kotlin registry + Compose wrapper: `app/src/main/java/com/rteats/mpeineo/AppIcons.kt`
 - The launcher icon is independent of this UI icon system and remains unchanged.
+- Downloaded schedule weeks live under Android `cacheDir/schedule-cache` and are
+  pruned automatically; the app has no manual schedule-cache clearing control.
 
 ## Screen usage
 
@@ -36,9 +38,7 @@ All interface icons use **Google Material Symbols Outlined**, `FILL=0`,
 | `Download` | `download` | Download attachment and app update |
 | `Logout` | `logout` | Disconnect mail |
 | `About` | `info` | About group |
-| `Storage` | `storage` | Cache group |
 | `CheckUpdates` | `sync` | Check app updates |
-| `ClearCache` | `cleaning_services` | Clear cached schedule |
 | `ClearLog` | `delete_sweep` | Clear diagnostic log |
 | `Copy` | `content_copy` | Copy log |
 | `Diagnostics` | `bug_report` | Diagnostics group |

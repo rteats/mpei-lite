@@ -60,7 +60,7 @@ class UiSmokeTest {
             .assertIsDisplayed()
 
         composeRule
-            .onNodeWithText("Локальный кэш")
+            .onNodeWithText("Диагностика")
             .assertIsDisplayed()
     }
 }

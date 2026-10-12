@@ -41,5 +41,4 @@ class ScheduleRepository(
         }
     }
 
-    suspend fun clearCache() = cache.clear()
 }

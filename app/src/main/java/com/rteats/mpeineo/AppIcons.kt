@@ -5,7 +5,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -43,9 +42,7 @@ object AppIcons {
     @DrawableRes const val Download = R.drawable.ms_download
     @DrawableRes const val Logout = R.drawable.ms_logout
     @DrawableRes const val About = R.drawable.ms_info
-    @DrawableRes const val Storage = R.drawable.ms_storage
     @DrawableRes const val CheckUpdates = R.drawable.ms_sync
-    @DrawableRes const val ClearCache = R.drawable.ms_cleaning_services
     @DrawableRes const val ClearLog = R.drawable.ms_delete_sweep
     @DrawableRes const val Copy = R.drawable.ms_content_copy
     @DrawableRes const val Diagnostics = R.drawable.ms_bug_report
