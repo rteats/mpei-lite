@@ -59,6 +59,18 @@ class WebViewPagerPolicyTest {
         assertFalse(shouldRestoreLockedBrowserPager(lock, true, 0, 0, 1))
     }
 
+    @Test fun closesImeIfItReopensAfterBarsWebViewIsDestroyed() {
+        assertTrue(shouldDismissImeAfterBarsExit(AppTab.BARS, AppTab.BARS, false, true))
+    }
+
+    @Test fun doesNotSuppressImeDuringActiveBrowserOrOtherDestinations() {
+        assertFalse(shouldDismissImeAfterBarsExit(AppTab.BARS, AppTab.BARS, true, true))
+        assertFalse(shouldDismissImeAfterBarsExit(AppTab.BARS, AppTab.BARS, false, false))
+        assertFalse(shouldDismissImeAfterBarsExit(AppTab.BARS, AppTab.MAIL, false, true))
+        assertFalse(shouldDismissImeAfterBarsExit(AppTab.MAIL, AppTab.MAIL, false, true))
+        assertFalse(shouldDismissImeAfterBarsExit(null, AppTab.BARS, false, true))
+    }
+
     @Test fun nativePagerRemainsUnlocked() {
         assertFalse(shouldRestoreLockedBrowserPager(null, false, 0, 0, 2))
         assertFalse(shouldRestoreLockedBrowserPager(null, false, 2, 2, 0))

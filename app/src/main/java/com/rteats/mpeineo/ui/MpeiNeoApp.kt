@@ -4,6 +4,10 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import android.content.Context
+import android.os.Build
+import android.view.WindowInsets as AndroidWindowInsets
+import android.view.inputmethod.InputMethodManager
+import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -55,6 +59,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
@@ -103,7 +110,29 @@ fun MpeiNeoApp(
 ) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
+    val hostView = LocalView.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val inputMethodManager = remember(hostView) {
+        hostView.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+    }
     fun logNavigation(event: String) = diagnostics.log("NAV", event)
+    fun dismissBrowserIme(reason: String) {
+        val focused = hostView.rootView.findFocus()
+        logNavigation(
+            "browser IME cleanup reason=$reason focused=${focused?.javaClass?.simpleName ?: "none"} " +
+                "focusedWeb=${focused is WebView}"
+        )
+        // WebView inputs live in the Android focus hierarchy, not Compose's.
+        // Clear both hierarchies before the AndroidView is detached.
+        focused?.clearFocus()
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        inputMethodManager.hideSoftInputFromWindow(hostView.windowToken, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            hostView.windowInsetsController?.hide(AndroidWindowInsets.Type.ime())
+        }
+    }
     val barsViewModel: BarsViewModel = composeViewModel(
         factory = BarsViewModel.factory(
             application.container.diagnostics,
@@ -210,6 +239,20 @@ fun MpeiNeoApp(
             "ime visible=$keyboardVisible bottomPx=$imeBottomPx " +
                 "intended=$intendedPage current=${pager.currentPage} target=${pager.targetPage}"
         )
+    }
+    // A focused WebView may trigger a *new* IME show request after its AndroidView
+    // has been detached. A one-time hide on navbar tap alone cannot catch this.
+    LaunchedEffect(exitedBrowserTab, barsIsWeb, keyboardVisible, intendedPage) {
+        if (shouldDismissImeAfterBarsExit(
+                lastExitedBrowser = exitedBrowserTab,
+                intendedTab = AppTab.entries[intendedPage],
+                barsWebVisible = barsIsWeb,
+                imeVisible = keyboardVisible,
+            )
+        ) {
+            logNavigation("unexpected IME reopen after BARS exit; dismissing")
+            dismissBrowserIme("bars-post-release")
+        }
     }
     LaunchedEffect(mailWebVisible, barsIsWeb, intendedPage, explicitNavigation) {
         logNavigation(
@@ -360,6 +403,7 @@ fun MpeiNeoApp(
                     onClick = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
                             exitedBrowserTab = AppTab.BARS
+                            dismissBrowserIme("bars-navbar-back")
                             logNavigation("BARS navbar back current=${pager.currentPage} target=${pager.targetPage}")
                             intendedPage = AppTab.BARS.ordinal
                             val request = ++navigationRequest
@@ -462,6 +506,7 @@ fun MpeiNeoApp(
                         active = pager.settledPage == page,
                         onBrowserExit = {
                             exitedBrowserTab = AppTab.BARS
+                            dismissBrowserIme("bars-system-back")
                             logNavigation("BARS Android back: exit guard armed")
                         },
                         modifier = Modifier.fillMaxSize(),
@@ -558,6 +603,7 @@ fun MpeiNeoApp(
                 onClick = {
                     when (portalAction) {
                         AppTab.BARS -> {
+                            exitedBrowserTab = null
                             logNavigation("FAB open БАРС browser")
                             barsViewModel.showBrowser()
                         }

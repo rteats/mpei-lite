@@ -30,3 +30,17 @@ internal fun effectiveBrowserNavigationLock(
 ): AppTab? =
     lockedBrowserTab(intended, mailWebVisible, barsWebVisible)
         ?: recentlyClosedBrowser?.takeIf { it == intended }
+
+/**
+ * IME may reopen asynchronously during BARS AndroidView disposal even if it
+ * was hidden when the user pressed Back. Only suppress it on the exited BARS
+ * page, never during an active browser or in a different app destination.
+ */
+internal fun shouldDismissImeAfterBarsExit(
+    lastExitedBrowser: AppTab?,
+    intendedTab: AppTab,
+    barsWebVisible: Boolean,
+    imeVisible: Boolean,
+): Boolean =
+    lastExitedBrowser == AppTab.BARS && intendedTab == AppTab.BARS &&
+        !barsWebVisible && imeVisible

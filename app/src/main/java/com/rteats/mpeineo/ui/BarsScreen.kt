@@ -795,6 +795,12 @@ internal fun BarsScreen(
                         navigationController?.close()
                         navigationController = null
                     }
+                    // A WebView with an editable element can retain native input
+                    // focus while AndroidView is detached, reopening the IME.
+                    // Drop focus and make it ineligible for focus restoration.
+                    view.clearFocus()
+                    view.isFocusableInTouchMode = false
+                    view.isFocusable = false
                     view.onFocusChangeListener = null
                     view.stopLoading()
                     view.removeJavascriptInterface(BARS_JS_INTERFACE)
