@@ -4,6 +4,7 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -62,6 +63,7 @@ import com.rteats.mpeineo.R
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
@@ -99,6 +101,8 @@ fun MpeiNeoApp(
     mailNotificationTarget: MailNotificationTarget? = null,
 ) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
+    val diagnostics = application.container.diagnostics
+    fun logNavigation(event: String) = diagnostics.log("NAV", event)
     val barsViewModel: BarsViewModel = composeViewModel(
         factory = BarsViewModel.factory(
             application.container.diagnostics,
@@ -133,7 +137,9 @@ fun MpeiNeoApp(
     }
     var explicitNavigation by remember { mutableStateOf(false) }
     var navigationRequest by remember { mutableIntStateOf(0) }
-    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val keyboardVisible = imeBottomPx > 0
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     // Transient overlay state must not survive a restored Activity separately
     // from the search field's own focus and keyboard state.
@@ -163,6 +169,34 @@ fun MpeiNeoApp(
         AppTab.entries[intendedPage], mailWebVisible, barsIsWeb,
     )
 
+    LaunchedEffect(pager) {
+        snapshotFlow {
+            listOf(
+                pager.currentPage, pager.targetPage, pager.settledPage,
+                (pager.currentPageOffsetFraction * 4).roundToInt(),
+                if (pager.isScrollInProgress) 1 else 0, intendedPage,
+                if (mailWebVisible) 1 else 0, if (barsIsWeb) 1 else 0,
+            )
+        }.distinctUntilChanged().collect { x ->
+            logNavigation(
+                "pager current=${x[0]} target=${x[1]} settled=${x[2]} quarter=${x[3]} " +
+                    "scrolling=${x[4]} intended=${x[5]} mailWeb=${x[6]} barsWeb=${x[7]}"
+            )
+        }
+    }
+    LaunchedEffect(keyboardVisible) {
+        logNavigation(
+            "ime visible=$keyboardVisible bottomPx=$imeBottomPx " +
+                "intended=$intendedPage current=${pager.currentPage} target=${pager.targetPage}"
+        )
+    }
+    LaunchedEffect(mailWebVisible, barsIsWeb, intendedPage, explicitNavigation) {
+        logNavigation(
+            "mode mailWeb=$mailWebVisible barsWeb=$barsIsWeb intended=$intendedPage " +
+                "explicit=$explicitNavigation target=${pager.targetPage}"
+        )
+    }
+
     // Keep navigation tied to an explicitly selected WebView tab. The pager
     // target is still used during normal swipes and deliberate tab animations.
     val currentTab = if (browserLock != null && !explicitNavigation) {
@@ -177,16 +211,19 @@ fun MpeiNeoApp(
         snapshotFlow {
             Triple(pager.targetPage, pager.settledPage, pager.isScrollInProgress)
         }.distinctUntilChanged().collect { (targetPage, settledPage, scrolling) ->
-            if (!explicitNavigation && browserLock != null &&
-                (targetPage != browserLock.ordinal || settledPage != browserLock.ordinal)
+            if (shouldRestoreLockedBrowserPager(
+                    browserLock, explicitNavigation, pager.currentPage, targetPage, settledPage,
+                )
             ) {
-                // Disallow focus-driven horizontal scrolling from a WebView,
-                // even though userScrollEnabled already disables finger swipes.
-                pager.requestScrollToPage(browserLock.ordinal)
-            } else if (!explicitNavigation && !scrolling &&
-                targetPage == settledPage
+                logNavigation(
+                    "unexpected pager movement restore=${browserLock.name} " +
+                        "current=${pager.currentPage} target=$targetPage settled=$settledPage"
+                )
+                pager.scrollToPage(browserLock.ordinal)
+            } else if (!explicitNavigation && browserLock == null && !scrolling &&
+                targetPage == settledPage && intendedPage != settledPage
             ) {
-                // Legitimate native page swipes update the user's selected tab.
+                logNavigation("native swipe settled=${AppTab.entries[settledPage]}")
                 intendedPage = settledPage
             }
             if (settledPage != AppTab.SCHEDULE.ordinal) searchExpanded = false
@@ -195,6 +232,7 @@ fun MpeiNeoApp(
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
+        logNavigation("notification deep link -> MAIL")
         intendedPage = AppTab.MAIL.ordinal
         pager.scrollToPage(AppTab.MAIL.ordinal)
         if (target.uid > 0L && target.validity > 0L) {
@@ -205,13 +243,22 @@ fun MpeiNeoApp(
     }
 
     fun navigate(target: AppTab) {
+        logNavigation(
+            "navigate target=${target.name} from=${currentTab.name} current=${pager.currentPage} " +
+                "settled=${pager.settledPage} mailWeb=$mailWebVisible ime=$keyboardVisible"
+        )
         if (target == AppTab.SCHEDULE) todayJumpRequest++
+        if (target != AppTab.MAIL && mailWebVisible) {
+            logNavigation("mail portal dismissed for tab navigation")
+            mailWebVisible = false
+        }
         intendedPage = target.ordinal
         val request = ++navigationRequest
         explicitNavigation = true
         scope.launch {
             try {
                 pager.animateScrollToPage(target.ordinal)
+                logNavigation("navigate finished target=${target.name} current=${pager.currentPage}")
             } finally {
                 if (navigationRequest == request) explicitNavigation = false
             }
@@ -219,6 +266,10 @@ fun MpeiNeoApp(
     }
 
     fun closeMailBrowser() {
+        logNavigation(
+            "close ОСЭП requested current=${pager.currentPage} target=${pager.targetPage} " +
+                "settled=${pager.settledPage} ime=$keyboardVisible web=$mailWebVisible"
+        )
         intendedPage = AppTab.MAIL.ordinal
         val request = ++navigationRequest
         explicitNavigation = true
@@ -228,11 +279,17 @@ fun MpeiNeoApp(
             try {
                 pager.scrollToPage(AppTab.MAIL.ordinal)
                 mailWebVisible = false
+                logNavigation("close ОСЭП finished current=${pager.currentPage}")
             } finally {
                 if (navigationRequest == request) explicitNavigation = false
             }
         }
     }
+    BackHandler(enabled = mailWebVisible && intendedPage == AppTab.MAIL.ordinal) {
+        logNavigation("android back closes ОСЭП")
+        closeMailBrowser()
+    }
+
     val portalAction = when (currentTab) {
         AppTab.BARS -> if (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
             !barsState.browserVisible && !keyboardVisible
@@ -276,6 +333,7 @@ fun MpeiNeoApp(
                     selected = currentTab == AppTab.BARS,
                     onClick = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
+                            logNavigation("BARS navbar back current=${pager.currentPage} target=${pager.targetPage}")
                             intendedPage = AppTab.BARS.ordinal
                             val request = ++navigationRequest
                             explicitNavigation = true
@@ -283,6 +341,7 @@ fun MpeiNeoApp(
                                 try {
                                     pager.scrollToPage(AppTab.BARS.ordinal)
                                     barsViewModel.hideBrowser()
+                                    logNavigation("BARS navbar back finished current=${pager.currentPage}")
                                 } finally {
                                     if (navigationRequest == request) explicitNavigation = false
                                 }
@@ -310,10 +369,14 @@ fun MpeiNeoApp(
                     selected = currentTab == AppTab.MAIL,
                     onClick = {
                         when {
-                            currentTab == AppTab.MAIL && mailWebVisible ->
+                            currentTab == AppTab.MAIL && mailWebVisible -> {
+                                logNavigation("MAIL navbar back")
                                 closeMailBrowser()
-                            currentTab == AppTab.MAIL && mailState.selected != null ->
+                            }
+                            currentTab == AppTab.MAIL && mailState.selected != null -> {
+                                logNavigation("MAIL navbar close message")
                                 mailViewModel.closeMessage()
+                            }
                             else -> navigate(AppTab.MAIL)
                         }
                     },
@@ -375,11 +438,7 @@ fun MpeiNeoApp(
 
                     AppTab.MAIL -> MailScreen(
                         viewModel = mailViewModel,
-                        webVisible = mailWebVisible,
-                        onWebVisibleChange = { visible ->
-                            if (visible) mailWebVisible = true else closeMailBrowser()
-                        },
-                        active = pager.currentPage == page,
+                        active = pager.currentPage == page && !mailWebVisible,
                         modifier = Modifier.fillMaxSize(),
                     )
 
@@ -421,10 +480,7 @@ fun MpeiNeoApp(
                         },
                         modifier = Modifier.fillMaxSize().align(Alignment.BottomCenter),
                     )
-                } else if (
-                    (destination == AppTab.MAIL && mailWebVisible) ||
-                    (destination == AppTab.BARS && barsIsWeb)
-                ) {
+                } else if (destination == AppTab.BARS && barsIsWeb) {
                     // A WebView isn't a Compose nested-scroll child. Only
                     // deliberate swipes starting within a 24dp edge zone page
                     // horizontally; in-page web interactions remain native.
@@ -442,6 +498,21 @@ fun MpeiNeoApp(
             }
         }
 
+        // ОСЭП runs OUTSIDE HorizontalPager. HTML input bring-into-view requests
+        // can no longer cause the pager to scroll when the IME resizes the layout.
+        if (mailWebVisible && intendedPage == AppTab.MAIL.ordinal) {
+            WebPortalScreen(
+                url = "https://mail.mpei.ru/owa",
+                testTag = "portal-mail",
+                modifier = Modifier.fillMaxSize().testTag("mail-webview"),
+                onDebugEvent = { message -> diagnostics.log("MAIL_WEB", message) },
+            )
+            WebViewPageEdges(
+                onPrevious = { navigate(AppTab.BARS) },
+                onNext = { navigate(AppTab.SETTINGS) },
+            )
+        }
+
         // One FAB is composed above the pager, so it stays fixed while the
         // BARS and mail pages slide beneath it; only its label/action changes.
         AnimatedVisibility(
@@ -455,8 +526,15 @@ fun MpeiNeoApp(
                 label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
                 onClick = {
                     when (portalAction) {
-                        AppTab.BARS -> barsViewModel.showBrowser()
-                        AppTab.MAIL -> mailWebVisible = true
+                        AppTab.BARS -> {
+                            logNavigation("FAB open БАРС browser")
+                            barsViewModel.showBrowser()
+                        }
+                        AppTab.MAIL -> {
+                            logNavigation("FAB open ОСЭП current=${pager.currentPage}")
+                            intendedPage = AppTab.MAIL.ordinal
+                            mailWebVisible = true
+                        }
                         else -> Unit
                     }
                 },

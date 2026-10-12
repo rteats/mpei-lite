@@ -262,6 +262,26 @@ internal fun BarsScreen(
                 ),
             factory = { context ->
                 WebView(context).also { view ->
+                    view.setOnFocusChangeListener { _, focused ->
+                        viewModel.logWebEvent(
+                            "browser focus changed focused=$focused browser=${state.browserVisible} " +
+                                "stage=${state.authStage}"
+                        )
+                    }
+                    var previousWidth = -1
+                    var previousHeight = -1
+                    view.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                        val width = right - left
+                        val height = bottom - top
+                        if (width != previousWidth || height != previousHeight) {
+                            previousWidth = width
+                            previousHeight = height
+                            viewModel.logWebEvent(
+                                "browser layout width=$width height=$height " +
+                                    "browser=${state.browserVisible} stage=${state.authStage}"
+                            )
+                        }
+                    }
                     webView = view
                     val hasBarsCookies =
                         !CookieManager.getInstance().getCookie(BARS_BASE_URL).isNullOrBlank()
@@ -771,6 +791,7 @@ internal fun BarsScreen(
                         navigationController?.close()
                         navigationController = null
                     }
+                    view.onFocusChangeListener = null
                     view.stopLoading()
                     view.removeJavascriptInterface(BARS_JS_INTERFACE)
                     view.webViewClient = WebViewClient()

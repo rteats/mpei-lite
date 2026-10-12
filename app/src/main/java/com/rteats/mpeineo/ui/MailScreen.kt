@@ -80,8 +80,6 @@ import java.util.Date
 @Composable
 internal fun MailScreen(
     viewModel: MailViewModel,
-    webVisible: Boolean,
-    onWebVisibleChange: (Boolean) -> Unit,
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -90,19 +88,8 @@ internal fun MailScreen(
     val inboxScrollState = rememberLazyListState()
     val motion = MaterialTheme.motionScheme
 
-    BackHandler(enabled = active && (webVisible || state.selected != null)) {
-        if (webVisible) onWebVisibleChange(false) else viewModel.closeMessage()
-    }
-
-    if (webVisible) {
-        // The Mail nav item becomes the back button (same as BARS).
-        // The embedded OWA page owns the entire available content viewport.
-        WebPortalScreen(
-            url = "https://mail.mpei.ru/owa",
-            testTag = "portal-mail",
-            modifier = modifier.fillMaxSize().testTag("mail-webview"),
-        )
-        return
+    BackHandler(enabled = active && state.selected != null) {
+        viewModel.closeMessage()
     }
 
     state.certificate?.takeIf { showCertificateDetails }?.let { certificate ->
