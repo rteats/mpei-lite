@@ -103,8 +103,10 @@ class MailCredentialsStore(private val context: Context) {
 }
 
 /**
- * IMAPS only; opens INBOX READ_ONLY and enables PEEK so fetching full bodies
- * does not mark messages read. Each operation uses a fresh, short-lived session.
+ * IMAPS only. Fetches use READ_ONLY + PEEK, so background refresh, previews,
+ * attachments and message-body downloads cannot implicitly mark mail as seen.
+ * Opening a message explicitly sets \\Seen via a separate READ_WRITE session.
+ * Each operation uses a fresh, short-lived connection.
  */
 class MailRepository(private val context: Context) {
     val contextForNotifications: Context get() = context.applicationContext
@@ -116,7 +118,11 @@ class MailRepository(private val context: Context) {
     internal fun trustCertificate(certificate: MailServerCertificate) = tls.trust(certificate)
     fun forgetTrustedCertificate() = tls.forget()
 
-    private fun <T> withInbox(auth: MailCredentials, action: (IMAPFolder) -> T): T {
+    private fun <T> withInbox(
+        auth: MailCredentials,
+        mode: Int = Folder.READ_ONLY,
+        action: (IMAPFolder) -> T,
+    ): T {
         val properties = Properties().apply {
             put("mail.store.protocol", "imaps")
             put("mail.imaps.host", "mail.mpei.ru")
@@ -140,7 +146,7 @@ class MailRepository(private val context: Context) {
         try {
             store.connect("mail.mpei.ru", 993, auth.username, auth.password)
             val folder = store.getFolder("INBOX") as IMAPFolder
-            folder.open(Folder.READ_ONLY)
+            folder.open(mode)
             try { return action(folder) } finally { folder.close(false) }
         } finally { store.close() }
     }
@@ -305,6 +311,29 @@ class MailRepository(private val context: Context) {
             cache.saveMessage(auth.username, uid, validity, detail)
             detail
         }
+
+    /**
+     * Set the standard IMAP \\Seen flag on exactly this message. UIDVALIDITY
+     * prevents a stale cached UID from modifying another message after a folder
+     * reset. Keep READ_WRITE limited to this explicit action; do not fetch the
+     * body in a writable session.
+     */
+    suspend fun markAsRead(auth: MailCredentials, uid: Long, validity: Long) {
+        withContext(Dispatchers.IO) {
+            withInbox(auth, mode = Folder.READ_WRITE) { folder ->
+                require(folder.uidValidity == validity) {
+                    "Папка почты изменилась. Обновите входящие."
+                }
+                val message = folder.getMessageByUID(uid)
+                    ?: throw IllegalStateException("Письмо больше не найдено. Обновите входящие.")
+                if (!message.isSet(Flags.Flag.SEEN)) {
+                    message.setFlag(Flags.Flag.SEEN, true)
+                }
+            }
+            // Only persist a read state after the server has accepted the flag.
+            cache.markRead(auth.username, uid, validity)
+        }
+    }
 
     suspend fun saveAttachment(
         auth: MailCredentials,

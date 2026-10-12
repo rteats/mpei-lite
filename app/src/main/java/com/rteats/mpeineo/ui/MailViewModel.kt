@@ -10,6 +10,7 @@ import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
+import com.rteats.mpeineo.data.markMailRead
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancelChildren
@@ -120,6 +121,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                     ) current.copy(message = cached, loadingMessage = false)
                     else current
                 }
+                markReadAfterOpening(auth, summary, version)
                 return@launch
             }
             runCatching { repository.readMessage(auth, summary.uid, summary.uidValidity) }
@@ -131,6 +133,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                         ) current
                         else current.copy(message = body, loadingMessage = false)
                     }
+                    markReadAfterOpening(auth, summary, version)
                 }
                 .onFailure { cause ->
                     if (version != sessionVersion) return@onFailure
@@ -141,6 +144,46 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                         else current.copy(loadingMessage = false, error = readableError(cause))
                     }
                 }
+        }
+    }
+
+    /**
+     * A message counts as opened only once its body (or offline cached body)
+     * is displayed. Mark it as read on the actual server without delaying the
+     * message screen; an unsuccessful write must not falsify the local flags.
+     */
+    private fun markReadAfterOpening(
+        auth: MailCredentials,
+        summary: MailSummary,
+        version: Long,
+    ) {
+        if (!summary.unread || version != sessionVersion) return
+        viewModelScope.launch {
+            runCatching {
+                repository.markAsRead(auth, summary.uid, summary.uidValidity)
+            }.onSuccess {
+                if (version != sessionVersion) return@onSuccess
+                _state.update { current ->
+                    current.copy(
+                        items = markMailRead(current.items, summary.uid, summary.uidValidity),
+                        selected = current.selected?.let { selected ->
+                            if (selected.uid == summary.uid &&
+                                selected.uidValidity == summary.uidValidity
+                            ) selected.copy(unread = false) else selected
+                        },
+                    )
+                }
+            }.onFailure { cause ->
+                if (version != sessionVersion) return@onFailure
+                _state.update { current ->
+                    if (current.selected?.uid == summary.uid &&
+                        current.selected?.uidValidity == summary.uidValidity
+                    ) current.copy(
+                        notice = "Письмо открыто, но не удалось отметить его прочитанным: " +
+                            readableError(cause),
+                    ) else current
+                }
+            }
         }
     }
 

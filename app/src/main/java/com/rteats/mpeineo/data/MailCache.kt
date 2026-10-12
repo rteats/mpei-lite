@@ -33,6 +33,14 @@ internal class MailCache(private val context: Context) {
         write(file(username, "inbox"), CachedInbox(snapshot.uidValidity, snapshot.messages.take(60)))
     }
 
+    /** Keep the offline inbox's unread state consistent with an acknowledged IMAP STORE. */
+    @Synchronized fun markRead(username: String, uid: Long, validity: Long) {
+        val snapshot = inbox(username) ?: return
+        if (snapshot.uidValidity != validity) return
+        val updated = markMailRead(snapshot.messages, uid, validity)
+        if (updated != snapshot.messages) saveInbox(username, snapshot.copy(messages = updated))
+    }
+
     @Synchronized fun message(username: String, uid: Long, validity: Long): MailDetail? =
         read(file(username, "body_${validity}_${uid}"), CachedBody::class.java)
             ?.takeIf { it.validity == validity && it.detail.uid == uid }?.detail
@@ -105,4 +113,15 @@ internal fun mergeMailHeaders(
     return (incoming + cached.mapNotNull { mail ->
         byUid[mail.uid]?.let { unread -> mail.copy(unread = unread) }
     }).distinctBy { it.uid }.sortedByDescending { it.uid }.take(limit)
+}
+
+/** Only the matching UID in the same mailbox generation can become read. */
+internal fun markMailRead(
+    messages: List<MailSummary>,
+    uid: Long,
+    validity: Long,
+): List<MailSummary> = messages.map { message ->
+    if (message.uid == uid && message.uidValidity == validity && message.unread) {
+        message.copy(unread = false)
+    } else message
 }
