@@ -215,11 +215,12 @@ fun MpeiNeoApp(
                     browserLock, explicitNavigation, pager.currentPage, targetPage, settledPage,
                 )
             ) {
+                val lockedTab = browserLock ?: return@collect
                 logNavigation(
-                    "unexpected pager movement restore=${browserLock.name} " +
+                    "unexpected pager movement restore=${lockedTab.name} " +
                         "current=${pager.currentPage} target=$targetPage settled=$settledPage"
                 )
-                pager.scrollToPage(browserLock.ordinal)
+                pager.scrollToPage(lockedTab.ordinal)
             } else if (!explicitNavigation && browserLock == null && !scrolling &&
                 targetPage == settledPage && intendedPage != settledPage
             ) {
