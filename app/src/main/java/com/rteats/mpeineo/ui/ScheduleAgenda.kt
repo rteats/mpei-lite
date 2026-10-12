@@ -151,6 +151,11 @@ internal fun ScheduleAgenda(
         }
         // Only this distance determines both the week switch and visual feedback.
         var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
+        // Fling callbacks can continue after finger-up and may report UserInput.
+        // Keep week switching strictly tied to a live touch gesture.
+        var fingerDown by remember(displayedWeek) {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
         var thresholdTicked by remember(displayedWeek) {
             androidx.compose.runtime.mutableStateOf(false)
         }
@@ -165,7 +170,9 @@ internal fun ScheduleAgenda(
         ) {
             object : NestedScrollConnection {
                 private fun pull(deltaY: Float): Offset {
-                    if (displayedWeek != visibleWeek || deltaY == 0f) return Offset.Zero
+                    if (!fingerDown || displayedWeek != visibleWeek || deltaY == 0f) {
+                        return Offset.Zero
+                    }
                     val step = advanceWeekPull(
                         distance = pullDistance,
                         deltaY = deltaY,
@@ -219,6 +226,7 @@ internal fun ScheduleAgenda(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial,
                             )
+                            fingerDown = true
                             try {
                                 do {
                                     val event = awaitPointerEvent(PointerEventPass.Final)
@@ -237,6 +245,8 @@ internal fun ScheduleAgenda(
                                     }
                                 }
                             } finally {
+                                // Clear before a fling can dispatch another nested-scroll event.
+                                fingerDown = false
                                 pullDistance = 0f
                                 thresholdTicked = false
                             }

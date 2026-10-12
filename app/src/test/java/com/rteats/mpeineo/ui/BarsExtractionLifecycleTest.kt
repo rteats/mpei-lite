@@ -44,6 +44,32 @@ class BarsExtractionLifecycleTest {
         assertTrue(refresh(now = 160_000L))
     }
 
+    @Test fun disabledAutoRefreshDoesNotConsumeCooldown() {
+        val gate = BarsAutoRefreshGate()
+        assertFalse(
+            gate.shouldRefresh(
+                nowElapsedMs = 100_000L,
+                sessionReady = true,
+                hasCachedGrades = true,
+                cacheFresh = false,
+                isLoading = false,
+                browserVisible = false,
+                enabled = false,
+            ),
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                nowElapsedMs = 100_000L,
+                sessionReady = true,
+                hasCachedGrades = true,
+                cacheFresh = false,
+                isLoading = false,
+                browserVisible = false,
+                enabled = true,
+            ),
+        )
+    }
+
     @Test fun failedRefreshDoesNotCauseRapidRetryLoop() {
         val gate = BarsAutoRefreshGate()
         assertTrue(gate.shouldRefresh(10_000L, true, true, false, false, false))

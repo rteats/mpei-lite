@@ -233,6 +233,8 @@ private fun SettingsSwitchRow(
 internal fun SettingsScreen(
     updateViewModel: UpdateViewModel,
     mailViewModel: MailViewModel,
+    barsAutoRefreshEnabled: Boolean,
+    onBarsAutoRefreshEnabledChange: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     active: Boolean = true,
     modifier: Modifier = Modifier,
@@ -247,6 +249,7 @@ internal fun SettingsScreen(
     val sectionPrefs = remember(context) {
         context.getSharedPreferences("settings_sections", Context.MODE_PRIVATE)
     }
+    var barsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("bars", false)) }
     var mailExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("mail", true)) }
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
     var storageExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("storage", false)) }
@@ -255,6 +258,7 @@ internal fun SettingsScreen(
     fun changeSection(key: String, next: Boolean) {
         sectionPrefs.edit().putBoolean(key, next).apply()
         when (key) {
+            "bars" -> barsExpanded = next
             "mail" -> mailExpanded = next
             "updates" -> updatesExpanded = next
             "storage" -> storageExpanded = next
@@ -328,6 +332,23 @@ internal fun SettingsScreen(
         item {
             Text("Настройки", style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold)
+        }
+        item {
+            SettingsExpansion(
+                "БАРС",
+                "Настройки обновления оценок",
+                R.drawable.ic_nav_bars,
+                barsExpanded, { changeSection("bars", !barsExpanded) },
+            ) {
+                SettingsSwitchRow(
+                    "Автообновление оценок",
+                    "Обновлять при возвращении в БАРС, если данные старше 5 минут",
+                    R.drawable.ic_settings_update,
+                    barsAutoRefreshEnabled,
+                    true,
+                    onBarsAutoRefreshEnabledChange,
+                )
+            }
         }
         item {
             SettingsExpansion(

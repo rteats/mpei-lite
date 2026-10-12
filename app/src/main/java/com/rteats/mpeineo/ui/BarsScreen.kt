@@ -105,6 +105,7 @@ import java.util.Date
 @Composable
 internal fun BarsScreen(
     viewModel: BarsViewModel,
+    autoRefreshEnabled: Boolean = true,
     active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -133,12 +134,13 @@ internal fun BarsScreen(
 
     // The WebView remains mounted when switching to Mail/Settings. Suspend
     // page activity while hidden, but do not destroy its session or JS bridge.
-    androidx.compose.runtime.LaunchedEffect(active, webView) {
+    androidx.compose.runtime.LaunchedEffect(active, webView, autoRefreshEnabled) {
         webView?.let { view ->
             if (active) view.onResume() else view.onPause()
             if (active && state.authStage == BarsAuthStage.AUTHENTICATED &&
                 !state.loginRequired &&
                 autoRefreshGate.shouldRefresh(
+                    enabled = autoRefreshEnabled,
                     nowElapsedMs = SystemClock.elapsedRealtime(),
                     sessionReady = navigationController?.hasCompletedDocument == true &&
                         retryNavigation != null,

@@ -37,8 +37,11 @@ internal class BarsAutoRefreshGate(private val minimumIntervalMs: Long = 60_000L
         cacheFresh: Boolean,
         isLoading: Boolean,
         browserVisible: Boolean,
+        enabled: Boolean = true,
     ): Boolean {
-        if (!sessionReady || !hasCachedGrades || cacheFresh || isLoading || browserVisible) {
+        if (!enabled || !sessionReady || !hasCachedGrades || cacheFresh ||
+            isLoading || browserVisible
+        ) {
             return false
         }
         val previous = lastAttemptElapsedMs

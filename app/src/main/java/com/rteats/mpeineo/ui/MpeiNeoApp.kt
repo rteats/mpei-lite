@@ -1,6 +1,11 @@
 package com.rteats.mpeineo.ui
 
+import android.content.Context
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -92,6 +97,12 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
     val barsState by barsViewModel.state.collectAsState()
     val mailState by mailViewModel.state.collectAsState()
     val scheduleState by viewModel.state.collectAsState()
+    val barsPrefs = remember(application) {
+        application.getSharedPreferences("bars_settings", Context.MODE_PRIVATE)
+    }
+    var barsAutoRefreshEnabled by remember(barsPrefs) {
+        mutableStateOf(barsPrefs.getBoolean("auto_refresh", true))
+    }
     val pager = rememberPagerState(
         initialPage = if (initialMailTab) AppTab.MAIL.ordinal else 0,
         pageCount = { AppTab.entries.size },
@@ -149,6 +160,13 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
 
     val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
         barsState.browserVisible
+    val portalAction = when (currentTab) {
+        AppTab.BARS -> if (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
+            !barsState.browserVisible && !keyboardVisible
+        ) AppTab.BARS else null
+        AppTab.MAIL -> if (!mailWebVisible && !keyboardVisible) AppTab.MAIL else null
+        else -> null
+    }
     val nativeSwipeAllowed = !searchExpanded && when (pager.settledPage) {
         AppTab.MAIL.ordinal -> !mailWebVisible
         AppTab.BARS.ordinal -> !barsIsWeb
@@ -242,9 +260,10 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
             }
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
         HorizontalPager(
             state = pager,
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
             userScrollEnabled = nativeSwipeAllowed,
             beyondViewportPageCount = 3,
             key = { AppTab.entries[it].name },
@@ -265,6 +284,7 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
 
                     AppTab.BARS -> BarsScreen(
                         viewModel = barsViewModel,
+                        autoRefreshEnabled = barsAutoRefreshEnabled,
                         active = pager.settledPage == page,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -280,32 +300,14 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                     AppTab.SETTINGS -> SettingsScreen(
                         updateViewModel = updateViewModel,
                         mailViewModel = mailViewModel,
+                        barsAutoRefreshEnabled = barsAutoRefreshEnabled,
+                        onBarsAutoRefreshEnabledChange = { enabled ->
+                            barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
+                            barsAutoRefreshEnabled = enabled
+                        },
                         onClearCache = viewModel::clearCache,
                         active = pager.currentPage == page,
                         modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                // One shared browser action above the short navbar on both tabs.
-                // Only native screens show it; login and session WebViews stay clear.
-                if (destination == AppTab.BARS &&
-                    barsState.authStage == BarsAuthStage.AUTHENTICATED &&
-                    !barsState.browserVisible
-                ) {
-                    PortalFloatingButton(
-                        label = "БАРС",
-                        onClick = barsViewModel::showBrowser,
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp),
-                    )
-                } else if (destination == AppTab.MAIL &&
-                    !mailWebVisible && !keyboardVisible
-                ) {
-                    PortalFloatingButton(
-                        label = "ОСЭП",
-                        onClick = { mailWebVisible = true },
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp),
                     )
                 }
 
@@ -354,10 +356,32 @@ fun MpeiNeoApp(viewModel: MainViewModel, initialMailTab: Boolean = false) {
                 }
             }
         }
+
+        // One FAB is composed above the pager, so it stays fixed while the
+        // BARS and mail pages slide beneath it; only its label/action changes.
+        AnimatedVisibility(
+            visible = portalAction != null,
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp),
+            enter = fadeIn(animationSpec = tween(150)),
+            exit = fadeOut(animationSpec = tween(110)),
+        ) {
+            PortalFloatingButton(
+                label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
+                onClick = {
+                    when (portalAction) {
+                        AppTab.BARS -> barsViewModel.showBrowser()
+                        AppTab.MAIL -> mailWebVisible = true
+                        else -> Unit
+                    }
+                },
+            )
+        }
+        }
     }
 }
 
-/** Identically styled browser actions for the native Mail and BARS tabs. */
+/** A single portal action shared between BARS and Mail across pager transitions. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PortalFloatingButton(
@@ -379,7 +403,23 @@ private fun PortalFloatingButton(
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)),
         )
         Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(height)))
-        Text(label, style = ButtonDefaults.textStyleFor(height))
+        AnimatedContent(
+            targetState = label,
+            modifier = Modifier.widthIn(min = 48.dp),
+            transitionSpec = {
+                (slideInVertically(
+                    animationSpec = tween(190),
+                    initialOffsetY = { it / 2 },
+                ) + fadeIn(animationSpec = tween(160))) togetherWith
+                    (slideOutVertically(
+                        animationSpec = tween(150),
+                        targetOffsetY = { -it / 2 },
+                    ) + fadeOut(animationSpec = tween(120)))
+            },
+            label = "portal-action-label",
+        ) { currentLabel ->
+            Text(currentLabel, style = ButtonDefaults.textStyleFor(height))
+        }
     }
 }
 
