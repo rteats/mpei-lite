@@ -40,7 +40,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -59,7 +58,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
@@ -88,7 +86,6 @@ internal fun MailScreen(
     val state by viewModel.state.collectAsState()
     var showCertificateDetails by remember { mutableStateOf(false) }
     val inboxScrollState = rememberLazyListState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val motion = MaterialTheme.motionScheme
 
     BackHandler(enabled = active && state.selected != null) {
@@ -122,15 +119,8 @@ internal fun MailScreen(
     }
 
     Scaffold(
-        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-            .testTag("mail-inbox"),
+        modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            // The letter already has its own subject and uses navbar Back.
-            if (state.selected == null) {
-                PageFlexibleAppBar(title = "ОСЭП", scrollBehavior = scrollBehavior)
-            }
-        },
         // The app scaffold already handles safe-area insets; no second blank header.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->

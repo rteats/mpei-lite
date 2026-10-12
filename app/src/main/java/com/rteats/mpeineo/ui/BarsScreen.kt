@@ -58,7 +58,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -75,7 +74,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -863,7 +861,6 @@ private fun BarsNativeDashboard(
 ) {
     var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
     val dashboardListState = rememberLazyListState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val selectedDiscipline = state.disciplines.firstOrNull {
         it.disciplineName == selectedDisciplineName
     }
@@ -902,12 +899,7 @@ private fun BarsNativeDashboard(
             )
         } else {
             val refreshState = rememberPullToRefreshState()
-            Column(
-                modifier = Modifier.fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-            ) {
-                PageFlexibleAppBar(title = "БАРС", scrollBehavior = scrollBehavior)
-                PullToRefreshBox(
+            PullToRefreshBox(
                 isRefreshing = state.isLoading,
                 onRefresh = onRefresh,
                 state = refreshState,
@@ -918,7 +910,7 @@ private fun BarsNativeDashboard(
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 LazyColumn(
                     state = dashboardListState,
@@ -1023,7 +1015,6 @@ private fun BarsNativeDashboard(
                         }
                     }
                 }
-            }
             }
         }
     }

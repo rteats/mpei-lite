@@ -44,7 +44,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -61,7 +60,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -319,17 +317,11 @@ internal fun SettingsScreen(
         }
     }
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    Column(
-        modifier = modifier.fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
+    LazyColumn(
+        modifier = modifier.fillMaxSize().testTag("settings-overview"),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        PageFlexibleAppBar(title = "Настройки", scrollBehavior = scrollBehavior)
-        LazyColumn(
-            modifier = Modifier.weight(1f).testTag("settings-overview"),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
         item {
             SettingsExpansion(
                 "БАРС",
@@ -497,7 +489,6 @@ internal fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-        }
         }
     }
 }
