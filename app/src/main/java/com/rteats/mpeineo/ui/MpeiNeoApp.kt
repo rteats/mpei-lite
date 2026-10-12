@@ -64,7 +64,23 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
-private enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
+internal enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
+
+/**
+ * An embedded WebView can request that its focused input be brought into view.
+ * That request must not turn into a horizontal pager/tab change. Deliberate
+ * navbar and edge-swipe navigation update the intended tab before scrolling.
+ */
+internal fun lockedBrowserTab(
+    intended: AppTab,
+    mailWebVisible: Boolean,
+    barsWebVisible: Boolean,
+): AppTab? = when (intended) {
+    AppTab.MAIL -> AppTab.MAIL.takeIf { mailWebVisible }
+    AppTab.BARS -> AppTab.BARS.takeIf { barsWebVisible }
+    else -> null
+}
+
 
 /**
  * All four destinations occupy identical pager constraints. Unlike the former
@@ -110,6 +126,13 @@ fun MpeiNeoApp(
         pageCount = { AppTab.entries.size },
     )
     val scope = rememberCoroutineScope()
+    // User-selected destination, independent of pager bring-into-view requests
+    // originating inside a WebView when an input gains keyboard focus.
+    var intendedPage by rememberSaveable {
+        mutableIntStateOf(if (initialMailTab) AppTab.MAIL.ordinal else AppTab.SCHEDULE.ordinal)
+    }
+    var explicitNavigation by remember { mutableStateOf(false) }
+    var navigationRequest by remember { mutableIntStateOf(0) }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     // Transient overlay state must not survive a restored Activity separately
@@ -134,25 +157,45 @@ fun MpeiNeoApp(
         weekInfoVisible = false
     }
 
-    // targetPage changes during a gesture or programmatic animation; settledPage
-    // waits until the animation finishes, visibly delaying the nav indicator.
-    val currentTab = AppTab.entries[pager.targetPage]
-    // Keep navigation absent for the entire search interaction, including
-    // the keyboard dismissal animation. On return, animate its height rather
-    // than inserting a full-height bar in a single frame.
+    val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
+        barsState.browserVisible
+    val browserLock = lockedBrowserTab(
+        AppTab.entries[intendedPage], mailWebVisible, barsIsWeb,
+    )
+
+    // Keep navigation tied to an explicitly selected WebView tab. The pager
+    // target is still used during normal swipes and deliberate tab animations.
+    val currentTab = if (browserLock != null && !explicitNavigation) {
+        browserLock
+    } else {
+        AppTab.entries[pager.targetPage]
+    }
     val showNavigation = !keyboardVisible &&
         !(currentTab == AppTab.SCHEDULE && searchExpanded)
 
-    LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }
-            .distinctUntilChanged()
-            .collect { page ->
-                if (page != AppTab.SCHEDULE.ordinal) searchExpanded = false
+    LaunchedEffect(pager, browserLock, explicitNavigation) {
+        snapshotFlow {
+            Triple(pager.targetPage, pager.settledPage, pager.isScrollInProgress)
+        }.distinctUntilChanged().collect { (targetPage, settledPage, scrolling) ->
+            if (!explicitNavigation && browserLock != null &&
+                (targetPage != browserLock.ordinal || settledPage != browserLock.ordinal)
+            ) {
+                // Disallow focus-driven horizontal scrolling from a WebView,
+                // even though userScrollEnabled already disables finger swipes.
+                pager.requestScrollToPage(browserLock.ordinal)
+            } else if (!explicitNavigation && !scrolling &&
+                targetPage == settledPage
+            ) {
+                // Legitimate native page swipes update the user's selected tab.
+                intendedPage = settledPage
             }
+            if (settledPage != AppTab.SCHEDULE.ordinal) searchExpanded = false
+        }
     }
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
+        intendedPage = AppTab.MAIL.ordinal
         pager.scrollToPage(AppTab.MAIL.ordinal)
         if (target.uid > 0L && target.validity > 0L) {
             mailViewModel.openFromNotification(target.uid, target.validity)
@@ -162,16 +205,28 @@ fun MpeiNeoApp(
     }
 
     fun navigate(target: AppTab) {
-        if (target == AppTab.SCHEDULE) {
-            todayJumpRequest++
-        }
+        if (target == AppTab.SCHEDULE) todayJumpRequest++
+        intendedPage = target.ordinal
+        val request = ++navigationRequest
+        explicitNavigation = true
         scope.launch {
-            pager.animateScrollToPage(target.ordinal)
+            try {
+                pager.animateScrollToPage(target.ordinal)
+            } finally {
+                if (navigationRequest == request) explicitNavigation = false
+            }
         }
     }
 
-    val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
-        barsState.browserVisible
+    fun closeMailBrowser() {
+        intendedPage = AppTab.MAIL.ordinal
+        // Keep the browser lock until the intended Mail page is restored.
+        // Dropping it synchronously could let a stale pager page win.
+        scope.launch {
+            pager.scrollToPage(AppTab.MAIL.ordinal)
+            mailWebVisible = false
+        }
+    }
     val portalAction = when (currentTab) {
         AppTab.BARS -> if (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
             !barsState.browserVisible && !keyboardVisible
@@ -179,7 +234,8 @@ fun MpeiNeoApp(
         AppTab.MAIL -> if (!mailWebVisible && !keyboardVisible) AppTab.MAIL else null
         else -> null
     }
-    val nativeSwipeAllowed = !searchExpanded && when (pager.settledPage) {
+    val nativeSwipeAllowed = !searchExpanded && browserLock == null &&
+        when (pager.settledPage) {
         AppTab.MAIL.ordinal -> !mailWebVisible
         AppTab.BARS.ordinal -> !barsIsWeb
         else -> true
@@ -214,7 +270,11 @@ fun MpeiNeoApp(
                     selected = currentTab == AppTab.BARS,
                     onClick = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
-                            barsViewModel.hideBrowser()
+                            intendedPage = AppTab.BARS.ordinal
+                            scope.launch {
+                                pager.scrollToPage(AppTab.BARS.ordinal)
+                                barsViewModel.hideBrowser()
+                            }
                         } else {
                             navigate(AppTab.BARS)
                         }
@@ -239,7 +299,7 @@ fun MpeiNeoApp(
                     onClick = {
                         when {
                             currentTab == AppTab.MAIL && mailWebVisible ->
-                                mailWebVisible = false
+                                closeMailBrowser()
                             currentTab == AppTab.MAIL && mailState.selected != null ->
                                 mailViewModel.closeMessage()
                             else -> navigate(AppTab.MAIL)
@@ -304,7 +364,9 @@ fun MpeiNeoApp(
                     AppTab.MAIL -> MailScreen(
                         viewModel = mailViewModel,
                         webVisible = mailWebVisible,
-                        onWebVisibleChange = { mailWebVisible = it },
+                        onWebVisibleChange = { visible ->
+                            if (visible) mailWebVisible = true else closeMailBrowser()
+                        },
                         active = pager.currentPage == page,
                         modifier = Modifier.fillMaxSize(),
                     )

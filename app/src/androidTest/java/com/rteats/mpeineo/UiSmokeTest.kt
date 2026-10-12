@@ -18,6 +18,16 @@ class UiSmokeTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    fun mailPortalNavbarBackReturnsToInbox() {
+        composeRule.onNodeWithContentDescription("Почта").performClick()
+        composeRule.onNodeWithTag("portal-floating-ОСЭП").performClick()
+        composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Вернуться к входящим").performClick()
+        composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
+    }
+
+    @Test
     fun primaryDestinationsRender() {
         composeRule
             .onNodeWithTag("schedule-docked-search")
