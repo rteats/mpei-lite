@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -26,15 +29,10 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ShortNavigationBar
@@ -56,7 +54,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.MailNotificationTarget
@@ -210,7 +207,7 @@ fun MpeiNeoApp(
                 ShortNavigationBarItem(
                     selected = currentTab == AppTab.SCHEDULE,
                     onClick = { navigate(AppTab.SCHEDULE) },
-                    icon = { Icon(Icons.Default.DateRange, contentDescription = "Расписание") },
+                    icon = { AppIcon(AppIcons.Schedule, contentDescription = "Расписание") },
                     label = null,
                 )
                 ShortNavigationBarItem(
@@ -224,13 +221,13 @@ fun MpeiNeoApp(
                     },
                     icon = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
+                            AppIcon(
+                                AppIcons.Back,
                                 contentDescription = "Вернуться к оценкам",
                             )
                         } else {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_nav_bars),
+                            AppIcon(
+                                icon = AppIcons.Bars,
                                 contentDescription = "БАРС",
                             )
                         }
@@ -252,13 +249,13 @@ fun MpeiNeoApp(
                         if (currentTab == AppTab.MAIL &&
                             (mailWebVisible || mailState.selected != null)
                         ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
+                            AppIcon(
+                                AppIcons.Back,
                                 contentDescription = "Вернуться к входящим",
                             )
                         } else {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_nav_mail),
+                            AppIcon(
+                                icon = AppIcons.Mail,
                                 contentDescription = "Почта",
                             )
                         }
@@ -268,7 +265,7 @@ fun MpeiNeoApp(
                 ShortNavigationBarItem(
                     selected = currentTab == AppTab.SETTINGS,
                     onClick = { navigate(AppTab.SETTINGS) },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
+                    icon = { AppIcon(AppIcons.Settings, contentDescription = "Настройки") },
                     label = null,
                 )
             }
@@ -412,8 +409,8 @@ private fun PortalFloatingButton(
         contentPadding = ButtonDefaults.contentPaddingFor(height),
         shapes = ButtonDefaults.shapes(),
     ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_mail_open_owa),
+        AppIcon(
+            icon = AppIcons.OpenPortal,
             contentDescription = null,
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)),
         )

@@ -19,8 +19,8 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MainActivity
-import com.rteats.mpeineo.R
 import java.util.concurrent.TimeUnit
 
 /**
@@ -159,7 +159,7 @@ object MailNotificationScheduler {
             val snippet = previews[message.uid].orEmpty()
             val id = notificationId(message.uid, message.uidValidity)
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_nav_mail)
+                .setSmallIcon(AppIcons.Mail)
                 .setContentTitle(message.sender.ifBlank { "Неизвестный отправитель" })
                 .setContentText(mailNotificationLine(subject, snippet))
                 .setStyle(
@@ -188,7 +188,7 @@ object MailNotificationScheduler {
                     " · " + mailNotificationSubject(message.subject)
             }
             val summary = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_nav_mail)
+                .setSmallIcon(AppIcons.Mail)
                 .setContentTitle("Новых писем: ${messages.size}")
                 .setContentText(lines.first())
                 .setStyle(NotificationCompat.InboxStyle().also { style ->

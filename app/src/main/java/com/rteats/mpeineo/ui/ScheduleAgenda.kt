@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -27,14 +30,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -360,11 +357,11 @@ private fun WeekPullIndicator(
                 animationSpec = tween(durationMillis = 150),
                 label = if (previous) "previous-week-ready" else "next-week-ready",
             ) { ready ->
-                Icon(
-                    imageVector = when {
-                        ready -> Icons.Default.Check
-                        previous -> Icons.Default.KeyboardArrowDown
-                        else -> Icons.Default.KeyboardArrowUp
+                AppIcon(
+                    icon = when {
+                        ready -> AppIcons.Confirm
+                        previous -> AppIcons.ExpandMore
+                        else -> AppIcons.ExpandLess
                     },
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),

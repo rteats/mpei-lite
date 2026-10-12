@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.Crossfade
@@ -31,14 +34,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DropdownMenu
@@ -48,7 +43,6 @@ import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
@@ -324,8 +318,8 @@ internal fun ScheduleDockedSearch(
                         ListItem(
                             modifier = Modifier.fillMaxWidth(),
                             leadingContent = {
-                                Icon(
-                                    Icons.Default.Star,
+                                AppIcon(
+                                    AppIcons.Favorite,
                                     contentDescription = "Избранное",
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
@@ -360,7 +354,7 @@ internal fun ScheduleDockedSearch(
                                         focusManager.clearFocus(force = true)
                                         keyboard?.hide()
                                     }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "Изменить избранное")
+                                        AppIcon(AppIcons.Overflow, contentDescription = "Изменить избранное")
                                     }
                                     DropdownMenu(
                                         expanded = menuExpanded,
@@ -370,7 +364,7 @@ internal fun ScheduleDockedSearch(
                                         DropdownMenuItem(
                                             text = { Text("Переименовать") },
                                             leadingIcon = {
-                                                Icon(Icons.Default.Edit, contentDescription = null)
+                                                AppIcon(AppIcons.Edit, contentDescription = null)
                                             },
                                             onClick = {
                                                 openedFavoriteMenuKey = null
@@ -381,7 +375,7 @@ internal fun ScheduleDockedSearch(
                                         DropdownMenuItem(
                                             text = { Text("Удалить из избранного") },
                                             leadingIcon = {
-                                                Icon(Icons.Outlined.Star, contentDescription = null)
+                                                AppIcon(AppIcons.Favorite, contentDescription = null)
                                             },
                                             onClick = {
                                                 openedFavoriteMenuKey = null
@@ -459,8 +453,8 @@ internal fun ScheduleDockedSearch(
                                 onCheckedChange = { onToggleFavorite(result) },
                                 shapes = IconButtonDefaults.toggleableShapes(),
                             ) {
-                                Icon(
-                                    if (favorite) Icons.Default.Star else Icons.Outlined.Star,
+                                AppIcon(
+                                    AppIcons.Favorite,
                                     contentDescription = if (favorite) {
                                         "Удалить из избранного"
                                     } else "В избранное",
@@ -567,10 +561,10 @@ internal fun ScheduleDockedSearch(
                                 animationSpec = tween(160),
                                 label = "schedule-search-leading",
                             ) { isExpanded ->
-                                Icon(
-                                    imageVector = if (isExpanded) {
-                                        Icons.AutoMirrored.Filled.ArrowBack
-                                    } else Icons.Default.Search,
+                                AppIcon(
+                                    icon = if (isExpanded) {
+                                        AppIcons.Back
+                                    } else AppIcons.Search,
                                     contentDescription = if (isExpanded) {
                                         "Закрыть поиск"
                                     } else "Найти расписание",
@@ -582,7 +576,7 @@ internal fun ScheduleDockedSearch(
                     trailingIcon = {
                         if (!expanded && selected != null && !alreadyFavorite) {
                             IconButton(onClick = { onToggleFavorite(selected) }) {
-                                Icon(Icons.Outlined.Star, contentDescription = "Добавить в избранное")
+                                AppIcon(AppIcons.Favorite, contentDescription = "Добавить в избранное")
                             }
                         }
                     },
@@ -603,8 +597,8 @@ internal fun ScheduleDockedSearch(
                                 if (loading) {
                                     LoadingIndicator(modifier = Modifier.size(24.dp))
                                 } else {
-                                    Icon(
-                                        Icons.Default.Refresh,
+                                    AppIcon(
+                                        AppIcons.Refresh,
                                         contentDescription = "Обновить эту неделю",
                                     )
                                 }

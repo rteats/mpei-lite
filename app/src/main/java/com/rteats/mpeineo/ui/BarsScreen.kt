@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -46,11 +49,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -58,7 +56,6 @@ import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
@@ -1059,9 +1056,9 @@ private fun BarsUserHeader(
                 modifier = Modifier.padding(top = 5.dp),
             ) {
                 Text("Данные студента")
-                Icon(
-                    if (showStudentDetails) Icons.Default.KeyboardArrowUp
-                    else Icons.Default.KeyboardArrowDown,
+                AppIcon(
+                    if (showStudentDetails) AppIcons.ExpandLess
+                    else AppIcons.ExpandMore,
                     contentDescription = null,
                 )
             }
@@ -1143,8 +1140,8 @@ private fun DisciplineCard(
                         GradeChip(formatBarsGrade(finalMark.toDouble()), finalMark)
                     }
                 } else {
-                    Icon(
-                        Icons.Default.ArrowForward,
+                    AppIcon(
+                        AppIcons.Forward,
                         contentDescription = "Подробнее",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
@@ -1226,8 +1223,8 @@ private fun DisciplineExpandedCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
+                AppIcon(
+                    AppIcons.Back,
                     contentDescription = "К списку дисциплин",
                     tint = MaterialTheme.colorScheme.primary,
                 )

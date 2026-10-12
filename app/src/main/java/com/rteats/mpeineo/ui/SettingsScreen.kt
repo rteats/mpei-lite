@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -34,16 +37,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -65,7 +63,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -92,7 +89,7 @@ private fun SettingsBadge(iconRes: Int) {
         contentColor = MaterialTheme.colorScheme.primary,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(painterResource(iconRes), contentDescription = null,
+            AppIcon(iconRes, contentDescription = null,
                 modifier = Modifier.size(23.dp))
         }
     }
@@ -127,8 +124,8 @@ private fun SettingsExpansion(
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 SettingsBadge(iconRes)
-                Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                AppIcon(
+                    if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
                     contentDescription = if (expanded) "Свернуть" else "Развернуть",
                     tint = MaterialTheme.colorScheme.primary,
                 )
@@ -337,13 +334,13 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "БАРС",
                 "Настройки обновления оценок",
-                R.drawable.ic_nav_bars,
+                AppIcons.Bars,
                 barsExpanded, { changeSection("bars", !barsExpanded) },
             ) {
                 SettingsSwitchRow(
                     "Автообновление оценок",
                     "Обновлять при возвращении в БАРС, если данные старше 5 минут",
-                    R.drawable.ic_settings_update,
+                    AppIcons.Updates,
                     barsAutoRefreshEnabled,
                     true,
                     onBarsAutoRefreshEnabledChange,
@@ -354,13 +351,13 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Почта МЭИ",
                 if (mailState.configured) mailState.username else "Аккаунт не подключён",
-                R.drawable.ic_nav_mail,
+                AppIcons.Mail,
                 mailExpanded, { changeSection("mail", !mailExpanded) },
             ) {
                 SettingsSwitchRow(
                     "Уведомления о новых письмах",
                     "Фоновая проверка IMAP, без постоянного подключения",
-                    R.drawable.ic_settings_notifications,
+                    AppIcons.Notifications,
                     notificationsEnabled, mailState.configured,
                     ::toggleNotifications,
                 )
@@ -421,7 +418,7 @@ internal fun SettingsScreen(
                     SettingsAction(
                         "Выйти из почты",
                         "Отключить почту и остановить проверку новых писем",
-                        R.drawable.ic_mail_logout,
+                        AppIcons.Logout,
                         onClick = {
                             mailViewModel.logout()
                             notificationsEnabled = false
@@ -440,7 +437,7 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Обновления приложения",
                 "Версия " + BuildConfig.VERSION_NAME + " · канал " + BuildConfig.UPDATE_CHANNEL,
-                R.drawable.ic_settings_update,
+                AppIcons.Updates,
                 updatesExpanded, { changeSection("updates", !updatesExpanded) },
             ) {
                 UpdateCard(updateState, updateViewModel::checkForUpdates,
@@ -451,13 +448,13 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Локальный кэш",
                 "Расписание доступно без сети",
-                R.drawable.ic_settings_cache,
+                AppIcons.Storage,
                 storageExpanded, { changeSection("storage", !storageExpanded) },
             ) {
                 SettingsAction(
                     if (cacheCleared) "Кэш очищен" else "Очистить кэш",
                     "Удалить сохранённые недели расписания",
-                    R.drawable.ic_settings_clear_cache,
+                    AppIcons.ClearCache,
                     onClick = { onClearCache(); cacheCleared = true },
                 )
             }
@@ -466,13 +463,13 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Диагностика",
                 "Копирование и очистка журнала",
-                R.drawable.ic_settings_diagnostics,
+                AppIcons.Diagnostics,
                 logsExpanded, { changeSection("logs", !logsExpanded) },
             ) {
                 SettingsAction(
                     if (copied) "Скопировано" else "Копировать журнал",
                     "Скопировать диагностические события",
-                    R.drawable.ic_settings_copy_log,
+                    AppIcons.Copy,
                     onClick = {
                         val content = diagnostics.readText().ifBlank { "Журнал пока пуст." }
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
@@ -484,7 +481,7 @@ internal fun SettingsScreen(
                     },
                 )
                 SettingsAction("Очистить журнал", "Удалить диагностические события",
-                    R.drawable.ic_settings_clear_log,
+                    AppIcons.ClearLog,
                     onClick = {
                         diagnostics.clear()
                         diagnostics.log("DIAGNOSTICS", "log cleared by user")
@@ -497,7 +494,7 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "О приложении",
                 "MPEI Neo · " + BuildConfig.VERSION_NAME,
-                R.drawable.ic_settings_about,
+                AppIcons.About,
                 aboutExpanded, { changeSection("about", !aboutExpanded) },
             ) {
                 Text(
@@ -545,7 +542,7 @@ private fun UpdateCard(
             available -> "Доступна версия ${state.release?.versionName.orEmpty()}"
             else -> "Текущая версия: ${BuildConfig.VERSION_NAME}"
         },
-        iconRes = R.drawable.ic_settings_check_updates,
+        iconRes = AppIcons.CheckUpdates,
         onClick = onCheck,
         enabled = !state.checking && !downloading,
         busy = state.checking,
@@ -566,9 +563,9 @@ private fun UpdateCard(
                 else -> "Версия ${state.release?.versionName.orEmpty()}"
             },
             iconRes = if (readyToInstall) {
-                R.drawable.ic_settings_install_update
+                AppIcons.InstallUpdate
             } else {
-                R.drawable.ic_settings_download_update
+                AppIcons.Download
             },
             onClick = if (readyToInstall) onInstall else onDownload,
             enabled = !downloading && !state.checking,

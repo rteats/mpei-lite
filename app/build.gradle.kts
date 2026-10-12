@@ -140,7 +140,6 @@ dependencies {
     // Material 3 Expressive APIs (floating toolbar, loading indicator, animated toggles)
     // are newer than the version selected by the April 2026 Compose BOM.
     implementation("androidx.compose.material3:material3:1.5.0-alpha29")
-    implementation("androidx.compose.material:material-icons-core")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

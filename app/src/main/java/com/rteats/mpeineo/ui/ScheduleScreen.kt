@@ -1,5 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
@@ -18,13 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -205,8 +203,8 @@ internal fun LessonCard(lesson: Lesson) {
                     if (lesson.place.isNotBlank()) {
                         LessonDetail(
                             icon = {
-                                Icon(
-                                    Icons.Default.Place, contentDescription = null,
+                                AppIcon(
+                                    AppIcons.Location, contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                 )
                             },
@@ -216,8 +214,8 @@ internal fun LessonCard(lesson: Lesson) {
                     if (lesson.lecturer.isNotBlank()) {
                         LessonDetail(
                             icon = {
-                                Icon(
-                                    Icons.Default.Person, contentDescription = null,
+                                AppIcon(
+                                    AppIcons.Person, contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                 )
                             },
@@ -227,8 +225,8 @@ internal fun LessonCard(lesson: Lesson) {
                     if (lesson.groups.isNotBlank()) {
                         LessonDetail(
                             icon = {
-                                Icon(
-                                    Icons.Default.List, contentDescription = null,
+                                AppIcon(
+                                    AppIcons.GroupList, contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                 )
                             },
