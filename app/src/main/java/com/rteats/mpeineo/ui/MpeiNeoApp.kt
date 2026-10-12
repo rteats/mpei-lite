@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
@@ -136,6 +137,7 @@ fun MpeiNeoApp(
         mutableIntStateOf(if (initialMailTab) AppTab.MAIL.ordinal else AppTab.SCHEDULE.ordinal)
     }
     var explicitNavigation by remember { mutableStateOf(false) }
+    var exitedBrowserTab by remember { mutableStateOf<AppTab?>(null) }
     var navigationRequest by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
@@ -165,9 +167,27 @@ fun MpeiNeoApp(
 
     val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
         barsState.browserVisible
-    val browserLock = lockedBrowserTab(
+    val browserCurrentlyOpen = lockedBrowserTab(
         AppTab.entries[intendedPage], mailWebVisible, barsIsWeb,
     )
+    // WebView destruction can request horizontal pager scroll AFTER browserVisible
+    // becomes false. Preserve the outgoing tab until a genuine user gesture.
+    val browserLock = effectiveBrowserNavigationLock(
+        AppTab.entries[intendedPage], mailWebVisible, barsIsWeb, exitedBrowserTab,
+    )
+
+    LaunchedEffect(pager) {
+        pager.interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> {
+                    logNavigation("pager DRAG start exitGuard=${exitedBrowserTab?.name ?: "none"}")
+                    exitedBrowserTab = null
+                }
+                is DragInteraction.Stop -> logNavigation("pager DRAG stop")
+                is DragInteraction.Cancel -> logNavigation("pager DRAG cancel")
+            }
+        }
+    }
 
     LaunchedEffect(pager) {
         snapshotFlow {
@@ -180,7 +200,8 @@ fun MpeiNeoApp(
         }.distinctUntilChanged().collect { x ->
             logNavigation(
                 "pager current=${x[0]} target=${x[1]} settled=${x[2]} quarter=${x[3]} " +
-                    "scrolling=${x[4]} intended=${x[5]} mailWeb=${x[6]} barsWeb=${x[7]}"
+                    "scrolling=${x[4]} intended=${x[5]} mailWeb=${x[6]} barsWeb=${x[7]} " +
+                    "exitGuard=${exitedBrowserTab?.name ?: "none"}"
             )
         }
     }
@@ -193,7 +214,8 @@ fun MpeiNeoApp(
     LaunchedEffect(mailWebVisible, barsIsWeb, intendedPage, explicitNavigation) {
         logNavigation(
             "mode mailWeb=$mailWebVisible barsWeb=$barsIsWeb intended=$intendedPage " +
-                "explicit=$explicitNavigation target=${pager.targetPage}"
+                "explicit=$explicitNavigation target=${pager.targetPage} " +
+                    "exitGuard=${exitedBrowserTab?.name ?: "none"}"
         )
     }
 
@@ -244,6 +266,7 @@ fun MpeiNeoApp(
     }
 
     fun navigate(target: AppTab) {
+        exitedBrowserTab = null
         logNavigation(
             "navigate target=${target.name} from=${currentTab.name} current=${pager.currentPage} " +
                 "settled=${pager.settledPage} mailWeb=$mailWebVisible ime=$keyboardVisible"
@@ -267,6 +290,7 @@ fun MpeiNeoApp(
     }
 
     fun closeMailBrowser() {
+        exitedBrowserTab = AppTab.MAIL
         logNavigation(
             "close ОСЭП requested current=${pager.currentPage} target=${pager.targetPage} " +
                 "settled=${pager.settledPage} ime=$keyboardVisible web=$mailWebVisible"
@@ -298,7 +322,8 @@ fun MpeiNeoApp(
         AppTab.MAIL -> if (!mailWebVisible && !keyboardVisible) AppTab.MAIL else null
         else -> null
     }
-    val nativeSwipeAllowed = !searchExpanded && browserLock == null &&
+    // Post-exit focus protection does not disable real user drags.
+    val nativeSwipeAllowed = !searchExpanded && browserCurrentlyOpen == null &&
         when (pager.settledPage) {
         AppTab.MAIL.ordinal -> !mailWebVisible
         AppTab.BARS.ordinal -> !barsIsWeb
@@ -334,6 +359,7 @@ fun MpeiNeoApp(
                     selected = currentTab == AppTab.BARS,
                     onClick = {
                         if (currentTab == AppTab.BARS && barsState.browserVisible) {
+                            exitedBrowserTab = AppTab.BARS
                             logNavigation("BARS navbar back current=${pager.currentPage} target=${pager.targetPage}")
                             intendedPage = AppTab.BARS.ordinal
                             val request = ++navigationRequest
@@ -434,6 +460,10 @@ fun MpeiNeoApp(
                         viewModel = barsViewModel,
                         autoRefreshEnabled = barsAutoRefreshEnabled,
                         active = pager.settledPage == page,
+                        onBrowserExit = {
+                            exitedBrowserTab = AppTab.BARS
+                            logNavigation("BARS Android back: exit guard armed")
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
 

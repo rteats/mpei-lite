@@ -104,6 +104,7 @@ internal fun BarsScreen(
     viewModel: BarsViewModel,
     autoRefreshEnabled: Boolean = true,
     active: Boolean = true,
+    onBrowserExit: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -191,6 +192,9 @@ internal fun BarsScreen(
         if (view?.canGoBack() == true && view.url != BARS_MARKS_URL) {
             view.goBack()
         } else {
+            // Arm the pager exit guard before WebView loses focus or is destroyed.
+            onBrowserExit()
+            view?.clearFocus()
             needsFullViewport = false
             viewModel.hideBrowser()
         }

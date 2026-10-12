@@ -16,3 +16,17 @@ internal fun shouldRestoreLockedBrowserPager(
         (currentPage != lockedTab.ordinal ||
             targetPage != lockedTab.ordinal ||
             settledPage != lockedTab.ordinal)
+
+/**
+ * Closing a focused AndroidView may trigger a pager bring-into-view scroll
+ * AFTER the browser state becomes false. Hold the last tab as the navigation
+ * owner until an explicit navbar action or a real pager drag begins.
+ */
+internal fun effectiveBrowserNavigationLock(
+    intended: AppTab,
+    mailWebVisible: Boolean,
+    barsWebVisible: Boolean,
+    recentlyClosedBrowser: AppTab?,
+): AppTab? =
+    lockedBrowserTab(intended, mailWebVisible, barsWebVisible)
+        ?: recentlyClosedBrowser?.takeIf { it == intended }
