@@ -20,35 +20,35 @@ import androidx.compose.ui.unit.LayoutDirection
  * License: Apache License 2.0.
  */
 object AppIcons {
-    @DrawableRes val Schedule: Int get() = R.drawable.ms_date_range
-    @DrawableRes val Bars: Int get() = R.drawable.ms_account_balance
-    @DrawableRes val Mail: Int get() = R.drawable.ms_mail
-    @DrawableRes val Settings: Int get() = R.drawable.ms_settings
-    @DrawableRes val Back: Int get() = R.drawable.ms_arrow_back
-    @DrawableRes val Forward: Int get() = R.drawable.ms_arrow_forward
-    @DrawableRes val OpenPortal: Int get() = R.drawable.ms_open_in_new
-    @DrawableRes val Confirm: Int get() = R.drawable.ms_check
-    @DrawableRes val ExpandMore: Int get() = R.drawable.ms_keyboard_arrow_down
-    @DrawableRes val ExpandLess: Int get() = R.drawable.ms_keyboard_arrow_up
-    @DrawableRes val Favorite: Int get() = R.drawable.ms_star
-    @DrawableRes val Overflow: Int get() = R.drawable.ms_more_vert
-    @DrawableRes val Edit: Int get() = R.drawable.ms_edit
-    @DrawableRes val Search: Int get() = R.drawable.ms_search
-    @DrawableRes val Refresh: Int get() = R.drawable.ms_refresh
-    @DrawableRes val Location: Int get() = R.drawable.ms_location_on
-    @DrawableRes val Person: Int get() = R.drawable.ms_person
-    @DrawableRes val GroupList: Int get() = R.drawable.ms_list
-    @DrawableRes val Attachment: Int get() = R.drawable.ms_attach_file
-    @DrawableRes val Download: Int get() = R.drawable.ms_download
-    @DrawableRes val Logout: Int get() = R.drawable.ms_logout
-    @DrawableRes val About: Int get() = R.drawable.ms_info
-    @DrawableRes val CheckUpdates: Int get() = R.drawable.ms_sync
-    @DrawableRes val ClearLog: Int get() = R.drawable.ms_delete_sweep
-    @DrawableRes val Copy: Int get() = R.drawable.ms_content_copy
-    @DrawableRes val Diagnostics: Int get() = R.drawable.ms_bug_report
-    @DrawableRes val InstallUpdate: Int get() = R.drawable.ms_install_mobile
-    @DrawableRes val Notifications: Int get() = R.drawable.ms_notifications
-    @DrawableRes val Updates: Int get() = R.drawable.ms_system_update
+    @get:DrawableRes val Schedule: Int get() = R.drawable.ms_date_range
+    @get:DrawableRes val Bars: Int get() = R.drawable.ms_account_balance
+    @get:DrawableRes val Mail: Int get() = R.drawable.ms_mail
+    @get:DrawableRes val Settings: Int get() = R.drawable.ms_settings
+    @get:DrawableRes val Back: Int get() = R.drawable.ms_arrow_back
+    @get:DrawableRes val Forward: Int get() = R.drawable.ms_arrow_forward
+    @get:DrawableRes val OpenPortal: Int get() = R.drawable.ms_open_in_new
+    @get:DrawableRes val Confirm: Int get() = R.drawable.ms_check
+    @get:DrawableRes val ExpandMore: Int get() = R.drawable.ms_keyboard_arrow_down
+    @get:DrawableRes val ExpandLess: Int get() = R.drawable.ms_keyboard_arrow_up
+    @get:DrawableRes val Favorite: Int get() = R.drawable.ms_star
+    @get:DrawableRes val Overflow: Int get() = R.drawable.ms_more_vert
+    @get:DrawableRes val Edit: Int get() = R.drawable.ms_edit
+    @get:DrawableRes val Search: Int get() = R.drawable.ms_search
+    @get:DrawableRes val Refresh: Int get() = R.drawable.ms_refresh
+    @get:DrawableRes val Location: Int get() = R.drawable.ms_location_on
+    @get:DrawableRes val Person: Int get() = R.drawable.ms_person
+    @get:DrawableRes val GroupList: Int get() = R.drawable.ms_list
+    @get:DrawableRes val Attachment: Int get() = R.drawable.ms_attach_file
+    @get:DrawableRes val Download: Int get() = R.drawable.ms_download
+    @get:DrawableRes val Logout: Int get() = R.drawable.ms_logout
+    @get:DrawableRes val About: Int get() = R.drawable.ms_info
+    @get:DrawableRes val CheckUpdates: Int get() = R.drawable.ms_sync
+    @get:DrawableRes val ClearLog: Int get() = R.drawable.ms_delete_sweep
+    @get:DrawableRes val Copy: Int get() = R.drawable.ms_content_copy
+    @get:DrawableRes val Diagnostics: Int get() = R.drawable.ms_bug_report
+    @get:DrawableRes val InstallUpdate: Int get() = R.drawable.ms_install_mobile
+    @get:DrawableRes val Notifications: Int get() = R.drawable.ms_notifications
+    @get:DrawableRes val Updates: Int get() = R.drawable.ms_system_update
 }
 
 /**
