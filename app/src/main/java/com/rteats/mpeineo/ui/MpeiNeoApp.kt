@@ -22,6 +22,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clipToBounds
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -496,7 +497,7 @@ fun MpeiNeoApp(
             key = { AppTab.entries[it].name },
         ) { page ->
             val destination = AppTab.entries[page]
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
                 when (destination) {
                     AppTab.SCHEDULE -> ScheduleScreen(
                         state = scheduleState,

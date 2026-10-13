@@ -1,10 +1,15 @@
 package com.rteats.mpeineo.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint as AndroidPaint
+import android.graphics.RectF
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clipToBounds
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -27,6 +32,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +44,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
@@ -58,6 +67,8 @@ import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Offline OpenStreetMap geometry, extracted once into assets/campus_osm.json.
@@ -273,6 +284,86 @@ private fun roadMeters(kind: String): Float = when (kind) {
 private fun isWalkingRoute(kind: String): Boolean =
     kind in setOf("footway", "path", "steps", "cycleway", "pedestrian", "track")
 
+/** Prepared once per Monet palette, then drawn as one hardware-accelerated image. */
+private data class CampusRaster(val bitmap: Bitmap, val bounds: Rect)
+
+private data class MapPaintColors(
+    val background: Int,
+    val grass: Int,
+    val forest: Int,
+    val pitch: Int,
+    val road: Int,
+    val roadOutline: Int,
+    val walkway: Int,
+    val ordinaryBuilding: Int,
+    val campusBuilding: Int,
+    val buildingOutline: Int,
+)
+
+private fun renderCampusRaster(
+    prepared: PreparedCampus,
+    campusIds: Set<Long>,
+    palette: MapPaintColors,
+): CampusRaster {
+    val bounds = prepared.bounds
+    val w = bounds.width.coerceAtLeast(1f)
+    val h = bounds.height.coerceAtLeast(1f)
+    // High enough for detailed pinch zoom; no large scene graph redraw each frame.
+    val resolution = min(2.9f, 2600f / max(w, h))
+    val bitmap = Bitmap.createBitmap(
+        max(1, (w * resolution).toInt()),
+        max(1, (h * resolution).toInt()),
+        Bitmap.Config.ARGB_8888,
+    )
+    val canvas = AndroidCanvas(bitmap)
+    canvas.drawColor(palette.background)
+    canvas.save()
+    canvas.scale(resolution, resolution)
+    canvas.translate(-bounds.left, -bounds.top)
+    val fill = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG)
+    val outline = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        style = AndroidPaint.Style.STROKE
+    }
+    prepared.land.forEach { feature ->
+        fill.color = when (feature.source.kind) {
+            "forest", "wood", "scrub" -> palette.forest
+            "pitch", "playground" -> palette.pitch
+            else -> palette.grass
+        }
+        canvas.drawPath(feature.path.asAndroidPath(), fill)
+    }
+    prepared.roads.forEach { feature ->
+        val walking = isWalkingRoute(feature.source.kind)
+        val width = roadMeters(feature.source.kind)
+        val path = feature.path.asAndroidPath()
+        if (!walking) {
+            outline.color = palette.roadOutline
+            outline.strokeWidth = width + 1f
+            outline.strokeCap = AndroidPaint.Cap.ROUND
+            canvas.drawPath(path, outline)
+        }
+        outline.color = if (walking) palette.walkway else palette.road
+        outline.strokeWidth = width
+        outline.strokeCap = AndroidPaint.Cap.ROUND
+        canvas.drawPath(path, outline)
+    }
+    prepared.buildings.forEach { feature ->
+        fill.color = if (feature.source.id in campusIds) {
+            palette.campusBuilding
+        } else {
+            palette.ordinaryBuilding
+        }
+        val path = feature.path.asAndroidPath()
+        canvas.drawPath(path, fill)
+        outline.color = palette.buildingOutline
+        outline.strokeWidth = .9f
+        outline.strokeCap = AndroidPaint.Cap.BUTT
+        canvas.drawPath(path, outline)
+    }
+    canvas.restore()
+    return CampusRaster(bitmap, bounds)
+}
+
 /** Map view is precomposed as a tab; unlike MapKit it is safe to render offscreen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -296,8 +387,25 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
 
     val prepared = remember(data) { prepareCampus(data) }
     val places = remember(data) { placesFromGeometry(data) }
-    val placesByOsmId = remember(places) { places.associateBy { it.footprint.id } }
     val colors = MaterialTheme.colorScheme
+    val palette = MapPaintColors(
+        background = colors.surface.toArgb(),
+        grass = colors.secondaryContainer.copy(alpha = .43f).compositeOver(colors.surface).toArgb(),
+        forest = colors.tertiaryContainer.copy(alpha = .58f).compositeOver(colors.surface).toArgb(),
+        pitch = colors.secondaryContainer.copy(alpha = .72f).compositeOver(colors.surface).toArgb(),
+        road = colors.surfaceContainerHigh.toArgb(),
+        roadOutline = colors.outlineVariant.copy(alpha = .5f).compositeOver(colors.surface).toArgb(),
+        walkway = colors.secondary.copy(alpha = .36f).compositeOver(colors.surface).toArgb(),
+        ordinaryBuilding = colors.surfaceContainerHighest.toArgb(),
+        campusBuilding = colors.primaryContainer.toArgb(),
+        buildingOutline = colors.outlineVariant.toArgb(),
+    )
+    val campusIds = remember(places) { places.map { it.footprint.id }.toSet() }
+    val raster by produceState<CampusRaster?>(null, prepared, campusIds, palette) {
+        value = withContext(Dispatchers.Default) {
+            renderCampusRaster(prepared, campusIds, palette)
+        }
+    }
     var zoom by rememberSaveable { mutableFloatStateOf(1.45f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -324,7 +432,8 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
         }
     }
 
-    Box(modifier.fillMaxSize().testTag(if (active) "campus-map-screen" else "campus-map-precomposed")) {
+    Box(modifier.fillMaxSize().clipToBounds()
+        .testTag(if (active) "campus-map-screen" else "campus-map-precomposed")) {
         Canvas(
             modifier = Modifier.fillMaxSize()
                 .onSizeChanged {
@@ -375,71 +484,46 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                 viewport.width / 2f + pan.x,
                 viewport.height / 2f + pan.y,
             )
-            // Cull against the current visible world rectangle before
-            // drawing. A global canvas transform reuses prepared world Paths.
-            val visibleWorld = Rect(
-                -origin.x / scale,
-                -origin.y / scale,
-                (size.width - origin.x) / scale,
-                (size.height - origin.y) / scale,
-            )
-            clipRect {
-                withTransform({
-                    translate(origin.x, origin.y)
-                    scale(scale, scale, pivot = Offset.Zero)
-                }) {
-                    prepared.land.forEach { land ->
-                        if (!land.bounds.visibleWithin(visibleWorld)) return@forEach
-                        val color = when (land.source.kind) {
-                            "forest", "wood", "scrub" -> colors.tertiaryContainer.copy(alpha = .58f)
-                            "pitch", "playground" -> colors.secondaryContainer.copy(alpha = .72f)
-                            else -> colors.secondaryContainer.copy(alpha = .43f)
-                        }
-                        drawPath(land.path, color)
-                    }
-                    // Roads use OSM geometry and a cartographic width in metres.
-                    prepared.roads.forEach { road ->
-                        val walking = isWalkingRoute(road.source.kind)
-                        val width = roadMeters(road.source.kind).coerceAtLeast(
-                            1.5.dp.toPx() / scale,
-                        )
-                        if (!road.bounds.visibleWithin(visibleWorld, width / 2f)) {
-                            return@forEach
-                        }
-                        if (!walking) {
+            // All static OSM polygons are flattened into one palette-aware
+            // bitmap. Pan/zoom only transforms that texture on the GPU.
+            raster?.let { image ->
+                val bounds = image.bounds
+                val destination = RectF(
+                    origin.x + bounds.left * scale,
+                    origin.y + bounds.top * scale,
+                    origin.x + bounds.right * scale,
+                    origin.y + bounds.bottom * scale,
+                )
+                val canvas = drawContext.canvas.nativeCanvas
+                val save = canvas.save()
+                canvas.clipRect(0f, 0f, size.width, size.height)
+                canvas.drawBitmap(
+                    image.bitmap,
+                    null,
+                    destination,
+                    AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.FILTER_BITMAP_FLAG),
+                )
+                canvas.restoreToCount(save)
+            }
+
+            // Selection stays sharp and costs only one vector path redraw.
+            selected?.let { place ->
+                val selectedPath = prepared.buildings.firstOrNull {
+                    it.source.id == place.footprint.id
+                }?.path
+                if (selectedPath != null) {
+                    clipRect {
+                        withTransform({
+                            translate(origin.x, origin.y)
+                            scale(scale, scale, pivot = Offset.Zero)
+                        }) {
+                            drawPath(selectedPath, colors.primary)
                             drawPath(
-                                road.path,
-                                colors.outlineVariant.copy(alpha = .5f),
-                                style = Stroke(
-                                    width = width + 1.dp.toPx() / scale,
-                                    cap = StrokeCap.Round,
-                                ),
+                                selectedPath,
+                                colors.primary,
+                                style = Stroke(width = 2.dp.toPx() / scale),
                             )
                         }
-                        drawPath(
-                            road.path,
-                            if (walking) colors.secondary.copy(alpha = .36f)
-                            else colors.surfaceContainerHigh,
-                            style = Stroke(width = width, cap = StrokeCap.Round),
-                        )
-                    }
-                    prepared.buildings.forEach { building ->
-                        if (!building.bounds.visibleWithin(visibleWorld)) return@forEach
-                        val place = placesByOsmId[building.source.id]
-                        val chosen = selected?.footprint?.id == building.source.id
-                        val fill = when {
-                            chosen -> colors.primary
-                            place != null -> colors.primaryContainer
-                            else -> colors.surfaceContainerHighest
-                        }
-                        drawPath(building.path, fill)
-                        drawPath(
-                            building.path,
-                            if (chosen) colors.primary else colors.outlineVariant,
-                            style = Stroke(
-                                width = (if (chosen) 2f else .9f).dp.toPx() / scale,
-                            ),
-                        )
                     }
                 }
             }
@@ -448,21 +532,25 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
             // named OSM footprints instead of approximate external pins.
             labelPaint.textSize = 12.sp.toPx()
             val metrics = labelPaint.fontMetrics
+            val labelsCanvas = drawContext.canvas.nativeCanvas
+            val labelsSave = labelsCanvas.save()
+            labelsCanvas.clipRect(0f, 0f, size.width, size.height)
             places.forEach { place ->
                 val point = project(place.center)
-                if (point.x < -24f || point.x > size.width + 24f ||
-                    point.y < -24f || point.y > size.height + 24f) return@forEach
+                if (point.x < -14f || point.x > size.width + 14f ||
+                    point.y < -14f || point.y > size.height + 14f) return@forEach
                 labelPaint.color = if (selected?.symbol == place.symbol) {
                     colors.onPrimary.toArgb()
                 } else {
                     colors.onPrimaryContainer.toArgb()
                 }
-                drawContext.canvas.nativeCanvas.drawText(
+                labelsCanvas.drawText(
                     place.symbol,
                     point.x, point.y - (metrics.ascent + metrics.descent) / 2f,
                     labelPaint,
                 )
             }
+            labelsCanvas.restoreToCount(labelsSave)
         }
 
         FilledTonalButton(
