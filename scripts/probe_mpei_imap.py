@@ -1,59 +1,60 @@
 #!/usr/bin/env python3
-"""One-shot, unauthenticated IMAP TCP/TLS/greeting probe.
+"""Unauthenticated mail.mpei.ru IMAP TLS compatibility probe.
 
-No USER, LOGIN, AUTHENTICATE, IMAP commands or credentials are sent. This
-workflow tests basic reachability from an independent runner network, not
-account authentication or Android device state.
+The diagnostic never sends IMAP commands, account IDs, or passwords.
+Testing legacy TLS is observational only: the mobile app must not silently
+downgrade its connection security.
 """
-import ipaddress
 import socket
 import ssl
 import time
+import warnings
 
 HOST="mail.mpei.ru"
 PORT=993
-
 try:
-    addresses=socket.getaddrinfo(HOST, PORT, type=socket.SOCK_STREAM)
+    addresses=socket.getaddrinfo(HOST, PORT, family=socket.AF_INET, type=socket.SOCK_STREAM)
 except Exception as error:
-    print("DNS failure:", type(error).__name__, str(error))
-    raise SystemExit(1)
-seen=set()
-attempts=0
-for family, stype, proto, _, addr in addresses:
-    if addr[0] in seen:
-        continue
-    seen.add(addr[0])
-    if attempts >= 3:
-        break
-    attempts += 1
-    label="IPv6" if family==socket.AF_INET6 else "IPv4"
-    print("Candidate", label, addr[0], flush=True)
+    print("DNS error", type(error).__name__,str(error),flush=True)
+    raise SystemExit(0)
+if not addresses:
+    print("No IPv4 results",flush=True)
+    raise SystemExit(0)
+addr=addresses[0][4]
+print("DNS IPv4",addr[0],flush=True)
+tests=[
+    ("TLS1.2 only with SNI",ssl.TLSVersion.TLSv1_2,ssl.TLSVersion.TLSv1_2,True,False),
+    ("TLS1.2 only without SNI",ssl.TLSVersion.TLSv1_2,ssl.TLSVersion.TLSv1_2,False,False),
+    ("TLS1.3 only with SNI",ssl.TLSVersion.TLSv1_3,ssl.TLSVersion.TLSv1_3,True,False),
+    ("legacy TLS1.0/1.1 with SNI",ssl.TLSVersion.TLSv1,ssl.TLSVersion.TLSv1_1,True,True),
+]
+for label,minimum,maximum,sni,legacy in tests:
+    begin=time.monotonic()
+    stage="TCP"
     try:
-        started=time.monotonic()
-        with socket.socket(family, stype, proto) as sock:
-            sock.settimeout(10)
+        with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
+            sock.settimeout(6)
             sock.connect(addr)
-            print(label, "TCP-connected in", round(time.monotonic()-started,2), "s", flush=True)
-            # The university can use its own CA. This probe is deliberately
-            # unauthenticated and never sends any credentials, so inspect
-            # TLS/IMAP availability even if system trust does not recognize it.
+            stage="TLS"
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname=False
             context.verify_mode=ssl.CERT_NONE
-            context.minimum_version=ssl.TLSVersion.TLSv1_2
-            with context.wrap_socket(sock, server_hostname=HOST) as secure:
-                secure.settimeout(10)
-                print(label, "TLS negotiated", secure.version(), secure.cipher()[0],
-                      "after", round(time.monotonic()-started,2), "s", flush=True)
-                # Never send IMAP commands or authentication data.
-                greeting=secure.recv(256)
-                # Sanitize greeting; server could send arbitrary text.
-                sample=''.join(chr(c) if 32<=c<=126 else '?' for c in greeting[:160])
-                print(label,"greeting status=", "OK" if greeting.startswith(b'* OK') else
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore",DeprecationWarning)
+                context.minimum_version=minimum
+                context.maximum_version=maximum
+            if legacy:
+                context.set_ciphers("DEFAULT:@SECLEVEL=0")
+            with context.wrap_socket(sock,server_hostname=HOST if sni else None) as secure:
+                print(label,"SUCCESS TLS=",secure.version(),"cipher=",secure.cipher()[0],
+                      "elapsed=",round(time.monotonic()-begin,2),"s",flush=True)
+                stage="GREETING"
+                secure.settimeout(6)
+                greeting=secure.recv(160)
+                print(label,"GREETING","OK" if greeting.startswith(b"* OK") else
                       ("EOF" if not greeting else "OTHER"),
-                      "bytes=",len(greeting), "sample=",repr(sample),flush=True)
+                      "bytes=",len(greeting),flush=True)
     except Exception as error:
-        print(label, "failure:", type(error).__name__, str(error)[:180], flush=True)
-
-# Never fail workflow just because university server is unreachable.
+        print(label,"FAILED stage=",stage,"error=",type(error).__name__,
+              "detail=",str(error)[:140],
+              "elapsed=",round(time.monotonic()-begin,2),"s",flush=True)
