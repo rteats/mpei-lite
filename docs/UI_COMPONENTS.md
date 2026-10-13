@@ -2,7 +2,7 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Short bottom navigation | ShortNavigationBar / MpeiNeoApp.kt | Four icon-only Material 3 Expressive destinations; native horizontal pager uses identical full-height page constraints to avoid jumps when changing tabs. |
+| Short bottom navigation | ShortNavigationBar / MpeiNeoApp.kt | Five icon-only Material 3 Expressive destinations; native horizontal pager uses identical full-height page constraints to avoid jumps when changing tabs. |
 | Schedule destination (Пары) | MpeiNeoApp.kt / ScheduleAgenda.kt | Tap to switch to Schedule and jump to today even if already selected. |
 | BARS navigation item | MpeiNeoApp.kt | Becomes a back arrow labelled Оценки when the BARS browser is visible. |
 | Bottom floating search bar | ScheduleDockedSearch.kt | Raised Material surface (shadow elevation 10dp), bottom-to-top fading scrim; floats immediately above the navbar. Collapsed placeholder displays the selected group, teacher, or room (including a custom favorite name). No separate target card or month/year header. |
@@ -31,7 +31,7 @@ Navigation retains Material 3 Expressive ShortNavigationBar but removes all visu
 
 ## Native tab swipes and WebViews
 
-All four pages are pages of one horizontal Compose pager. Native Schedule,
+All five pages are pages of one horizontal Compose pager. Native Schedule,
 BARS grades, and Settings accept horizontal swipes, synchronized with icon
 selection. BARS login/browser and the OWA Mail WebView retain native WebView
 touch handling instead of allowing the pager to steal website interactions.
@@ -84,3 +84,9 @@ network hosts continue to use system trust. The pinned certificate must
 still be in its validity period and name `mail.mpei.ru`. JavaMail's
 `ssl.checkserveridentity=true` remains enabled. On certificate rotation,
 connections fail closed and require another explicit verification.
+
+## Campus map
+
+The fifth tab in `CampusMapScreen.kt` displays Yandex MapKit Lite markers only
+when selected and remotely permitted. Without a key or online map, a local building
+list is available. See `docs/MAPKIT.md` for API limits and emergency shutoff.

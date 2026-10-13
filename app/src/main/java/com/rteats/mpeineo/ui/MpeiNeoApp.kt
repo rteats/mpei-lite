@@ -74,7 +74,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
-internal enum class AppTab { SCHEDULE, BARS, MAIL, SETTINGS }
+internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
 /**
  * An embedded WebView can request that its focused input be brought into view.
@@ -469,6 +469,12 @@ fun MpeiNeoApp(
                     label = null,
                 )
                 ShortNavigationBarItem(
+                    selected = currentTab == AppTab.MAPS,
+                    onClick = { navigate(AppTab.MAPS) },
+                    icon = { AppIcon(AppIcons.Location, contentDescription = "Карта МЭИ") },
+                    label = null,
+                )
+                ShortNavigationBarItem(
                     selected = currentTab == AppTab.SETTINGS,
                     onClick = { navigate(AppTab.SETTINGS) },
                     icon = { AppIcon(AppIcons.Settings, contentDescription = "Настройки") },
@@ -483,7 +489,7 @@ fun MpeiNeoApp(
             state = pager,
             modifier = Modifier.fillMaxSize(),
             userScrollEnabled = nativeSwipeAllowed,
-            beyondViewportPageCount = 3,
+            beyondViewportPageCount = 4,
             key = { AppTab.entries[it].name },
         ) { page ->
             val destination = AppTab.entries[page]
@@ -515,6 +521,11 @@ fun MpeiNeoApp(
                     AppTab.MAIL -> MailScreen(
                         viewModel = mailViewModel,
                         active = pager.currentPage == page && !mailWebVisible,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+
+                    AppTab.MAPS -> CampusMapScreen(
+                        active = pager.settledPage == page && !pager.isScrollInProgress,
                         modifier = Modifier.fillMaxSize(),
                     )
 
@@ -585,7 +596,7 @@ fun MpeiNeoApp(
             )
             WebViewPageEdges(
                 onPrevious = { navigate(AppTab.BARS) },
-                onNext = { navigate(AppTab.SETTINGS) },
+                onNext = { navigate(AppTab.MAPS) },
             )
         }
 

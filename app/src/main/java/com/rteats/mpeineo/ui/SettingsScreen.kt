@@ -488,6 +488,15 @@ internal fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                SettingsAction(
+                    "Условия использования Яндекс Карт",
+                    "Лицензия и правила использования MapKit",
+                    AppIcons.Location,
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://yandex.ru/legal/maps_api/")))
+                    },
+                )
             }
         }
     }
