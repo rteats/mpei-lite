@@ -2,6 +2,8 @@ package com.rteats.mpeineo.ui
 
 import android.graphics.Paint
 import android.graphics.Typeface
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -316,7 +319,8 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                             selected = building
                             val p = metersAt(building.latitude, building.longitude)
                             zoom = 2.1f
-                            pan = Offset(-p.x * mapScale(), -p.y * mapScale())
+                            val newScale = min(viewport.width / 830f, viewport.height / 850f) * zoom
+                            pan = Offset(-p.x * newScale, -p.y * newScale)
                             showList = false
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
