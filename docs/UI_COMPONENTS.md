@@ -87,8 +87,8 @@ connections fail closed and require another explicit verification.
 
 ## Campus map
 
-The fifth tab in `CampusMapScreen.kt` renders a local Compose Canvas campus
-schematic with individual tappable buildings, pinch zoom, pan, recenter and a
-building list. MpeiX supplies approximate marker positions under the MIT
-license; rendered footprints and footways are intentionally stylized, not
-surveyed geometry. See `docs/OFFLINE_CAMPUS_MAP.md`.
+The fifth tab in `CampusMapScreen.kt` renders true offline OpenStreetMap
+building footprints, roads, paths and green areas via Compose Canvas with
+Monet colors. Individual building polygons are tappable; pan, pinch zoom,
+recenter and building list are native. OSM attribution is on the map.
+See `docs/OFFLINE_CAMPUS_MAP.md`.

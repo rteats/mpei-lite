@@ -1,32 +1,48 @@
-# Offline MPEI campus map
+# MPEI Neo offline OpenStreetMap campus
 
-The fifth tab has **no network calls** and **does not use MapKit**, Yandex,
-WebView, maps API keys, native mapping libraries, or any location permission.
+The Maps destination now renders **real OSM building footprints, streets,
+footpaths and green spaces** from a locally bundled 33 KB GeoJSON-like
+asset. No SDK, WebView, map server, tiles, API keys, permissions or runtime
+network requests.
 
-The campus is drawn with Compose Canvas, using MaterialTheme.colorScheme
-for every fill, road and building label. Drag and pinch to zoom, tap a building
-to see its official street address, or use the "Корпуса" list. Reset zoom
-using the floating reset icon. The map is a **schematic**, not a navigational
-map: building rectangles, grass and pedestrian paths are deliberately
-simplified illustrations, not actual surveyed polygons. It must not be used
-for turn-by-turn directions or precise routing.
+## Data generation
 
-## Source and attribution
+OpenStreetMap data © OpenStreetMap contributors, licensed under
+[ODbL 1.0](https://www.openstreetmap.org/copyright).
 
-Individual marker coordinates (A, Б, В, Г, Д, Е, Ж, З, И, К, Л, М, Н, Р,
-С, Т, Ф, Х, Э) were adapted from the MpeiX open-source
-\`statics/map/markers.json\` dataset:
-https://github.com/tonykolomeytsev/mpeiapp
-(Copyright © 2021 Anton Kolomeytsev; MIT License).
-Street addresses were checked against MPEI's directory:
-https://mpei.ru/AboutUniverse/Contact/Pages/Sheme.aspx
+Source: OpenStreetMap API 0.6, geographic bbox
+\`37.70125,55.75285,37.71085,55.7587\`, extracted via
+\`scripts/build_campus_geometry.py\`.
+The generator preserves true way vertices (simplified to 0.3–1 m tolerance
+depending on the feature class) and stores them as decimetres relative to
+55.7559 N, 37.70605 E. The map shows an on-screen © OpenStreetMap
+attribution linked to the copyright/license page.
 
-The campus geometry is local and drawn in Compose. **No OSM building
-polygons have been imported yet**. Replace the simplified footprint
-geometry when source-verified open building polygons are available,
-rather than presenting approximate footprints as architectural plans.
+The manual GitHub Actions workflow \`Refresh campus geometry\` can regenerate
+the dataset when OSM changes. Update \`app/src/main/assets/campus_osm.json\`
+with the regenerated output, review changed features, and rebuild.
 
-### MpeiX MIT license notice
+## Selection
+
+Campus buildings are identified from names on OSM polygons (Корпус А,
+Корпус Б etc.), **not** from MpeiX's approximate marker coordinates. Taps
+hit actual building outlines, with a small nearby-label tolerance. Each
+building opens a compact address card, or can be selected from the list.
+Names and addresses remain locally bundled. Buildings without a recognized
+MPEI name are drawn in a neutral surface color.
+
+Pan and pinch-zoom work entirely in Compose, using Material 3 dynamic color
+roles. No schematic roads/rectangles remain.
+
+OSM data can still be inaccurate, incomplete or outdated. Building outlines
+are not navigation-grade surveying data.
+
+## Addresses
+
+Address labeling was informed by MpeiX
+([repository](https://github.com/tonykolomeytsev/mpeiapp),
+Copyright © 2021 Anton Kolomeytsev, MIT License).
+Full MIT license notice for adapted address data:
 
 Copyright (c) 2021 Anton Kolomeytsev
 
