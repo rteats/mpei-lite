@@ -47,6 +47,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
     private var sessionVersion = 0L
 
     init {
+        repository.logState("inbox model created credentialsStored=${initialAuth != null}")
         if (initialAuth != null) {
             val version = sessionVersion
             viewModelScope.launch {
@@ -66,12 +67,14 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
             return
         }
         val auth = MailCredentials(username.trim(), password)
+        repository.logState("login requested")
         attemptedCredentials = auth
         val version = ++sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, notice = null, certificate = null) }
             runCatching { repository.refreshInbox(auth) }
                 .onSuccess { items ->
+                    repository.logState("login success messages=${items.size}")
                     if (version != sessionVersion) return@onSuccess
                     // An obsolete login must never restore credentials after logout.
                     repository.credentials.save(auth)
@@ -81,6 +84,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
                     }
                 }.onFailure { cause ->
                     if (version != sessionVersion) return@onFailure
+                    repository.logState("login failure type=${cause.javaClass.simpleName}")
                     handleConnectionFailure(cause, version)
                 }
         }
@@ -90,17 +94,22 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         val auth = inMemoryCredentials ?: return
         attemptedCredentials = auth
         if (_state.value.loading) return
+        repository.logState("refresh requested cachedItems=${_state.value.items.size}")
         val version = sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching { repository.refreshInbox(auth) }
                 .onSuccess { items ->
                     if (version == sessionVersion) {
+                        repository.logState("refresh success messages=${items.size}")
                         _state.update { it.copy(items = items, loading = false) }
                     }
                 }
                 .onFailure { cause ->
-                    if (version == sessionVersion) handleConnectionFailure(cause, version)
+                    if (version == sessionVersion) {
+                        repository.logState("refresh failure type=${cause.javaClass.simpleName}")
+                        handleConnectionFailure(cause, version)
+                    }
                 }
         }
     }
@@ -296,6 +305,9 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
             descriptions.contains("PKIX", ignoreCase = true) ||
             descriptions.contains("SSLHandshake", ignoreCase = true)
 
+        repository.logState(
+            "connection failure tlsSuspected=$likelyTlsIssue type=${cause.javaClass.simpleName}"
+        )
         if (!likelyTlsIssue) {
             _state.update {
                 it.copy(loading = false, inspectingCertificate = false, error = readableError(cause))

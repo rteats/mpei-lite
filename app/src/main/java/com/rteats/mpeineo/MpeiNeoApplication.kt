@@ -79,7 +79,7 @@ class AppContainer(application: Application) {
         .build()
 
     val diagnostics = DiagnosticLog(application)
-    val mailRepository = MailRepository(application)
+    val mailRepository = MailRepository(application, diagnostics)
     val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
     internal val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)

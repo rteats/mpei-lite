@@ -3,6 +3,7 @@ package com.rteats.mpeineo.data
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import android.os.Environment
 import android.provider.MediaStore
 import android.security.keystore.KeyGenParameterSpec
@@ -108,7 +109,13 @@ class MailCredentialsStore(private val context: Context) {
  * Opening a message explicitly sets \\Seen via a separate READ_WRITE session.
  * Each operation uses a fresh, short-lived connection.
  */
-class MailRepository(private val context: Context) {
+class MailRepository(
+    private val context: Context,
+    private val diagnostics: DiagnosticLog? = null,
+) {
+    /** Privacy safe: no usernames, passwords, subjects, URLs or response text. */
+    internal fun logState(event: String) { diagnostics?.log("MAIL", event) }
+
     val contextForNotifications: Context get() = context.applicationContext
     val credentials = MailCredentialsStore(context)
     private val tls = MailTlsTrust(context)
@@ -143,12 +150,31 @@ class MailRepository(private val context: Context) {
             put("mail.debug", "false")
         }
         val store: Store = Session.getInstance(properties).getStore("imaps")
+        val started = SystemClock.elapsedRealtime()
+        val modeLabel = if (mode == Folder.READ_WRITE) "read-write" else "read-only"
+        var phase = "connect"
+        logState("IMAPS started mode=$modeLabel")
         try {
             store.connect("mail.mpei.ru", 993, auth.username, auth.password)
+            phase = "open-folder"
             val folder = store.getFolder("INBOX") as IMAPFolder
             folder.open(mode)
-            try { return action(folder) } finally { folder.close(false) }
-        } finally { store.close() }
+            phase = "fetch"
+            val result = try { action(folder) } finally { folder.close(false) }
+            logState("IMAPS success mode=$modeLabel elapsedMs=${SystemClock.elapsedRealtime() - started}")
+            return result
+        } catch (error: Exception) {
+            val root = generateSequence(error as Throwable) { it.cause }.take(8).last()
+            logState(
+                "IMAPS failure mode=$modeLabel phase=$phase type=${error.javaClass.simpleName} " +
+                    "cause=${root.javaClass.simpleName} " +
+                    "elapsedMs=${SystemClock.elapsedRealtime() - started}"
+            )
+            throw error
+        } finally {
+            // A secondary disconnect error must not obscure the original failure.
+            runCatching { store.close() }
+        }
     }
 
     suspend fun listInbox(auth: MailCredentials, maxMessages: Int = 60): List<MailSummary> =
