@@ -9,7 +9,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clipToBounds
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
