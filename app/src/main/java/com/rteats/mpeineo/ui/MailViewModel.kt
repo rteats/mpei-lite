@@ -343,7 +343,12 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
 
     private fun readableError(t: Throwable): String {
         val message = t.message.orEmpty()
+        val endedUnexpectedly = generateSequence(t) { it.cause }
+            .take(8).any { it is java.io.EOFException }
         return when {
+            endedUnexpectedly ->
+                "Сервер mail.mpei.ru преждевременно закрыл соединение. " +
+                    "Сохранённые письма доступны; попробуйте позже или откройте ОСЭП."
             message.contains("authentication", true) || message.contains("login failed", true) ->
                 "Не удалось войти в IMAP. Проверьте имя пользователя и пароль FairEmail."
             message.contains("timeout", true) -> "Сервер почты не ответил. Повторите позже."
