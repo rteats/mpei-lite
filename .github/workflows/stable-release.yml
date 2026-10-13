@@ -104,13 +104,17 @@ jobs:
           ANDROID_KEYSTORE_TYPE: PKCS12
         run: |
           gradle --no-daemon assembleStableRelease             -PVERSION_CODE=${{ steps.meta.outputs.version_code }}             -PVERSION_NAME=${{ steps.meta.outputs.version }}
-          cp app/build/outputs/apk/stable/release/app-stable-release.apk "${{ steps.meta.outputs.apk_name }}"
+          APK_DIR=app/build/outputs/apk/stable/release
+          cp "$APK_DIR/app-universal-stable-release.apk" "${{ steps.meta.outputs.apk_name }}"
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            cp "$APK_DIR/app-${abi}-stable-release.apk" "MPEI-Neo-v${{ steps.meta.outputs.version }}-${abi}.apk"
+          done
 
       - name: Upload stable APK
         uses: actions/upload-artifact@v4
         with:
           name: mpei-neo-stable-apk
-          path: ${{ steps.meta.outputs.apk_name }}
+          path: MPEI-Neo-v*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -211,4 +215,5 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: true
-          files: ${{ needs.build.outputs.apk_name }}
+          files: |
+            MPEI-Neo-v*.apk

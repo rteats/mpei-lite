@@ -58,24 +58,45 @@ jobs:
           YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: |
           gradle --no-daemon testDevDebugUnitTest assembleDevRelease             -PVERSION_CODE=${{ github.run_number }}             -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
-          cp app/build/outputs/apk/dev/release/app-dev-release.apk MPEI-Neo-Dev.apk
+          APK_DIR=app/build/outputs/apk/dev/release
+          cp "$APK_DIR/app-universal-dev-release.apk" MPEI-Neo-Dev.apk
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            cp "$APK_DIR/app-${abi}-dev-release.apk" "MPEI-Neo-Dev-${abi}.apk"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          for file in sorted(Path(".").glob("MPEI-Neo-Dev*.apk")):
+              with zipfile.ZipFile(file) as apk:
+                  libs = sorted({p.split("/")[1] for p in apk.namelist() if p.startswith("lib/")})
+              print(f"APK {file.name}: {file.stat().st_size / 1e6:.1f} MB, ABIs={libs}")
+          PY
 
       - name: Prepare API-free Dev update manifest
         run: |
-          SHA256=$(sha256sum MPEI-Neo-Dev.apk | cut -d ' ' -f1)
-          cat > update.json <<EOF
-          {
-            "versionCode": ${{ github.run_number }},
-            "versionName": "${DEV_BASE_VERSION}-dev.${{ github.run_number }}",
-            "sha256": "${SHA256}"
+          python3 - <<'PY'
+          import json, hashlib, os
+          from pathlib import Path
+          def digest(path):
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+          variants = {
+              abi: digest(f"MPEI-Neo-Dev-{abi}.apk")
+              for abi in ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
           }
-          EOF
+          manifest = {
+              "versionCode": int(os.environ["GITHUB_RUN_NUMBER"]),
+              "versionName": f'{os.environ["DEV_BASE_VERSION"]}-dev.{os.environ["GITHUB_RUN_NUMBER"]}',
+              "sha256": digest("MPEI-Neo-Dev.apk"),
+              "apkVariants": variants,
+          }
+          Path("update.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
 
       - name: Upload dev artifact
         uses: actions/upload-artifact@v4
         with:
           name: mpei-neo-dev-apk
-          path: MPEI-Neo-Dev.apk
+          path: MPEI-Neo-Dev*.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -102,4 +123,8 @@ jobs:
             This package is `com.rteats.mpeineo.dev` and uses the public disposable development signing key.
           files: |
             MPEI-Neo-Dev.apk
+            MPEI-Neo-Dev-arm64-v8a.apk
+            MPEI-Neo-Dev-armeabi-v7a.apk
+            MPEI-Neo-Dev-x86_64.apk
+            MPEI-Neo-Dev-x86.apk
             update.json

@@ -92,6 +92,18 @@ android {
         }
     }
 
+    // MapKit bundles sizeable native engines for each CPU type.
+    // Standalone ABI APKs avoid downloading three unused copies.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            // Keep a universal APK for older updater builds and arbitrary devices.
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -114,6 +126,9 @@ android {
     }
 
     packaging {
+        // Compress native libraries in downloads, extracting them on install.
+        // In particular, MapKit's libmaps-mobile.so is large.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
             "META-INF/DEPENDENCIES",
