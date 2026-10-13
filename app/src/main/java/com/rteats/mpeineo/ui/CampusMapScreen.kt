@@ -36,9 +36,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -172,18 +175,90 @@ private fun screenPoint(
     viewport.height / 2f + pan.y + point.y * scale,
 )
 
-private fun shapePath(
-    points: List<List<Int>>,
-    scale: Float,
-    pan: Offset,
-    viewport: IntSize,
-    close: Boolean,
-): Path = Path().apply {
-    points.forEachIndexed { index, coordinates ->
-        val p = screenPoint(pointMeters(coordinates), scale, pan, viewport)
-        if (index == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+/**
+ * Immutable paths in campus metres. Unlike constructing screen-space Paths
+ * every frame, these are built once after loading the bundled JSON and reused
+ * for every pan, zoom, and Material You redraw.
+ */
+private data class PreparedFeature(
+    val source: CampusFeature,
+    val path: Path,
+    val bounds: Rect,
+)
+
+private data class PreparedCampus(
+    val buildings: List<PreparedFeature>,
+    val roads: List<PreparedFeature>,
+    val land: List<PreparedFeature>,
+    val bounds: Rect,
+)
+
+private fun prepareFeature(feature: CampusFeature, close: Boolean): PreparedFeature? {
+    if (feature.p.size < if (close) 3 else 2) return null
+    var left = Float.POSITIVE_INFINITY
+    var top = Float.POSITIVE_INFINITY
+    var right = Float.NEGATIVE_INFINITY
+    var bottom = Float.NEGATIVE_INFINITY
+    val path = Path()
+    feature.p.forEachIndexed { index, pair ->
+        if (pair.size < 2) return null
+        val point = pointMeters(pair)
+        if (index == 0) path.moveTo(point.x, point.y)
+        else path.lineTo(point.x, point.y)
+        left = min(left, point.x)
+        top = min(top, point.y)
+        right = max(right, point.x)
+        bottom = max(bottom, point.y)
     }
-    if (close) close()
+    if (close) path.close()
+    return PreparedFeature(feature, path, Rect(left, top, right, bottom))
+}
+
+private fun prepareCampus(data: CampusGeometry): PreparedCampus {
+    val buildings = data.buildings.mapNotNull { prepareFeature(it, true) }
+    val roads = data.roads.mapNotNull { prepareFeature(it, false) }
+    val land = data.land.mapNotNull { prepareFeature(it, true) }
+    val features = buildings + roads + land
+    val bounds = Rect(
+        features.minOfOrNull { it.bounds.left } ?: -250f,
+        features.minOfOrNull { it.bounds.top } ?: -350f,
+        features.maxOfOrNull { it.bounds.right } ?: 250f,
+        features.maxOfOrNull { it.bounds.bottom } ?: 350f,
+    )
+    return PreparedCampus(buildings, roads, land, bounds)
+}
+
+private fun Rect.visibleWithin(view: Rect, margin: Float = 0f): Boolean =
+    right + margin >= view.left && left - margin <= view.right &&
+        bottom + margin >= view.top && top - margin <= view.bottom
+
+/**
+ * Don't let dragging expose a completely empty map. On an axis where the
+ * geometry is smaller than the viewport, keep it centered instead.
+ */
+internal fun clampCampusPan(
+    pan: Offset,
+    scale: Float,
+    viewport: IntSize,
+    world: Rect,
+    marginPx: Float = 0f,
+): Offset {
+    if (viewport.width <= 0 || viewport.height <= 0 || scale <= 0f) return pan
+    fun axis(value: Float, minWorld: Float, maxWorld: Float, widthPx: Float): Float {
+        val contentPx = (maxWorld - minWorld) * scale
+        return if (contentPx <= widthPx - 2f * marginPx) {
+            -(minWorld + maxWorld) / 2f * scale
+        } else {
+            value.coerceIn(
+                widthPx / 2f - maxWorld * scale - marginPx,
+                -widthPx / 2f - minWorld * scale + marginPx,
+            )
+        }
+    }
+    return Offset(
+        axis(pan.x, world.left, world.right, viewport.width.toFloat()),
+        axis(pan.y, world.top, world.bottom, viewport.height.toFloat()),
+    )
 }
 
 private fun roadMeters(kind: String): Float = when (kind) {
@@ -219,6 +294,7 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
         return
     }
 
+    val prepared = remember(data) { prepareCampus(data) }
     val places = remember(data) { placesFromGeometry(data) }
     val placesByOsmId = remember(places) { places.associateBy { it.footprint.id } }
     val colors = MaterialTheme.colorScheme
@@ -231,6 +307,14 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
     // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
     // default overview without enormous empty margins above and below.
     fun mapScale(): Float = max(viewport.width / 600f, viewport.height / 850f) * zoom
+    fun fitPan(nextPan: Offset, nextZoom: Float): Offset {
+        val scale = max(viewport.width / 600f, viewport.height / 850f) * nextZoom
+        return clampCampusPan(nextPan, scale, viewport, prepared.bounds)
+    }
+    fun changeZoom(factor: Float) {
+        zoom = (zoom * factor).coerceIn(.65f, 5f)
+        pan = fitPan(pan, zoom)
+    }
     fun project(p: Offset) = screenPoint(p, mapScale(), pan, viewport)
 
     val labelPaint = remember {
@@ -243,8 +327,11 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().testTag(if (active) "campus-map-screen" else "campus-map-precomposed")) {
         Canvas(
             modifier = Modifier.fillMaxSize()
-                .onSizeChanged { viewport = it }
-                .pointerInput(data, places) {
+                .onSizeChanged {
+                    viewport = it
+                    pan = fitPan(pan, zoom)
+                }
+                .pointerInput(prepared) {
                     detectTransformGestures { centroid, gesturePan, gestureZoom, _ ->
                         val nextZoom = (zoom * gestureZoom).coerceIn(.65f, 5f)
                         val ratio = nextZoom / zoom
@@ -252,11 +339,12 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                             centroid.x - size.width / 2f,
                             centroid.y - size.height / 2f,
                         )
-                        pan = (pan - cursor) * ratio + cursor + gesturePan
+                        val nextPan = (pan - cursor) * ratio + cursor + gesturePan
                         zoom = nextZoom
+                        pan = fitPan(nextPan, nextZoom)
                     }
                 }
-                .pointerInput(data, places) {
+                .pointerInput(prepared, places) {
                     detectTapGestures { tap ->
                         val scale = mapScale().takeIf { it > 0 } ?: return@detectTapGestures
                         val point = Offset(
@@ -283,50 +371,77 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
             val scale = mapScale()
             drawRect(colors.surface)
 
-            data.land.forEach { land ->
-                if (land.p.size < 3) return@forEach
-                val color = when (land.kind) {
-                    "forest", "wood", "scrub" -> colors.tertiaryContainer.copy(alpha = .58f)
-                    "pitch", "playground" -> colors.secondaryContainer.copy(alpha = .72f)
-                    else -> colors.secondaryContainer.copy(alpha = .43f)
+            val origin = Offset(
+                viewport.width / 2f + pan.x,
+                viewport.height / 2f + pan.y,
+            )
+            // Cull against the current visible world rectangle before
+            // drawing. A global canvas transform reuses prepared world Paths.
+            val visibleWorld = Rect(
+                -origin.x / scale,
+                -origin.y / scale,
+                (size.width - origin.x) / scale,
+                (size.height - origin.y) / scale,
+            )
+            clipRect {
+                withTransform({
+                    translate(origin.x, origin.y)
+                    scale(scale, scale, pivot = Offset.Zero)
+                }) {
+                    prepared.land.forEach { land ->
+                        if (!land.bounds.visibleWithin(visibleWorld)) return@forEach
+                        val color = when (land.source.kind) {
+                            "forest", "wood", "scrub" -> colors.tertiaryContainer.copy(alpha = .58f)
+                            "pitch", "playground" -> colors.secondaryContainer.copy(alpha = .72f)
+                            else -> colors.secondaryContainer.copy(alpha = .43f)
+                        }
+                        drawPath(land.path, color)
+                    }
+                    // Roads use OSM geometry and a cartographic width in metres.
+                    prepared.roads.forEach { road ->
+                        val walking = isWalkingRoute(road.source.kind)
+                        val width = roadMeters(road.source.kind).coerceAtLeast(
+                            1.5.dp.toPx() / scale,
+                        )
+                        if (!road.bounds.visibleWithin(visibleWorld, width / 2f)) {
+                            return@forEach
+                        }
+                        if (!walking) {
+                            drawPath(
+                                road.path,
+                                colors.outlineVariant.copy(alpha = .5f),
+                                style = Stroke(
+                                    width = width + 1.dp.toPx() / scale,
+                                    cap = StrokeCap.Round,
+                                ),
+                            )
+                        }
+                        drawPath(
+                            road.path,
+                            if (walking) colors.secondary.copy(alpha = .36f)
+                            else colors.surfaceContainerHigh,
+                            style = Stroke(width = width, cap = StrokeCap.Round),
+                        )
+                    }
+                    prepared.buildings.forEach { building ->
+                        if (!building.bounds.visibleWithin(visibleWorld)) return@forEach
+                        val place = placesByOsmId[building.source.id]
+                        val chosen = selected?.footprint?.id == building.source.id
+                        val fill = when {
+                            chosen -> colors.primary
+                            place != null -> colors.primaryContainer
+                            else -> colors.surfaceContainerHighest
+                        }
+                        drawPath(building.path, fill)
+                        drawPath(
+                            building.path,
+                            if (chosen) colors.primary else colors.outlineVariant,
+                            style = Stroke(
+                                width = (if (chosen) 2f else .9f).dp.toPx() / scale,
+                            ),
+                        )
+                    }
                 }
-                drawPath(shapePath(land.p, scale, pan, viewport, true), color)
-            }
-
-            // Every street/path centerline comes from OSM, not illustration.
-            data.roads.forEach { road ->
-                if (road.p.size < 2) return@forEach
-                val path = shapePath(road.p, scale, pan, viewport, false)
-                val walking = isWalkingRoute(road.kind)
-                val width = (roadMeters(road.kind) * scale).coerceAtLeast(1.5.dp.toPx())
-                if (!walking) {
-                    drawPath(path, colors.outlineVariant.copy(alpha = .5f),
-                        style = Stroke(width = width + 1.dp.toPx(), cap = StrokeCap.Round))
-                }
-                drawPath(
-                    path,
-                    if (walking) colors.secondary.copy(alpha = .36f)
-                    else colors.surfaceContainerHigh,
-                    style = Stroke(width = width, cap = StrokeCap.Round),
-                )
-            }
-
-            data.buildings.forEach { building ->
-                if (building.p.size < 3) return@forEach
-                val place = placesByOsmId[building.id]
-                val selectedHere = selected?.footprint?.id == building.id
-                val fill = when {
-                    selectedHere -> colors.primary
-                    place != null -> colors.primaryContainer
-                    else -> colors.surfaceContainerHighest
-                }
-                val path = shapePath(building.p, scale, pan, viewport, true)
-                drawPath(path, fill)
-                drawPath(
-                    path,
-                    if (selectedHere) colors.primary else colors.outlineVariant,
-                    style = Stroke(width = (if (selectedHere) 2f else .9f).dp.toPx()),
-                )
             }
 
             // Readable, individually selectable building labels, derived from
@@ -362,15 +477,15 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
             shadowElevation = 2.dp,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { zoom = (zoom * 1.25f).coerceAtMost(5f) }) {
+                IconButton(onClick = { changeZoom(1.25f) }) {
                     Text("+", style = MaterialTheme.typography.headlineSmall)
                 }
-                IconButton(onClick = { zoom = (zoom / 1.25f).coerceAtLeast(.65f) }) {
+                IconButton(onClick = { changeZoom(1f / 1.25f) }) {
                     Text("−", style = MaterialTheme.typography.headlineSmall)
                 }
                 IconButton(onClick = {
                     zoom = 1.45f
-                    pan = Offset.Zero
+                    pan = fitPan(Offset.Zero, zoom)
                 }) {
                     AppIcon(AppIcons.Refresh, contentDescription = "Показать весь кампус")
                 }
@@ -426,7 +541,10 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                             selected = place
                             zoom = 2.2f
                             val scale = mapScale()
-                            pan = Offset(-place.center.x * scale, -place.center.y * scale)
+                            pan = fitPan(
+                                Offset(-place.center.x * scale, -place.center.y * scale),
+                                zoom,
+                            )
                             showList = false
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

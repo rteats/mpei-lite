@@ -370,6 +370,9 @@ fun MpeiNeoApp(
         when (pager.settledPage) {
         AppTab.MAIL.ordinal -> !mailWebVisible
         AppTab.BARS.ordinal -> !barsIsWeb
+        // The map owns every pan/pinch, including drags at its edges.
+        // Navbar navigation remains available through navigate().
+        AppTab.MAPS.ordinal -> false
         else -> true
     }
 
