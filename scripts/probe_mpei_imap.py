@@ -58,3 +58,33 @@ for label,minimum,maximum,sni,legacy in tests:
         print(label,"FAILED stage=",stage,"error=",type(error).__name__,
               "detail=",str(error)[:140],
               "elapsed=",round(time.monotonic()-begin,2),"s",flush=True)
+
+# Additional protocol checks: read only the initial greeting. No user commands.
+# Port 143 may offer STARTTLS; never send credentials over plaintext.
+for port in (143,995):
+    start=time.monotonic()
+    try:
+        with socket.create_connection((HOST,port),timeout=6) as sock:
+            sock.settimeout(6)
+            print(f"port={port} TCP connected in {time.monotonic()-start:.2f}s",flush=True)
+            if port==143:
+                banner=sock.recv(200)
+                safe=''.join(chr(v) if 32<=v<=126 else '?' for v in banner[:80])
+                print("IMAP port143 greeting",repr(safe),"bytes",len(banner),flush=True)
+                if banner.startswith(b'* OK'):
+                    sock.sendall(b'a001 CAPABILITY\\r\\n')
+                    resp=sock.recv(320)
+                    safe=''.join(chr(v) if 32<=v<=126 else '?' for v in resp[:240])
+                    print("IMAP port143 unauth capabilities",repr(safe),flush=True)
+            else:
+                ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ctx.check_hostname=False
+                ctx.verify_mode=ssl.CERT_NONE
+                with ctx.wrap_socket(sock,server_hostname=HOST) as tls:
+                    print("POP port995 TLS",tls.version(),flush=True)
+                    tls.settimeout(6)
+                    banner=tls.recv(160)
+                    print("POP port995 greeting",repr(banner[:50]),flush=True)
+    except Exception as error:
+        print("port",port,"failed",type(error).__name__,str(error)[:150],flush=True)
+# Port 993 must speak implicit TLS; do not send plaintext commands there.
