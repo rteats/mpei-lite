@@ -104,11 +104,25 @@ jobs:
           ANDROID_KEYSTORE_TYPE: PKCS12
         run: |
           gradle --no-daemon assembleStableRelease             -PVERSION_CODE=${{ steps.meta.outputs.version_code }}             -PVERSION_NAME=${{ steps.meta.outputs.version }}
-          APK_DIR=app/build/outputs/apk/stable/release
-          cp "$APK_DIR/app-universal-stable-release.apk" "${{ steps.meta.outputs.apk_name }}"
-          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-            cp "$APK_DIR/app-${abi}-stable-release.apk" "MPEI-Neo-v${{ steps.meta.outputs.version }}-${abi}.apk"
-          done
+          python3 - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          directory = Path("app/build/outputs/apk/stable/release")
+          metadata = json.loads((directory / "output-metadata.json").read_text())
+          version = "${{ steps.meta.outputs.version }}"
+          expected = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"}
+          copied = set()
+          for element in metadata["elements"]:
+              abi = next((f["value"] for f in element.get("filters", [])
+                          if f.get("filterType") == "ABI"), None)
+              if abi is not None and abi not in expected:
+                  continue
+              dest = f"MPEI-Neo-v{version}-{abi}.apk" if abi else f"MPEI-Neo-v{version}.apk"
+              shutil.copy2(directory / element["outputFile"], dest)
+              copied.add(abi or "universal")
+          assert copied == expected | {"universal"}, (
+              f"Missing APK variants; copied={copied}; metadata={metadata}")
+          PY
 
       - name: Upload stable APK
         uses: actions/upload-artifact@v4

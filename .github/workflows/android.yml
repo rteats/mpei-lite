@@ -58,18 +58,28 @@ jobs:
           YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: |
           gradle --no-daemon testDevDebugUnitTest assembleDevRelease             -PVERSION_CODE=${{ github.run_number }}             -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
-          APK_DIR=app/build/outputs/apk/dev/release
-          cp "$APK_DIR/app-universal-dev-release.apk" MPEI-Neo-Dev.apk
-          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-            cp "$APK_DIR/app-${abi}-dev-release.apk" "MPEI-Neo-Dev-${abi}.apk"
-          done
           python3 - <<'PY'
+          import json, shutil, zipfile
           from pathlib import Path
-          import zipfile
-          for file in sorted(Path(".").glob("MPEI-Neo-Dev*.apk")):
-              with zipfile.ZipFile(file) as apk:
-                  libs = sorted({p.split("/")[1] for p in apk.namelist() if p.startswith("lib/")})
-              print(f"APK {file.name}: {file.stat().st_size / 1e6:.1f} MB, ABIs={libs}")
+          directory = Path("app/build/outputs/apk/dev/release")
+          manifest = json.loads((directory / "output-metadata.json").read_text())
+          expected = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"}
+          copied = set()
+          for element in manifest["elements"]:
+              abi = next((f["value"] for f in element.get("filters", [])
+                          if f.get("filterType") == "ABI"), None)
+              if abi is not None and abi not in expected:
+                  continue
+              filename = f"MPEI-Neo-Dev-{abi}.apk" if abi else "MPEI-Neo-Dev.apk"
+              source = directory / element["outputFile"]
+              shutil.copy2(source, filename)
+              copied.add(abi or "universal")
+              with zipfile.ZipFile(filename) as apk:
+                  libs = sorted({p.split("/")[1] for p in apk.namelist()
+                                 if p.startswith("lib/")})
+              print(f"APK {filename}: {Path(filename).stat().st_size / 1e6:.1f} MB, ABIs={libs}")
+          assert copied == expected | {"universal"}, (
+              f"Missing APK variants: {expected | {'universal'} - copied}; metadata={manifest}")
           PY
 
       - name: Prepare API-free Dev update manifest
