@@ -53,6 +53,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 
 /**
@@ -234,7 +235,7 @@ private fun LiveCampusMap(
                     geometry = Point(building.latitude, building.longitude)
                     setIcon(ImageProvider.fromBitmap(
                         mapBadge(building.symbol, primary, onPrimary)))
-                    addTapListener(listener)
+                    addTapListener(WeakReference(listener))
                 }
                 listener
             }
