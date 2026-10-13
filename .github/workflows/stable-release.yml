@@ -97,38 +97,19 @@ jobs:
 
       - name: Build signed stable APK
         env:
-          YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEYSTORE_TYPE: PKCS12
         run: |
           gradle --no-daemon assembleStableRelease             -PVERSION_CODE=${{ steps.meta.outputs.version_code }}             -PVERSION_NAME=${{ steps.meta.outputs.version }}
-          python3 - <<'PY'
-          import json, shutil
-          from pathlib import Path
-          directory = Path("app/build/outputs/apk/stable/release")
-          metadata = json.loads((directory / "output-metadata.json").read_text())
-          version = "${{ steps.meta.outputs.version }}"
-          expected = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"}
-          copied = set()
-          for element in metadata["elements"]:
-              abi = next((f["value"] for f in element.get("filters", [])
-                          if f.get("filterType") == "ABI"), None)
-              if abi is not None and abi not in expected:
-                  continue
-              dest = f"MPEI-Neo-v{version}-{abi}.apk" if abi else f"MPEI-Neo-v{version}.apk"
-              shutil.copy2(directory / element["outputFile"], dest)
-              copied.add(abi or "universal")
-          assert copied == expected | {"universal"}, (
-              f"Missing APK variants; copied={copied}; metadata={metadata}")
-          PY
+          cp app/build/outputs/apk/stable/release/app-stable-release.apk "${{ steps.meta.outputs.apk_name }}"
 
       - name: Upload stable APK
         uses: actions/upload-artifact@v4
         with:
           name: mpei-neo-stable-apk
-          path: MPEI-Neo-v*.apk
+          path: ${{ steps.meta.outputs.apk_name }}
           if-no-files-found: error
           retention-days: 30
 
@@ -229,5 +210,4 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: true
-          files: |
-            MPEI-Neo-v*.apk
+          files: ${{ needs.build.outputs.apk_name }}

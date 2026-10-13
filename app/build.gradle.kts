@@ -5,10 +5,6 @@ plugins {
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
 val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.4.0-dev"
-// Supplied at build time; never put the MapKit key in source control.
-val mapkitKey = providers.environmentVariable("YANDEX_MAPKIT_API_KEY").orNull
-    ?: providers.gradleProperty("YANDEX_MAPKIT_API_KEY").orNull
-    ?: ""
 
 val devStoreFile = providers.environmentVariable("ANDROID_DEV_KEYSTORE_FILE").orNull
 val devStorePassword = providers.environmentVariable("ANDROID_DEV_KEYSTORE_PASSWORD").orNull
@@ -45,7 +41,6 @@ android {
         versionCode = appVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "YANDEX_MAPKIT_API_KEY", "\"$mapkitKey\"")
     }
 
     signingConfigs {
@@ -92,18 +87,6 @@ android {
         }
     }
 
-    // MapKit bundles sizeable native engines for each CPU type.
-    // Standalone ABI APKs avoid downloading three unused copies.
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-            // Keep a universal APK for older updater builds and arbitrary devices.
-            isUniversalApk = true
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -126,9 +109,6 @@ android {
     }
 
     packaging {
-        // Compress native libraries in downloads, extracting them on install.
-        // In particular, MapKit's libmaps-mobile.so is large.
-        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
             "META-INF/DEPENDENCIES",
@@ -164,8 +144,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.13.1")
-    // No Search, Geocoder, Routing or NaviKit features.
-    implementation("com.yandex.android:maps.mobile:4.45.0-lite")
     // Android-compatible JavaMail IMAPS and MIME decoding; no SMTP client.
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")

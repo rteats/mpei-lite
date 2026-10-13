@@ -3,7 +3,6 @@ package com.rteats.mpeineo.data
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -24,8 +23,6 @@ private const val DEV_MANIFEST_URL =
     "https://github.com/rteats/mpei-neo/releases/download/dev/update.json"
 private const val DEV_APK_URL =
     "https://github.com/rteats/mpei-neo/releases/download/dev/MPEI-Neo-Dev.apk"
-// Only fixed, previously packaged variants are selectable from the manifest.
-private val SUPPORTED_APK_ABIS = setOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 private const val DEV_PAGE_URL =
     "https://github.com/rteats/mpei-neo/releases/tag/dev"
 
@@ -261,7 +258,7 @@ class GithubUpdateRepository(
             }
             val payload = response.body?.string()
                 ?: error("Dev manifest response was empty")
-            val result = parseDevUpdateManifest(payload, gson, Build.SUPPORTED_ABIS.toList())
+            val result = parseDevUpdateManifest(payload, gson)
             diagnostics.log(
                 "UPDATE",
                 "dev manifest loaded code=${result.versionCode} sha256=true",
@@ -488,15 +485,9 @@ internal data class DevUpdateManifest(
     val versionCode: Int = 0,
     val versionName: String = "",
     val sha256: String = "",
-    val apkVariants: Map<String, String> = emptyMap(),
 )
 
-/** SHA-256 validated, architecture-specific APK where available. */
-internal fun parseDevUpdateManifest(
-    json: String,
-    gson: Gson,
-    supportedAbis: List<String> = emptyList(),
-): GithubReleaseInfo {
+internal fun parseDevUpdateManifest(json: String, gson: Gson): GithubReleaseInfo {
     val data = gson.fromJson(json, DevUpdateManifest::class.java)
         ?: error("Empty Dev update manifest")
     require(data.versionCode > 0) { "Invalid Dev versionCode" }
@@ -508,17 +499,6 @@ internal fun parseDevUpdateManifest(
     require(Regex("^[a-fA-F0-9]{64}$").matches(data.sha256)) {
         "Invalid Dev SHA-256"
     }
-    val selected = supportedAbis.asSequence()
-        .filter { it in SUPPORTED_APK_ABIS }
-        .mapNotNull { abi ->
-            data.apkVariants[abi]
-                ?.takeIf { Regex("^[a-fA-F0-9]{64}$").matches(it) }
-                ?.let { abi to it.lowercase() }
-        }
-        .firstOrNull()
-    val filename = selected?.first?.let { "MPEI-Neo-Dev-$it.apk" } ?: "MPEI-Neo-Dev.apk"
-    val url = selected?.first?.let { DEV_APK_URL.removeSuffix("MPEI-Neo-Dev.apk") + filename }
-        ?: DEV_APK_URL
     return GithubReleaseInfo(
         versionCode = data.versionCode,
         versionName = data.versionName,
@@ -526,8 +506,8 @@ internal fun parseDevUpdateManifest(
         title = "MPEI Neo Dev ${data.versionName}",
         notes = "Автоматическая сборка из main.",
         releasePageUrl = DEV_PAGE_URL,
-        apkUrl = url,
-        apkName = filename,
-        sha256 = selected?.second ?: data.sha256.lowercase(),
+        apkUrl = DEV_APK_URL,
+        apkName = "MPEI-Neo-Dev.apk",
+        sha256 = data.sha256.lowercase(),
     )
 }

@@ -87,6 +87,8 @@ connections fail closed and require another explicit verification.
 
 ## Campus map
 
-The fifth tab in `CampusMapScreen.kt` displays Yandex MapKit Lite markers only
-when selected and remotely permitted. Without a key or online map, a local building
-list is available. See `docs/MAPKIT.md` for API limits and emergency shutoff.
+The fifth tab in `CampusMapScreen.kt` renders a local Compose Canvas campus
+schematic with individual tappable buildings, pinch zoom, pan, recenter and a
+building list. MpeiX supplies approximate marker positions under the MIT
+license; rendered footprints and footways are intentionally stylized, not
+surveyed geometry. See `docs/OFFLINE_CAMPUS_MAP.md`.

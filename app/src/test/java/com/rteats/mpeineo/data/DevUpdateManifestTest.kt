@@ -21,28 +21,6 @@ class DevUpdateManifestTest {
         assertTrue(data.apkUrl.endsWith("/releases/download/dev/MPEI-Neo-Dev.apk"))
     }
 
-    @Test fun prefersSmallAbiApkWithPublishedDigest() {
-        val armDigest = "a".repeat(64)
-        val x86Digest = "c".repeat(64)
-        val payload = """{"versionCode":163,"versionName":"0.4.0-dev.163",
-            "sha256":"$checksum",
-            "apkVariants":{"arm64-v8a":"$armDigest","x86_64":"$x86Digest"}}"""
-        val chosen = parseDevUpdateManifest(payload, gson,
-            listOf("arm64-v8a", "armeabi-v7a"))
-        assertEquals("MPEI-Neo-Dev-arm64-v8a.apk", chosen.apkName)
-        assertEquals(armDigest, chosen.sha256)
-        assertTrue(chosen.apkUrl.endsWith("/MPEI-Neo-Dev-arm64-v8a.apk"))
-    }
-
-    @Test fun unsupportedOrMalformedAbiFallsBackToUniversal() {
-        val payload = """{"versionCode":163,"versionName":"0.4.0-dev.163",
-            "sha256":"$checksum",
-            "apkVariants":{"arm64-v8a":"invalid"}}"""
-        val chosen = parseDevUpdateManifest(payload, gson, listOf("arm64-v8a"))
-        assertEquals("MPEI-Neo-Dev.apk", chosen.apkName)
-        assertEquals(checksum, chosen.sha256)
-    }
-
     @Test(expected = IllegalArgumentException::class)
     fun rejectsMismatchedVersion() {
         parseDevUpdateManifest(
