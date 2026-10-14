@@ -8,6 +8,7 @@ import com.rteats.mpeineo.data.MailCredentials
 import com.rteats.mpeineo.data.MailDetail
 import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.OwaAuthProbe
+import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
@@ -41,6 +42,7 @@ internal data class MailUiState(
 internal class MailViewModel(
     private val repository: MailRepository,
     private val owaAuthProbe: OwaAuthProbe,
+    private val owaMailRepository: OwaMailRepository,
 ) : ViewModel() {
     private val initialAuth = repository.credentials.load()
     private val _state = MutableStateFlow(
@@ -54,16 +56,18 @@ internal class MailViewModel(
 
     init {
         repository.logState("inbox model created credentialsStored=${initialAuth != null}")
-        if (initialAuth != null) {
-            val version = sessionVersion
-            viewModelScope.launch {
+        val version = sessionVersion
+        viewModelScope.launch {
+            if (initialAuth != null) {
                 val cached = repository.cachedInbox(initialAuth.username)
                 if (version == sessionVersion &&
                     inMemoryCredentials?.username == initialAuth.username && cached.isNotEmpty()) {
                     _state.update { it.copy(items = cached) }
                 }
-                refresh()
             }
+            // OWA is usable even without IMAP credentials. Don't require
+            // an IMAP account before attempting the existing OWA session.
+            refresh()
         }
     }
 
@@ -97,39 +101,62 @@ internal class MailViewModel(
     }
 
     fun refresh() {
-        val auth = inMemoryCredentials ?: return
-        attemptedCredentials = auth
         if (_state.value.loading) return
         val refreshId = ++refreshSequence
-        repository.logState("refresh requested id=$refreshId protocol=IMAPS cachedItems=${_state.value.items.size}")
         val version = sessionVersion
+        val auth = inMemoryCredentials
+        repository.logState(
+            "refresh requested id=" + refreshId + " protocol=OWA-first cachedItems=" +
+                _state.value.items.size,
+        )
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            // Diagnostics only: OWA and IMAP have independent authentication.
-            // Neither a missing OWA session nor a failed probe may block IMAP.
-            // No OWA probe is run by the background notification worker.
-            launch {
-                try {
-                    owaAuthProbe.check(OwaAuthProbe.Source.INBOX_REFRESH, refreshId)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    repository.logState(
-                        "OWA auth diagnostic exception refreshId=$refreshId " +
-                            "type=${failure.javaClass.simpleName}",
-                    )
+            // Native OWA uses the WebView session; no password or IMAP login.
+            val owaResult = runCatching { owaMailRepository.inbox(refreshId = refreshId) }
+            if (version != sessionVersion) return@launch
+            if (owaResult.isSuccess) {
+                val items = owaResult.getOrThrow()
+                repository.logState("refresh success id=" + refreshId + " protocol=OWA items=" + items.size)
+                _state.update {
+                    it.copy(configured = true, loading = false, items = items,
+                        error = null, notice = null)
                 }
+                return@launch
             }
+
+            val owaFailure = owaResult.exceptionOrNull()!!
+            repository.logState(
+                "OWA refresh unavailable id=" + refreshId + " type=" +
+                    owaFailure.javaClass.simpleName,
+            )
+            if (auth == null) {
+                _state.update {
+                    it.copy(loading = false,
+                        configured = it.items.isNotEmpty(),
+                        error = if (it.items.isNotEmpty()) null else
+                            "Откройте ОСЭП, войдите и вернитесь к входящим.",
+                        notice = if (it.items.isNotEmpty()) "ОСЭП недоступен, показаны сохранённые письма"
+                            else null)
+                }
+                return@launch
+            }
+
+            attemptedCredentials = auth
+            // Only fall back to the unchanged legacy IMAP implementation.
+            // OWA success must never trigger the unreliable IMAPS connection.
             runCatching { repository.refreshInbox(auth) }
                 .onSuccess { items ->
                     if (version == sessionVersion) {
-                        repository.logState("refresh success messages=${items.size}")
-                        _state.update { it.copy(items = items, loading = false) }
+                        repository.logState("refresh success id=" + refreshId + " protocol=IMAPS items=" + items.size)
+                        _state.update {
+                            it.copy(configured = true, items = items, loading = false)
+                        }
                     }
                 }
                 .onFailure { cause ->
                     if (version == sessionVersion) {
-                        repository.logState("refresh failure type=${cause.javaClass.simpleName}")
+                        repository.logState("refresh failure id=" + refreshId +
+                            " protocol=IMAPS type=" + cause.javaClass.simpleName)
                         handleConnectionFailure(cause, version)
                     }
                 }
@@ -137,6 +164,35 @@ internal class MailViewModel(
     }
 
     fun open(summary: MailSummary) {
+        if (summary.owaConversationId != null) {
+            val version = sessionVersion
+            _state.update {
+                it.copy(selected = summary, message = null, loadingMessage = true,
+                    error = null, notice = null)
+            }
+            viewModelScope.launch {
+                runCatching { owaMailRepository.message(summary) }
+                    .onSuccess { body ->
+                        if (version != sessionVersion) return@onSuccess
+                        _state.update { current ->
+                            if (current.selected?.uid != summary.uid ||
+                                current.selected?.uidValidity != summary.uidValidity) current
+                            else current.copy(message = body, loadingMessage = false,
+                                notice = if (summary.hasAttachment)
+                                    "Вложения пока доступны через ОСЭП" else null)
+                        }
+                    }.onFailure { failure ->
+                        if (version != sessionVersion) return@onFailure
+                        repository.logState("OWA message failure type=" + failure.javaClass.simpleName)
+                        _state.update { current ->
+                            if (current.selected?.uid != summary.uid) current
+                            else current.copy(loadingMessage = false,
+                                error = "Не удалось открыть письмо через ОСЭП. Попробуйте обновить входящие.")
+                        }
+                    }
+            }
+            return
+        }
         val auth = inMemoryCredentials ?: return
         val version = sessionVersion
         _state.update {
@@ -249,6 +305,10 @@ internal class MailViewModel(
         val auth = inMemoryCredentials ?: return
         val version = sessionVersion
         val summary = _state.value.selected ?: return
+        if (summary.owaConversationId != null) {
+            _state.update { it.copy(notice = "Загрузите вложение через ОСЭП.") }
+            return
+        }
         if (_state.value.savingAttachment != null) return
         viewModelScope.launch {
             _state.update { it.copy(savingAttachment = attachment.partPath, notice = null, error = null) }
@@ -379,11 +439,15 @@ internal class MailViewModel(
     }
 
     companion object {
-        fun factory(repo: MailRepository, owaAuthProbe: OwaAuthProbe): ViewModelProvider.Factory =
+        fun factory(
+            repo: MailRepository,
+            owaAuthProbe: OwaAuthProbe,
+            owaMailRepository: OwaMailRepository,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    MailViewModel(repo, owaAuthProbe) as T
+                    MailViewModel(repo, owaAuthProbe, owaMailRepository) as T
             }
     }
 }

@@ -40,6 +40,7 @@ data class MailSummary(
     val sentAt: Long,
     val unread: Boolean,
     val hasAttachment: Boolean,
+    val owaConversationId: String? = null,
 )
 data class MailInboxSnapshot(val uidValidity: Long, val messages: List<MailSummary>)
 data class MailAttachment(

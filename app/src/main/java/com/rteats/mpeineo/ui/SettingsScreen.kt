@@ -350,7 +350,9 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "Почта МЭИ",
-                if (mailState.configured) mailState.username else "Аккаунт не подключён",
+                if (mailState.configured)
+                    mailState.username.ifBlank { "Сессия ОСЭП" }
+                else "Аккаунт не подключён",
                 AppIcons.Mail,
                 mailExpanded, { changeSection("mail", !mailExpanded) },
             ) {
@@ -414,9 +416,9 @@ internal fun SettingsScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
-                if (mailState.configured) {
+                if (mailState.username.isNotBlank()) {
                     SettingsAction(
-                        "Выйти из почты",
+                        "Отключить IMAP",
                         "Отключить почту и остановить проверку новых писем",
                         AppIcons.Logout,
                         onClick = {

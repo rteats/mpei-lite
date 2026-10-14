@@ -145,6 +145,7 @@ fun MpeiNeoApp(
         factory = MailViewModel.factory(
             application.container.mailRepository,
             application.container.owaAuthProbe,
+            application.container.owaMailRepository,
         ),
     )
     val updateViewModel: UpdateViewModel = composeViewModel(
@@ -351,6 +352,7 @@ fun MpeiNeoApp(
             try {
                 pager.scrollToPage(AppTab.MAIL.ordinal)
                 mailWebVisible = false
+                mailViewModel.refresh()
                 logNavigation("close ОСЭП finished current=${pager.currentPage}")
             } finally {
                 if (navigationRequest == request) explicitNavigation = false
