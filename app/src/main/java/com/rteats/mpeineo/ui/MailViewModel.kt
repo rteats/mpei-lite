@@ -68,7 +68,7 @@ internal class MailViewModel(
         if (cached.isNotEmpty()) {
             _state.update {
                 it.copy(configured = true, items = cached,
-                    hasMore = cached.size == MAIL_PAGE_SIZE, nextPageOffset = cached.size)
+                    hasMore = cached.size >= MAIL_PAGE_SIZE, nextPageOffset = cached.size)
             }
         }
         refresh()
