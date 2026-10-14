@@ -49,6 +49,8 @@ internal fun mergeOwaInboxPages(
     older: List<MailSummary>,
 ): List<MailSummary> = (existing + older).distinctBy { it.uidValidity to it.uid }
 
+private const val MAIL_PAGE_SIZE = 60
+
 /** Native mail reads and refreshes exclusively through OWA. */
 internal class MailViewModel(
     private val repository: MailRepository,
@@ -60,14 +62,13 @@ internal class MailViewModel(
     private var sessionVersion = 0L
     private var refreshSequence = 0L
     private var pendingNotification: Pair<Long, Long>? = null
-    private companion object { const val PAGE_SIZE = 60 }
 
     init {
         val cached = owaMailRepository.cachedInbox()
         if (cached.isNotEmpty()) {
             _state.update {
                 it.copy(configured = true, items = cached,
-                    hasMore = cached.size == PAGE_SIZE, nextPageOffset = cached.size)
+                    hasMore = cached.size == MAIL_PAGE_SIZE, nextPageOffset = cached.size)
             }
         }
         refresh()
@@ -81,13 +82,13 @@ internal class MailViewModel(
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, notice = null) }
             try {
-                val items = owaMailRepository.inbox(maxConversations = PAGE_SIZE, refreshId = id)
+                val items = owaMailRepository.inbox(maxConversations = MAIL_PAGE_SIZE, refreshId = id)
                 if (version != sessionVersion) return@launch
                 repository.credentials.clear()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
                 _state.update {
                     it.copy(configured = true, loading = false, items = items,
-                        hasMore = items.size == PAGE_SIZE, nextPageOffset = items.size,
+                        hasMore = items.size == MAIL_PAGE_SIZE, nextPageOffset = items.size,
                         loadingMore = false, moreError = false)
                 }
                 pendingNotification?.let { target ->
@@ -125,7 +126,7 @@ internal class MailViewModel(
         viewModelScope.launch {
             try {
                 val older = owaMailRepository.inbox(
-                    maxConversations = PAGE_SIZE, offset = offset,
+                    maxConversations = MAIL_PAGE_SIZE, offset = offset,
                 )
                 if (version != sessionVersion ||
                     _state.value.nextPageOffset != offset) return@launch
@@ -133,7 +134,7 @@ internal class MailViewModel(
                     it.copy(
                         loadingMore = false,
                         items = mergeOwaInboxPages(it.items, older),
-                        hasMore = older.size == PAGE_SIZE,
+                        hasMore = older.size == MAIL_PAGE_SIZE,
                         nextPageOffset = offset + older.size,
                         moreError = false,
                     )
