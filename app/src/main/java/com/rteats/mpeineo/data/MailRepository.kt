@@ -49,6 +49,13 @@ data class MailAttachment(
     val size: Int,
     val partPath: List<Int>,
 )
+data class MailThreadMessage(
+    val sender: String,
+    val subject: String,
+    val sentAt: Long,
+    val body: String,
+)
+
 data class MailDetail(
     val uid: Long,
     val sender: String,
@@ -56,6 +63,7 @@ data class MailDetail(
     val sentAt: Long,
     val body: String,
     val attachments: List<MailAttachment>,
+    val threadMessages: List<MailThreadMessage> = emptyList(),
 )
 
 /** The password is never written in plaintext, the logs, or app backups. */
