@@ -142,7 +142,10 @@ fun MpeiNeoApp(
         ),
     )
     val mailViewModel: MailViewModel = composeViewModel(
-        factory = MailViewModel.factory(application.container.mailRepository),
+        factory = MailViewModel.factory(
+            application.container.mailRepository,
+            application.container.owaAuthProbe,
+        ),
     )
     val updateViewModel: UpdateViewModel = composeViewModel(
         factory = UpdateViewModel.factory(application.container),

@@ -7,11 +7,13 @@ import com.rteats.mpeineo.data.MailAttachment
 import com.rteats.mpeineo.data.MailCredentials
 import com.rteats.mpeineo.data.MailDetail
 import com.rteats.mpeineo.data.MailRepository
+import com.rteats.mpeineo.data.OwaAuthProbe
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
 import com.rteats.mpeineo.data.markMailRead
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,10 @@ internal data class MailUiState(
 )
 
 /** Only the username and message summaries enter Compose state. Never the password. */
-internal class MailViewModel(private val repository: MailRepository) : ViewModel() {
+internal class MailViewModel(
+    private val repository: MailRepository,
+    private val owaAuthProbe: OwaAuthProbe,
+) : ViewModel() {
     private val initialAuth = repository.credentials.load()
     private val _state = MutableStateFlow(
         MailUiState(configured = initialAuth != null, username = initialAuth?.username.orEmpty()),
@@ -45,6 +50,7 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
     private var inMemoryCredentials: MailCredentials? = initialAuth
     private var attemptedCredentials: MailCredentials? = initialAuth
     private var sessionVersion = 0L
+    private var refreshSequence = 0L
 
     init {
         repository.logState("inbox model created credentialsStored=${initialAuth != null}")
@@ -94,10 +100,26 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
         val auth = inMemoryCredentials ?: return
         attemptedCredentials = auth
         if (_state.value.loading) return
-        repository.logState("refresh requested cachedItems=${_state.value.items.size}")
+        val refreshId = ++refreshSequence
+        repository.logState("refresh requested id=$refreshId protocol=IMAPS cachedItems=${_state.value.items.size}")
         val version = sessionVersion
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
+            // Diagnostics only: OWA and IMAP have independent authentication.
+            // Neither a missing OWA session nor a failed probe may block IMAP.
+            // No OWA probe is run by the background notification worker.
+            launch {
+                try {
+                    owaAuthProbe.check(OwaAuthProbe.Source.INBOX_REFRESH, refreshId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    repository.logState(
+                        "OWA auth diagnostic exception refreshId=$refreshId " +
+                            "type=${failure.javaClass.simpleName}",
+                    )
+                }
+            }
             runCatching { repository.refreshInbox(auth) }
                 .onSuccess { items ->
                     if (version == sessionVersion) {
@@ -357,11 +379,11 @@ internal class MailViewModel(private val repository: MailRepository) : ViewModel
     }
 
     companion object {
-        fun factory(repo: MailRepository): ViewModelProvider.Factory =
+        fun factory(repo: MailRepository, owaAuthProbe: OwaAuthProbe): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    MailViewModel(repo) as T
+                    MailViewModel(repo, owaAuthProbe) as T
             }
     }
 }

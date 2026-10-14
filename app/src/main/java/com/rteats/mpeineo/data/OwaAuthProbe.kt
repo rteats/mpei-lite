@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebSettings
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -26,6 +28,9 @@ class OwaAuthProbe(
 ) {
     private val application = context.applicationContext
     private val preferences = application.getSharedPreferences("owa_auth_diagnostics", Context.MODE_PRIVATE)
+    private val probeMutex = Mutex()
+
+    enum class Source { MANUAL, INBOX_REFRESH }
 
     data class Result(val summary: String)
 
@@ -36,7 +41,11 @@ class OwaAuthProbe(
         val setCookies: List<String>,
     )
 
-    suspend fun check(): Result {
+    suspend fun check(source: Source = Source.MANUAL, refreshId: Long? = null): Result {
+        // Serialize probes: simultaneous Settings and inbox checks must not race
+        // while applying renewed session cookies to the shared WebView store.
+        probeMutex.lock()
+        try {
         val started = SystemClock.elapsedRealtime()
         val timestamp = System.currentTimeMillis()
         val previous = preferences.getLong("checked_at", 0L)
@@ -45,6 +54,7 @@ class OwaAuthProbe(
         var status: Int? = null
         var cookieCount = 0
         var refreshedCookieCount = 0
+        var failureType = "none"
         var summary = "Сеть недоступна — срок сессии не определён"
 
         try {
@@ -75,8 +85,11 @@ class OwaAuthProbe(
                 }
             }
         } catch (failure: Exception) {
+            // Cancellation (navigation/logout) must not appear as a network or auth failure.
+            if (failure is CancellationException) throw failure
             state = "NETWORK_ERROR"
-            summary = "Ошибка проверки: ${failure.javaClass.simpleName} (не обязательно истекла сессия)"
+            failureType = failure.javaClass.simpleName
+            summary = "Ошибка проверки: $failureType (не обязательно истекла сессия)"
         }
 
         val previousAge = if (previous > 0 && timestamp >= previous) {
@@ -85,17 +98,24 @@ class OwaAuthProbe(
             "none"
         }
         val duration = SystemClock.elapsedRealtime() - started
+        val event = if (source == Source.MANUAL) "manual_probe" else "refresh_probe"
+        val refreshLabel = refreshId?.let { " refreshId=$it" }.orEmpty()
         diagnostics.log(
             "OWA_AUTH",
-            "manual_probe state=$state http=${status ?: "none"} " +
+            "$event source=${source.name.lowercase()}$refreshLabel " +
+                "state=$state http=${status ?: "none"} " +
                 "cookies=$cookieCount setCookies=$refreshedCookieCount " +
-                "durationMs=$duration sincePrevious=$previousAge previousState=$lastState",
+                "failureType=$failureType durationMs=$duration " +
+                "sincePrevious=$previousAge previousState=$lastState",
         )
         preferences.edit()
             .putLong("checked_at", timestamp)
             .putString("last_state", state)
             .apply()
         return Result(summary)
+        } finally {
+            probeMutex.unlock()
+        }
     }
 
     private fun requestSessionData(cookies: String, userAgent: String): HttpResult {
