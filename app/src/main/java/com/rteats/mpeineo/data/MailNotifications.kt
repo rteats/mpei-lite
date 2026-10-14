@@ -2,6 +2,7 @@ package com.rteats.mpeineo.data
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -22,6 +24,7 @@ import androidx.work.WorkerParameters
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MainActivity
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 
 /**
  * Background notifications use an authenticated OWA session. Only a hashed
@@ -62,25 +65,32 @@ class MailNotificationPreferences(context: Context) {
         return newMessages.sortedBy { it.uid }
     }
 
-    /** OWA conversation IDs are stable hashes, not sequential IMAP UIDs. */
+    /** OWA conversation IDs are hashes, not sequential IMAP UIDs.
+     *  Calculate arrivals without acknowledging them until alerts have been posted.
+     */
     @Synchronized
-    fun checkpointOwa(account: String, messages: List<MailSummary>): List<MailSummary> {
-        val oldAccount = prefs.getString("owa_account", null)
-        val oldTime = prefs.getLong("owa_latest_time", -1L)
-        val known = prefs.getStringSet("owa_known", emptySet()).orEmpty()
-        val latest = messages.maxOfOrNull { it.sentAt } ?: 0L
-        val newcomers = if (oldAccount == account && oldTime >= 0) {
-            messages.filter {
-                it.sentAt > oldTime || (it.sentAt == oldTime && it.uid.toString() !in known)
-            }
-        } else emptyList()
-        prefs.edit()
-            .putString("owa_account", account)
-            .putLong("owa_latest_time", maxOf(if (oldAccount == account) oldTime else 0L, latest))
-            .putStringSet("owa_known", messages.map { it.uid.toString() }.toSet())
-            .commit()
-        return newcomers.sortedBy { it.sentAt }
+    fun pendingOwa(account: String, messages: List<MailSummary>): OwaNotificationChanges {
+        val sameAccount = prefs.getString("owa_account", null) == account
+        val oldTime = if (sameAccount) prefs.getLong("owa_latest_time", -1L) else -1L
+        val known = if (sameAccount) prefs.getStringSet("owa_known", emptySet()).orEmpty()
+            else emptySet()
+        return calculateOwaNotificationChanges(messages, oldTime, known)
     }
+
+    @Synchronized
+    fun commitOwa(account: String, change: OwaNotificationChanges) {
+        if (!enabled) return // Settings may have disabled notifications during the poll.
+        val stored = prefs.edit()
+            .putString("owa_account", account)
+            .putLong("owa_latest_time", change.latestTime)
+            .putStringSet("owa_known", change.latestIds)
+            .commit()
+        if (!stored) throw IllegalStateException("OWA notification checkpoint not persisted")
+    }
+
+    fun hasOwaBaseline(account: String): Boolean =
+        prefs.getString("owa_account", null) == account &&
+            prefs.getLong("owa_latest_time", -1L) >= 0L
 
     fun clearAccount() {
         prefs.edit()
@@ -97,6 +107,43 @@ class MailNotificationPreferences(context: Context) {
     }
 }
 
+/** Determines which Exchange conversations arrived since the preceding successful poll.
+ *  Keep the set of IDs at the high-watermark timestamp across scans, even if the
+ *  server returns a different page; otherwise identical timestamps can re-alert.
+ *  No email content or account details are persisted here.
+ */
+internal data class OwaNotificationChanges(
+    val newMessages: List<MailSummary>,
+    val latestTime: Long,
+    val latestIds: Set<String>,
+)
+
+internal fun calculateOwaNotificationChanges(
+    messages: List<MailSummary>,
+    previousTime: Long,
+    previousIds: Set<String>,
+): OwaNotificationChanges {
+    val observedLatest = messages.maxOfOrNull { it.sentAt } ?: 0L
+    val latestTime = maxOf(previousTime, observedLatest, 0L)
+    val newMessages = if (previousTime < 0L) emptyList() else messages.filter {
+        it.sentAt > previousTime ||
+            (it.sentAt == previousTime && it.uid.toString() !in previousIds)
+    }.sortedWith(compareBy<MailSummary> { it.sentAt }.thenBy { it.uid })
+    val currentLatestIds = messages.asSequence()
+        .filter { it.sentAt == latestTime }
+        .map { it.uid.toString() }
+        .toSet()
+    val latestIds = if (latestTime > previousTime) currentLatestIds
+        else previousIds + currentLatestIds
+    return OwaNotificationChanges(newMessages, latestTime, latestIds)
+}
+
+private fun logMailNotification(context: Context, event: String) {
+    (context.applicationContext as? Application)?.let {
+        DiagnosticLog(it).log("MAIL_NOTIFY", event)
+    }
+}
+
 object MailNotificationScheduler {
     // Keep the old WorkManager key so upgrades do not create duplicate workers.
     private const val UNIQUE_WORK = "mpei_imap_notification_poll"
@@ -107,22 +154,29 @@ object MailNotificationScheduler {
         if (value) {
             prefs.enabled = true
             schedule(context)
+            logMailNotification(context,
+                "schedule_enabled intervalMin=${prefs.intervalMinutes} permission=${canNotify(context)}")
         } else {
             // Re-enabling must baseline from the current mailbox rather than
             // notifying for all messages received while notifications were off.
             prefs.clearAccount()
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+            logMailNotification(context, "schedule_disabled checkpointCleared=true")
         }
     }
 
     fun changeInterval(context: Context, intervalMinutes: Int) {
         MailNotificationPreferences(context).intervalMinutes = intervalMinutes
-        if (MailNotificationPreferences(context).enabled) schedule(context)
+        if (MailNotificationPreferences(context).enabled) {
+            schedule(context)
+            logMailNotification(context, "schedule_interval_changed intervalMin=$intervalMinutes")
+        }
     }
 
     fun stopAndClear(context: Context) {
         MailNotificationPreferences(context).clearAccount()
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+        logMailNotification(context, "schedule_stopped logout=true checkpointCleared=true")
     }
 
     private fun schedule(context: Context) {
@@ -166,8 +220,8 @@ object MailNotificationScheduler {
         context: Context,
         newMessages: List<MailSummary>,
         previews: Map<Long, String> = emptyMap(),
-    ) {
-        if (newMessages.isEmpty() || !canNotify(context)) return
+    ): Int {
+        if (newMessages.isEmpty() || !canNotify(context)) return 0
         ensureChannel(context)
         val manager = NotificationManagerCompat.from(context)
         val groupKey = "mpei_mail"
@@ -224,6 +278,7 @@ object MailNotificationScheduler {
                 .build()
             manager.notify(9821, summary)
         }
+        return messages.size
     }
 }
 
@@ -259,25 +314,70 @@ class MailNotificationWorker(
     override suspend fun doWork(): Result {
         val prefs = MailNotificationPreferences(applicationContext)
         if (!prefs.enabled) return Result.success()
-        val repository = OwaMailRepository(applicationContext, DiagnosticLog(applicationContext as android.app.Application))
+        val started = SystemClock.elapsedRealtime()
+        val diagnostics = DiagnosticLog(applicationContext as Application)
+        fun log(event: String) = diagnostics.log("MAIL_NOTIFY", event)
+        log("poll_start attempt=$runAttemptCount intervalMin=${prefs.intervalMinutes}")
+        if (!MailNotificationScheduler.canNotify(applicationContext)) {
+            log("poll_skip reason=notification_permission durationMs=${SystemClock.elapsedRealtime() - started}")
+            return Result.success()
+        }
+        val repository = OwaMailRepository(applicationContext, diagnostics)
         return try {
             val messages = repository.inbox(maxConversations = 60)
-            val account = repository.currentAccountKey() ?: return Result.retry()
-            if (MailNotificationPreferences(applicationContext).enabled) {
-                val newMessages = prefs.checkpointOwa(account, messages)
-                if (newMessages.isNotEmpty()) {
-                    val previews = newMessages.take(5).mapNotNull { summary ->
-                        try {
-                            summary.uid to repository.message(summary).body.take(180)
-                        } catch (_: Exception) { null }
-                    }.toMap()
-                    MailNotificationScheduler.show(applicationContext, newMessages, previews)
+            val account = repository.currentAccountKey()
+                ?: throw IllegalStateException("OWA account missing after inbox")
+            if (!prefs.enabled) {
+                log("poll_skip reason=disabled_during_fetch")
+                return Result.success()
+            }
+            val baseline = !prefs.hasOwaBaseline(account)
+            val changes = prefs.pendingOwa(account, messages)
+            val newMessages = changes.newMessages
+            var previewFailures = 0
+            var previewsFetched = 0
+            var posted = 0
+            if (newMessages.isNotEmpty()) {
+                val previews = newMessages.takeLast(5).mapNotNull { summary ->
+                    try {
+                        val body = repository.message(summary).body
+                        previewsFetched++
+                        summary.uid to mailNotificationSnippet(body, 180)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        previewFailures++
+                        log("preview_failure type=${failure.javaClass.simpleName}" +
+                            " category=${(failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty()}")
+                        null
+                    }
+                }.toMap()
+                if (!prefs.enabled) {
+                    log("poll_skip reason=disabled_during_previews")
+                    return Result.success()
+                }
+                posted = MailNotificationScheduler.show(applicationContext, newMessages, previews)
+                if (posted != newMessages.size) {
+                    log("poll_skip reason=notification_unavailable pending=${newMessages.size}")
+                    return Result.success()
                 }
             }
+            prefs.commitOwa(account, changes)
+            log("poll_success baseline=$baseline scanned=${messages.size}" +
+                " new=${newMessages.size} posted=$posted previewOk=$previewsFetched" +
+                " previewFailed=$previewFailures" +
+                " durationMs=${SystemClock.elapsedRealtime() - started}")
             Result.success()
+        } catch (cancelled: CancellationException) {
+            log("poll_cancelled durationMs=${SystemClock.elapsedRealtime() - started}")
+            throw cancelled
         } catch (_: OwaMailRepository.LoginRequired) {
+            log("poll_skip reason=login_required durationMs=${SystemClock.elapsedRealtime() - started}")
             Result.success()
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            log("poll_retry type=${failure.javaClass.simpleName}" +
+                " category=${(failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty()}" +
+                " attempt=$runAttemptCount durationMs=${SystemClock.elapsedRealtime() - started}")
             Result.retry()
         }
     }
