@@ -39,18 +39,26 @@ internal class MailCache(private val context: Context) {
      * Keep writes atomic under the cache lock and bound metadata storage.
      */
     @Synchronized fun saveOwaPage(username: String, page: List<MailSummary>, offset: Int) {
-        val old = inbox(username)?.messages.orEmpty()
-        val merged = if (offset == 0) page + old else old + page
-        val unique = merged.distinctBy { it.uidValidity to it.uid }.take(MAX_OWA_HEADERS)
-        write(file(username, "inbox"), CachedInbox(0x4F5741L, unique))
+        synchronized(sharedOwaCacheLock) {
+            // The notification worker constructs a separate repository/cache
+            // instance. Guard the read-merge-write across both instances.
+            val old = inbox(username)?.messages.orEmpty()
+            val merged = if (offset == 0) page + old else old + page
+            val unique = merged.distinctBy { it.uidValidity to it.uid }.take(MAX_OWA_HEADERS)
+            write(file(username, "inbox"), CachedInbox(0x4F5741L, unique))
+        }
     }
 
     /** Keep the offline inbox's unread state consistent with an acknowledged server update. */
     @Synchronized fun markRead(username: String, uid: Long, validity: Long) {
-        val snapshot = inbox(username) ?: return
-        if (snapshot.uidValidity != validity) return
-        val updated = markMailRead(snapshot.messages, uid, validity)
-        if (updated != snapshot.messages) write(file(username, "inbox"), CachedInbox(validity, updated))
+        synchronized(sharedOwaCacheLock) {
+            val snapshot = inbox(username) ?: return
+            if (snapshot.uidValidity != validity) return
+            val updated = markMailRead(snapshot.messages, uid, validity)
+            if (updated != snapshot.messages) {
+                write(file(username, "inbox"), CachedInbox(validity, updated))
+            }
+        }
     }
 
     @Synchronized fun message(username: String, uid: Long, validity: Long): MailDetail? =
@@ -110,7 +118,10 @@ internal class MailCache(private val context: Context) {
         }
     }
 
-    private companion object { const val MAX_OWA_HEADERS = 2000 }
+    private companion object {
+        const val MAX_OWA_HEADERS = 2000
+        val sharedOwaCacheLock = Any()
+    }
 
     private data class CachedInbox(val validity: Long, val items: List<MailSummary>)
     private data class CachedBody(val validity: Long, val detail: MailDetail)
