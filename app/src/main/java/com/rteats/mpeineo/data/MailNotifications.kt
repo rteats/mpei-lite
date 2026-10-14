@@ -17,14 +17,19 @@ import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MainActivity
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Background notifications use an authenticated OWA session. Only a hashed
@@ -147,7 +152,77 @@ private fun logMailNotification(context: Context, event: String) {
 object MailNotificationScheduler {
     // Keep the old WorkManager key so upgrades do not create duplicate workers.
     private const val UNIQUE_WORK = "mpei_imap_notification_poll"
+    private const val DIAGNOSTIC_WORK = "mpei_owa_notification_diagnostic_check"
     const val CHANNEL_ID = "mpei_mail_new_messages"
+
+    /** Verify existing registrations on launch without resetting a running job's cadence.
+     *  KEEP repairs a missing job but preserves a healthy existing schedule.
+     */
+    fun reconcileOnStartup(context: Context) {
+        if (!MailNotificationPreferences(context).enabled) {
+            logMailNotification(context, "startup notificationsEnabled=false")
+            return
+        }
+        snapshot(context, "startup_before_reconcile")
+        schedule(context, ExistingPeriodicWorkPolicy.KEEP)
+    }
+
+    /** Record the actual WorkManager state, not just the settings preference. */
+    fun snapshot(context: Context, reason: String) {
+        val future = WorkManager.getInstance(context).getWorkInfosForUniqueWork(UNIQUE_WORK)
+        future.addListener({
+            try {
+                val infos = future.get()
+                if (infos.isEmpty()) {
+                    logMailNotification(context, "work_state reason=$reason missing=true")
+                } else {
+                    infos.forEach { info ->
+                        val remaining = if (info.state == WorkInfo.State.ENQUEUED &&
+                            info.nextScheduleTimeMillis != Long.MAX_VALUE)
+                            (info.nextScheduleTimeMillis - System.currentTimeMillis()) / 1000L
+                            else -1L
+                        logMailNotification(context,
+                            "work_state reason=$reason state=${info.state}" +
+                                " worker=${info.workerClassName?.substringAfterLast('.')}" +
+                                " periodic=${info.periodicityInfo != null}" +
+                                " nextEligibleInSec=$remaining" +
+                                " attempt=${info.runAttemptCount} generation=${info.generation}")
+                    }
+                }
+            } catch (error: Exception) {
+                logMailNotification(context,
+                    "work_state_error reason=$reason type=${error.javaClass.simpleName}")
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    /** Explicit diagnostics only: executes the very same worker without waiting for its period. */
+    fun diagnosticCheckNow(context: Context) {
+        if (!MailNotificationPreferences(context).enabled) {
+            logMailNotification(context, "manual_check_skip notificationsEnabled=false")
+            return
+        }
+        logMailNotification(context, "manual_check_requested")
+        snapshot(context, "manual_check")
+        val request = OneTimeWorkRequestBuilder<MailNotificationWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+            )
+            .addTag("mail_notify_manual")
+            .build()
+        val operation = WorkManager.getInstance(context).enqueueUniqueWork(
+            DIAGNOSTIC_WORK, ExistingWorkPolicy.KEEP, request,
+        )
+        operation.result.addListener({
+            try {
+                operation.result.get()
+                logMailNotification(context, "manual_check_enqueued")
+            } catch (error: Exception) {
+                logMailNotification(context,
+                    "manual_check_enqueue_error type=${error.javaClass.simpleName}")
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
 
     fun setEnabled(context: Context, value: Boolean) {
         val prefs = MailNotificationPreferences(context)
@@ -161,6 +236,7 @@ object MailNotificationScheduler {
             // notifying for all messages received while notifications were off.
             prefs.clearAccount()
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+            WorkManager.getInstance(context).cancelUniqueWork(DIAGNOSTIC_WORK)
             logMailNotification(context, "schedule_disabled checkpointCleared=true")
         }
     }
@@ -176,10 +252,14 @@ object MailNotificationScheduler {
     fun stopAndClear(context: Context) {
         MailNotificationPreferences(context).clearAccount()
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+        WorkManager.getInstance(context).cancelUniqueWork(DIAGNOSTIC_WORK)
         logMailNotification(context, "schedule_stopped logout=true checkpointCleared=true")
     }
 
-    private fun schedule(context: Context) {
+    private fun schedule(
+        context: Context,
+        policy: ExistingPeriodicWorkPolicy = ExistingPeriodicWorkPolicy.UPDATE,
+    ) {
         val minutes = MailNotificationPreferences(context).intervalMinutes.toLong()
         val request = PeriodicWorkRequestBuilder<MailNotificationWorker>(
             minutes, TimeUnit.MINUTES,
@@ -188,9 +268,20 @@ object MailNotificationScheduler {
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
             )
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request,
+        val operation = WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            UNIQUE_WORK, policy, request,
         )
+        operation.result.addListener({
+            try {
+                operation.result.get()
+                logMailNotification(context,
+                    "schedule_registered policy=$policy intervalMin=$minutes")
+                snapshot(context, "after_schedule_$policy")
+            } catch (error: Exception) {
+                logMailNotification(context,
+                    "schedule_failed policy=$policy type=${error.javaClass.simpleName}")
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun canNotify(context: Context): Boolean =
@@ -311,13 +402,21 @@ class MailNotificationWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
+    companion object {
+        // Manual and periodic checks share one checkpoint and must not race.
+        private val pollMutex = Mutex()
+    }
+
+    override suspend fun doWork(): Result = pollMutex.withLock { runPoll() }
+
+    private suspend fun runPoll(): Result {
         val prefs = MailNotificationPreferences(applicationContext)
         if (!prefs.enabled) return Result.success()
         val started = SystemClock.elapsedRealtime()
         val diagnostics = DiagnosticLog(applicationContext as Application)
         fun log(event: String) = diagnostics.log("MAIL_NOTIFY", event)
-        log("poll_start attempt=$runAttemptCount intervalMin=${prefs.intervalMinutes}")
+        val source = if ("mail_notify_manual" in tags) "manual" else "periodic"
+        log("poll_start source=$source attempt=$runAttemptCount intervalMin=${prefs.intervalMinutes}")
         if (!MailNotificationScheduler.canNotify(applicationContext)) {
             log("poll_skip reason=notification_permission durationMs=${SystemClock.elapsedRealtime() - started}")
             return Result.success()

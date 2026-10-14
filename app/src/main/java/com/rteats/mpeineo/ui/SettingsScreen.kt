@@ -491,6 +491,14 @@ internal fun SettingsScreen(
                         }
                     },
                 )
+                if (notificationsEnabled && mailState.configured) {
+                    SettingsAction(
+                        title = "Проверить фоновые уведомления",
+                        detail = "Запустить однократную проверку через WorkManager",
+                        iconRes = AppIcons.Notifications,
+                        onClick = { MailNotificationScheduler.diagnosticCheckNow(context) },
+                    )
+                }
                 SettingsAction(
                     if (copied) "Скопировано" else "Копировать журнал",
                     "Скопировать диагностические события",

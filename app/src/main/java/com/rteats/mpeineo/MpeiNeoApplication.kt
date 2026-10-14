@@ -8,6 +8,7 @@ import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.FileScheduleCache
 import com.rteats.mpeineo.data.GithubUpdateRepository
 import com.rteats.mpeineo.data.MailRepository
+import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.OwaAuthProbe
 import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.OwaInboxProbe
@@ -35,6 +36,8 @@ class MpeiNeoApplication : Application() {
             "UPDATE",
             "startup cleanup deleted=${cleanup.deletedFiles} completedUpdate=${cleanup.completedInstalledUpdate}",
         )
+        // Preserve existing WorkManager cadence, but restore a missing registration.
+        MailNotificationScheduler.reconcileOnStartup(this)
     }
 
     /**
