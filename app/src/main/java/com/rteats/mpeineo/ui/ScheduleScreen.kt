@@ -11,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ internal fun ScheduleScreen(
     onRetryAgendaWeek: (Int) -> Unit,
     onViewedAgendaWeek: (Int) -> Unit,
     onAgendaScrollingChanged: (Boolean) -> Unit,
+    onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -83,6 +85,7 @@ internal fun ScheduleScreen(
             onRetryWeek = onRetryAgendaWeek,
             onViewedWeek = onViewedAgendaWeek,
             onScrollInProgressChanged = onAgendaScrollingChanged,
+            onLocateRoom = onLocateRoom,
             todayJumpRequest = todayJumpRequest,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         )
@@ -104,7 +107,7 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun LessonCard(lesson: Lesson) {
+internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}) {
     var expanded by rememberSaveable(
         lesson.startTime, lesson.name, lesson.place, lesson.lecturer, lesson.groups,
     ) { mutableStateOf(false) }
@@ -201,6 +204,7 @@ internal fun LessonCard(lesson: Lesson) {
                         if (lesson.kind.isNotBlank()) LessonTypeChip(lesson.kind)
                     }
                     if (lesson.place.isNotBlank()) {
+                        val building = campusBuildingForRoom(lesson.place)
                         LessonDetail(
                             icon = {
                                 AppIcon(
@@ -209,6 +213,9 @@ internal fun LessonCard(lesson: Lesson) {
                                 )
                             },
                             text = lesson.place,
+                            onClick = if (building != null) {
+                                { onLocateRoom(lesson.place) }
+                            } else null,
                         )
                     }
                     if (lesson.lecturer.isNotBlank()) {
@@ -260,9 +267,12 @@ private fun LessonNumber(startTime: String) {
 private fun LessonDetail(
     icon: @Composable () -> Unit,
     text: String,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+        ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -278,10 +288,19 @@ private fun LessonDetail(
             text,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (onClick != null) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (onClick != null) {
+            AppIcon(
+                AppIcons.Forward,
+                contentDescription = "Показать корпус на карте",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

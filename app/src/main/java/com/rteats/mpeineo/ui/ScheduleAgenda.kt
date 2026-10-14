@@ -84,6 +84,7 @@ internal fun ScheduleAgenda(
     onRetryWeek: (Int) -> Unit,
     onViewedWeek: (Int) -> Unit,
     onScrollInProgressChanged: (Boolean) -> Unit,
+    onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -273,6 +274,7 @@ internal fun ScheduleAgenda(
                                 loading = displayedWeek in state.agendaLoadingOffsets,
                                 failed = displayedWeek in state.agendaFailedOffsets,
                                 onRetry = { onRetryWeek(displayedWeek) },
+                                onLocateRoom = onLocateRoom,
                             )
                         }
                     }
@@ -390,6 +392,7 @@ private fun AgendaDaySection(
     loading: Boolean,
     failed: Boolean,
     onRetry: () -> Unit,
+    onLocateRoom: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
@@ -409,7 +412,7 @@ private fun AgendaDaySection(
                     ) {
                         Spacer(Modifier.height(18.dp))
                     }
-                    LessonCard(lesson)
+                    LessonCard(lesson, onLocateRoom)
                 }
             }
             failed -> {
@@ -450,6 +453,7 @@ private fun AgendaDayCard(
     loading: Boolean,
     failed: Boolean,
     onRetry: () -> Unit,
+    onLocateRoom: (String) -> Unit,
 ) {
     val isToday = date == today
     Surface(
@@ -472,6 +476,7 @@ private fun AgendaDayCard(
                     loading = loading,
                     failed = failed,
                     onRetry = onRetry,
+                    onLocateRoom = onLocateRoom,
                 )
             }
         }

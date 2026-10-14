@@ -182,6 +182,8 @@ fun MpeiNeoApp(
     var searchExpanded by remember { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
+    var mapFocus by remember { mutableStateOf<CampusMapFocus?>(null) }
+    var nextMapFocusId by remember { mutableIntStateOf(0) }
     var agendaScrolling by remember { mutableStateOf(false) }
     var weekInfoVisible by remember { mutableStateOf(false) }
 
@@ -511,6 +513,16 @@ fun MpeiNeoApp(
                         onRetryAgendaWeek = viewModel::retryAgendaWeek,
                         onViewedAgendaWeek = { viewedScheduleWeek = it },
                         onAgendaScrollingChanged = { agendaScrolling = it },
+                        onLocateRoom = { room ->
+                            campusBuildingForRoom(room)?.let { symbol ->
+                                nextMapFocusId++
+                                mapFocus = CampusMapFocus(
+                                    nextMapFocusId, symbol, room.take(100),
+                                )
+                                logNavigation("schedule room -> map building=$symbol")
+                                navigate(AppTab.MAPS)
+                            }
+                        },
                         todayJumpRequest = todayJumpRequest,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -535,6 +547,8 @@ fun MpeiNeoApp(
 
                     AppTab.MAPS -> CampusMapScreen(
                         active = pager.settledPage == page && !pager.isScrollInProgress,
+                        focus = mapFocus,
+                        onFocusConsumed = { mapFocus = null },
                         modifier = Modifier.fillMaxSize(),
                     )
 

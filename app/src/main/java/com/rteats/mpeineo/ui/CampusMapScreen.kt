@@ -32,6 +32,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -367,7 +368,12 @@ private fun renderCampusRaster(
 /** Map view is precomposed as a tab; unlike MapKit it is safe to render offscreen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
+internal fun CampusMapScreen(
+    active: Boolean,
+    focus: CampusMapFocus? = null,
+    onFocusConsumed: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val data = remember(context) {
         runCatching {
@@ -410,6 +416,7 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
     var pan by remember { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
+    var selectedRoom by remember { mutableStateOf<String?>(null) }
     var showList by remember { mutableStateOf(false) }
 
     // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
@@ -424,6 +431,26 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
         pan = fitPan(pan, zoom)
     }
     fun project(p: Offset) = screenPoint(p, mapScale(), pan, viewport)
+
+    // Apply cross-tab focus only after the map is visible and measured.
+    // Consume it once; later gestures and manual building selection remain free.
+    LaunchedEffect(active, focus?.id, viewport, places) {
+        val request = focus ?: return@LaunchedEffect
+        if (!active || viewport.width <= 0 || viewport.height <= 0) return@LaunchedEffect
+        val place = places.firstOrNull { it.symbol == request.building }
+        if (place != null) {
+            val targetZoom = 2.2f
+            val scale = max(viewport.width / 600f, viewport.height / 850f) * targetZoom
+            zoom = targetZoom
+            pan = fitPan(
+                Offset(-place.center.x * scale, -place.center.y * scale),
+                targetZoom,
+            )
+            selected = place
+            selectedRoom = request.classroom.takeIf { it.isNotBlank() }
+        }
+        onFocusConsumed()
+    }
 
     val labelPaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -473,6 +500,7 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                                 (point.y - it.center.y).toDouble()) <= threshold
                         }
                         selected = polygonHit ?: nearby
+                        selectedRoom = null
                     }
                 },
         ) {
@@ -584,7 +612,10 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 30.dp),
-                onClick = { selected = null },
+                onClick = {
+                    selected = null
+                    selectedRoom = null
+                },
                 shape = RoundedCornerShape(24.dp),
                 color = colors.surfaceContainerHigh,
                 shadowElevation = 3.dp,
@@ -592,6 +623,10 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                 Column(Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(place.name, style = MaterialTheme.typography.titleMedium)
+                    selectedRoom?.let { room ->
+                        Text(room, style = MaterialTheme.typography.labelLarge,
+                            color = colors.primary)
+                    }
                     Text(place.address, style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurfaceVariant)
                 }
@@ -627,6 +662,7 @@ internal fun CampusMapScreen(active: Boolean, modifier: Modifier = Modifier) {
                     Surface(
                         onClick = {
                             selected = place
+                            selectedRoom = null
                             zoom = 2.2f
                             val scale = mapScale()
                             pan = fitPan(
