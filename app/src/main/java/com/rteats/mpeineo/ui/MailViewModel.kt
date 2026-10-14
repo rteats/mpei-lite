@@ -10,6 +10,7 @@ import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.OwaAuthProbe
 import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.MailNotificationScheduler
+import com.rteats.mpeineo.data.MailInboxSyncEvents
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
 import com.rteats.mpeineo.data.markMailRead
@@ -69,6 +70,34 @@ internal class MailViewModel(
             _state.update {
                 it.copy(configured = true, items = cached,
                     hasMore = cached.size >= MAIL_PAGE_SIZE, nextPageOffset = cached.size)
+            }
+        }
+        // WorkManager uses a separate repository instance. Its successful OWA
+        // poll already writes the shared encrypted cache; reflect the new first
+        // page in memory rather than re-fetching the same 60 conversations.
+        viewModelScope.launch {
+            MailInboxSyncEvents.updates.collect { update ->
+                if (update.account != owaMailRepository.cachedAccountKey()) return@collect
+                val version = sessionVersion
+                _state.update { old ->
+                    if (version != sessionVersion) return@update old
+                    val previousKeys = old.items.mapTo(HashSet()) {
+                        it.uidValidity to it.uid
+                    }
+                    val newAtHead = update.firstPage.count {
+                        (it.uidValidity to it.uid) !in previousKeys
+                    }
+                    old.copy(
+                        configured = true,
+                        items = mergeOwaInboxPages(update.firstPage, old.items),
+                        nextPageOffset = if (old.nextPageOffset > 0)
+                            maxOf(old.nextPageOffset + newAtHead, update.firstPage.size)
+                        else update.firstPage.size,
+                        hasMore = old.hasMore || (old.items.isEmpty() &&
+                            update.firstPage.size == MAIL_PAGE_SIZE),
+                    )
+                }
+                repository.logState("OWA worker cache observed count=${update.firstPage.size}")
             }
         }
         refresh()

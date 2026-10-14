@@ -105,6 +105,7 @@ internal fun ScheduleDockedSearch(
     visibleWeekOffset: Int,
     onRefreshWeek: (Int) -> Unit,
     showWeekInfo: Boolean,
+    onHome: () -> Unit = {},
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     active: Boolean = true,
@@ -489,6 +490,14 @@ internal fun ScheduleDockedSearch(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    if (!expanded) {
+                        FilledTonalIconButton(
+                            onClick = onHome,
+                            modifier = Modifier.size(56.dp).testTag("schedule-home"),
+                        ) {
+                            AppIcon(AppIcons.Home, contentDescription = "На главную")
+                        }
+                    }
                     Surface(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(searchCorner),

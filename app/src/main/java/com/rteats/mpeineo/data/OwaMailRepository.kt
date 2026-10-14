@@ -57,6 +57,9 @@ class OwaMailRepository(
 
     fun currentAccountKey(): String? = activeAccount
 
+    /** Account owning the encrypted inbox snapshot, including after process restart. */
+    fun cachedAccountKey(): String? = accountPrefs.getString("last_account", null)
+
     suspend fun signOut() {
         val previous = accountPrefs.getString("last_account", null)
         activeAccount = null

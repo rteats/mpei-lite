@@ -1,8 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import com.rteats.mpeineo.AppIcon
-import com.rteats.mpeineo.AppIcons
-
 import android.content.Context
 import android.os.Build
 import android.view.WindowInsets as AndroidWindowInsets
@@ -11,40 +8,30 @@ import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ShortNavigationBar
-import androidx.compose.material3.ShortNavigationBarArrangement
-import androidx.compose.material3.ShortNavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,12 +39,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -66,21 +52,17 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.MpeiNeoApplication
-import com.rteats.mpeineo.R
-import kotlinx.coroutines.flow.distinctUntilChanged
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
 /**
- * An embedded WebView can request that its focused input be brought into view.
- * That request must not turn into a horizontal pager/tab change. Deliberate
- * navbar and edge-swipe navigation update the intended tab before scrolling.
+ * Compatibility helper for the old pager policy tests. The super-app shell no
+ * longer pages horizontally and doesn't need to lock its route for a WebView.
  */
 internal fun lockedBrowserTab(
     intended: AppTab,
@@ -92,15 +74,16 @@ internal fun lockedBrowserTab(
     else -> null
 }
 
+/** Legacy calculation retained for transition tests; the new dock is stationary. */
+internal fun scheduleDockRevealProgress(
+    currentPage: Int,
+    pageOffsetFraction: Float,
+): Float = (1f - kotlin.math.abs(currentPage + pageOffsetFraction)).coerceIn(0f, 1f)
 
 /**
- * All four destinations occupy identical pager constraints. Unlike the former
- * AnimatedContent route, Schedule's floating search doesn't shrink its page
- * and cause an animation-size jump.
- *
- * Native pages, including Mail inbox and messages, support full-width horizontal
- * paging. Embedded WebViews own their gestures; narrow edge-swipe regions
- * avoid stealing Outlook/BARS website scrolling and text input.
+ * Home is the root destination. Each service owns its gestures and internal
+ * navigation. There is no offscreen horizontal pager for WebView focus/IME to
+ * accidentally scroll. State holders preserve saveable search and scroll state.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -118,14 +101,11 @@ fun MpeiNeoApp(
         hostView.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     }
     fun logNavigation(event: String) = diagnostics.log("NAV", event)
-    fun dismissBrowserIme(reason: String) {
+    fun dismissIme(reason: String) {
         val focused = hostView.rootView.findFocus()
-        logNavigation(
-            "browser IME cleanup reason=$reason focused=${focused?.javaClass?.simpleName ?: "none"} " +
-                "focusedWeb=${focused is WebView}"
-        )
-        // WebView inputs live in the Android focus hierarchy, not Compose's.
-        // Clear both hierarchies before the AndroidView is detached.
+        logNavigation("IME cleanup reason=" + reason +
+            " focused=" + (focused?.javaClass?.simpleName ?: "none") +
+            " web=" + (focused is WebView))
         focused?.clearFocus()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -134,6 +114,7 @@ fun MpeiNeoApp(
             hostView.windowInsetsController?.hide(AndroidWindowInsets.Type.ime())
         }
     }
+
     val barsViewModel: BarsViewModel = composeViewModel(
         factory = BarsViewModel.factory(
             application.container.diagnostics,
@@ -160,25 +141,13 @@ fun MpeiNeoApp(
     var barsAutoRefreshEnabled by remember(barsPrefs) {
         mutableStateOf(barsPrefs.getBoolean("auto_refresh", true))
     }
-    val pager = rememberPagerState(
-        initialPage = if (initialMailTab) AppTab.MAIL.ordinal else 0,
-        pageCount = { AppTab.entries.size },
-    )
-    val scope = rememberCoroutineScope()
-    // User-selected destination, independent of pager bring-into-view requests
-    // originating inside a WebView when an input gains keyboard focus.
-    var intendedPage by rememberSaveable {
-        mutableIntStateOf(if (initialMailTab) AppTab.MAIL.ordinal else AppTab.SCHEDULE.ordinal)
+
+    var service by rememberSaveable {
+        mutableStateOf<AppTab?>(if (initialMailTab) AppTab.MAIL else null)
     }
-    var explicitNavigation by remember { mutableStateOf(false) }
-    var exitedBrowserTab by remember { mutableStateOf<AppTab?>(null) }
-    var navigationRequest by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val keyboardVisible = imeBottomPx > 0
+    var returnFromMapToSchedule by rememberSaveable { mutableStateOf(false) }
+    val savedServiceState = rememberSaveableStateHolder()
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
-    // Transient overlay state must not survive a restored Activity separately
-    // from the search field's own focus and keyboard state.
     var searchExpanded by remember { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
@@ -186,11 +155,12 @@ fun MpeiNeoApp(
     var nextMapFocusId by remember { mutableIntStateOf(0) }
     var agendaScrolling by remember { mutableStateOf(false) }
     var weekInfoVisible by remember { mutableStateOf(false) }
+    var barsBrowserJustClosed by remember { mutableStateOf(false) }
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     LaunchedEffect(agendaScrolling) {
-        if (agendaScrolling) {
-            weekInfoVisible = true
-        } else {
+        if (agendaScrolling) weekInfoVisible = true
+        else {
             delay(1800)
             weekInfoVisible = false
         }
@@ -200,462 +170,228 @@ fun MpeiNeoApp(
         agendaScrolling = false
         weekInfoVisible = false
     }
-
-    val barsIsWeb = barsState.authStage == BarsAuthStage.WEB_AUTH ||
-        barsState.browserVisible
-    val browserCurrentlyOpen = lockedBrowserTab(
-        AppTab.entries[intendedPage], mailWebVisible, barsIsWeb,
-    )
-    // WebView destruction can request horizontal pager scroll AFTER browserVisible
-    // becomes false. Preserve the outgoing tab until a genuine user gesture.
-    val browserLock = effectiveBrowserNavigationLock(
-        AppTab.entries[intendedPage], mailWebVisible, barsIsWeb, exitedBrowserTab,
-    )
-
-    LaunchedEffect(pager) {
-        pager.interactionSource.interactions.collect { interaction ->
-            when (interaction) {
-                is DragInteraction.Start -> {
-                    logNavigation("pager DRAG start exitGuard=${exitedBrowserTab?.name ?: "none"}")
-                    exitedBrowserTab = null
-                }
-                is DragInteraction.Stop -> logNavigation("pager DRAG stop")
-                is DragInteraction.Cancel -> logNavigation("pager DRAG cancel")
-            }
+    // On some ROMs an embedded browser requests IME focus again just after
+    // detachment. No pager exists now, but the keyboard still needs cleanup.
+    LaunchedEffect(barsBrowserJustClosed, barsState.browserVisible, imeVisible) {
+        if (barsBrowserJustClosed && !barsState.browserVisible && imeVisible) {
+            dismissIme("bars-post-exit")
         }
     }
 
-    LaunchedEffect(pager) {
-        snapshotFlow {
-            listOf(
-                pager.currentPage, pager.targetPage, pager.settledPage,
-                (pager.currentPageOffsetFraction * 4).roundToInt(),
-                if (pager.isScrollInProgress) 1 else 0, intendedPage,
-                if (mailWebVisible) 1 else 0, if (barsIsWeb) 1 else 0,
-            )
-        }.distinctUntilChanged().collect { x ->
-            logNavigation(
-                "pager current=${x[0]} target=${x[1]} settled=${x[2]} quarter=${x[3]} " +
-                    "scrolling=${x[4]} intended=${x[5]} mailWeb=${x[6]} barsWeb=${x[7]} " +
-                    "exitGuard=${exitedBrowserTab?.name ?: "none"}"
-            )
-        }
-    }
-    LaunchedEffect(keyboardVisible) {
-        logNavigation(
-            "ime visible=$keyboardVisible bottomPx=$imeBottomPx " +
-                "intended=$intendedPage current=${pager.currentPage} target=${pager.targetPage}"
-        )
-    }
-    // A focused WebView may trigger a *new* IME show request after its AndroidView
-    // has been detached. A one-time hide on navbar tap alone cannot catch this.
-    LaunchedEffect(exitedBrowserTab, barsIsWeb, keyboardVisible, intendedPage) {
-        if (shouldDismissImeAfterBarsExit(
-                lastExitedBrowser = exitedBrowserTab,
-                intendedTab = AppTab.entries[intendedPage],
-                barsWebVisible = barsIsWeb,
-                imeVisible = keyboardVisible,
-            )
-        ) {
-            logNavigation("unexpected IME reopen after BARS exit; dismissing")
-            dismissBrowserIme("bars-post-release")
-        }
-    }
-    LaunchedEffect(mailWebVisible, barsIsWeb, intendedPage, explicitNavigation) {
-        logNavigation(
-            "mode mailWeb=$mailWebVisible barsWeb=$barsIsWeb intended=$intendedPage " +
-                "explicit=$explicitNavigation target=${pager.targetPage} " +
-                    "exitGuard=${exitedBrowserTab?.name ?: "none"}"
-        )
-    }
-
-    // Keep navigation tied to an explicitly selected WebView tab. The pager
-    // target is still used during normal swipes and deliberate tab animations.
-    val currentTab = if (browserLock != null && !explicitNavigation) {
-        browserLock
-    } else {
-        AppTab.entries[pager.targetPage]
-    }
-    val showNavigation = !keyboardVisible &&
-        !(currentTab == AppTab.SCHEDULE && searchExpanded)
-
-    LaunchedEffect(pager, browserLock, explicitNavigation) {
-        snapshotFlow {
-            Triple(pager.targetPage, pager.settledPage, pager.isScrollInProgress)
-        }.distinctUntilChanged().collect { (targetPage, settledPage, scrolling) ->
-            if (shouldRestoreLockedBrowserPager(
-                    browserLock, explicitNavigation, pager.currentPage, targetPage, settledPage,
-                )
-            ) {
-                val lockedTab = browserLock ?: return@collect
-                logNavigation(
-                    "unexpected pager movement restore=${lockedTab.name} " +
-                        "current=${pager.currentPage} target=$targetPage settled=$settledPage"
-                )
-                pager.scrollToPage(lockedTab.ordinal)
-            } else if (!explicitNavigation && browserLock == null && !scrolling &&
-                targetPage == settledPage && intendedPage != settledPage
-            ) {
-                logNavigation("native swipe settled=${AppTab.entries[settledPage]}")
-                intendedPage = settledPage
-            }
-            if (settledPage != AppTab.SCHEDULE.ordinal) searchExpanded = false
-        }
-    }
-
-    LaunchedEffect(mailNotificationTarget?.requestId) {
-        val target = mailNotificationTarget ?: return@LaunchedEffect
-        logNavigation("notification deep link -> MAIL")
-        intendedPage = AppTab.MAIL.ordinal
-        pager.scrollToPage(AppTab.MAIL.ordinal)
-        if (target.uid > 0L && target.validity > 0L) {
-            mailViewModel.openFromNotification(target.uid, target.validity)
-        } else {
-            mailViewModel.closeMessage()
-        }
-    }
-
-    fun navigate(target: AppTab) {
-        exitedBrowserTab = null
-        logNavigation(
-            "navigate target=${target.name} from=${currentTab.name} current=${pager.currentPage} " +
-                "settled=${pager.settledPage} mailWeb=$mailWebVisible ime=$keyboardVisible"
-        )
-        if (target == AppTab.SCHEDULE) todayJumpRequest++
-        if (target != AppTab.MAIL && mailWebVisible) {
-            logNavigation("mail portal dismissed for tab navigation")
+    fun openService(target: AppTab, viaClassroom: Boolean = false) {
+        if (service == AppTab.MAIL && mailWebVisible) {
+            dismissIme("mail-leave-service")
             mailWebVisible = false
         }
-        intendedPage = target.ordinal
-        val request = ++navigationRequest
-        explicitNavigation = true
-        scope.launch {
-            try {
-                pager.animateScrollToPage(target.ordinal)
-                logNavigation("navigate finished target=${target.name} current=${pager.currentPage}")
-            } finally {
-                if (navigationRequest == request) explicitNavigation = false
-            }
+        if (service == AppTab.BARS && barsState.browserVisible) {
+            dismissIme("bars-leave-service")
         }
+        searchExpanded = false
+        barsBrowserJustClosed = false
+        returnFromMapToSchedule = viaClassroom
+        logNavigation("superapp navigate from=" + (service?.name ?: "HOME") +
+            " to=" + target.name + " classroom=" + viaClassroom)
+        service = target
     }
-
+    fun goHome() {
+        if (mailWebVisible || (service == AppTab.BARS && barsState.browserVisible)) {
+            dismissIme("go-home-browser")
+        }
+        mailWebVisible = false
+        searchExpanded = false
+        barsBrowserJustClosed = false
+        returnFromMapToSchedule = false
+        logNavigation("superapp HOME from=" + (service?.name ?: "HOME"))
+        service = null
+    }
     fun closeMailBrowser() {
-        exitedBrowserTab = AppTab.MAIL
-        logNavigation(
-            "close ОСЭП requested current=${pager.currentPage} target=${pager.targetPage} " +
-                "settled=${pager.settledPage} ime=$keyboardVisible web=$mailWebVisible"
-        )
-        intendedPage = AppTab.MAIL.ordinal
-        val request = ++navigationRequest
-        explicitNavigation = true
-        // Restore Mail before releasing the browser lock. Suppress the focus
-        // guard while this explicit scroll runs, so it cannot cancel the close.
-        scope.launch {
-            try {
-                pager.scrollToPage(AppTab.MAIL.ordinal)
-                mailWebVisible = false
-                mailViewModel.refresh()
-                logNavigation("close ОСЭП finished current=${pager.currentPage}")
-            } finally {
-                if (navigationRequest == request) explicitNavigation = false
-            }
-        }
-    }
-    BackHandler(enabled = mailWebVisible && intendedPage == AppTab.MAIL.ordinal) {
-        logNavigation("android back closes ОСЭП")
-        closeMailBrowser()
+        dismissIme("mail-browser-back")
+        mailWebVisible = false
+        mailViewModel.refresh()
     }
 
-    val portalAction = when (currentTab) {
-        AppTab.BARS -> if (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
-            !barsState.browserVisible && !keyboardVisible
-        ) AppTab.BARS else null
-        AppTab.MAIL -> if (!mailWebVisible && !keyboardVisible) AppTab.MAIL else null
-        else -> null
+    // The deep link opens the mail service (not a tab), preserving its
+    // notification-to-message routing regardless of the current destination.
+    LaunchedEffect(mailNotificationTarget?.requestId) {
+        val target = mailNotificationTarget ?: return@LaunchedEffect
+        openService(AppTab.MAIL)
+        if (target.uid > 0 && target.validity > 0) {
+            mailViewModel.openFromNotification(target.uid, target.validity)
+        } else mailViewModel.closeMessage()
     }
-    // Post-exit focus protection does not disable real user drags.
-    val nativeSwipeAllowed = !searchExpanded && browserCurrentlyOpen == null &&
-        when (pager.settledPage) {
-        AppTab.MAIL.ordinal -> !mailWebVisible
-        AppTab.BARS.ordinal -> !barsIsWeb
-        // The map owns every pan/pinch, including drags at its edges.
-        // Navbar navigation remains available through navigate().
-        AppTab.MAPS.ordinal -> false
-        else -> true
+
+    // Nested BackHandlers in MailScreen/BarsScreen take priority over this root
+    // handler: message -> inbox -> Home, discipline -> grades -> Home.
+    BackHandler(enabled = service != null && !mailWebVisible) {
+        if (service == AppTab.MAPS && returnFromMapToSchedule) {
+            openService(AppTab.SCHEDULE)
+        } else goHome()
+    }
+    BackHandler(enabled = service == AppTab.MAIL && mailWebVisible) {
+        closeMailBrowser()
     }
 
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            AnimatedVisibility(
-                visible = showNavigation,
-                enter = expandVertically(
-                    expandFrom = Alignment.Bottom,
-                    animationSpec = tween(240),
-                ) + fadeIn(animationSpec = tween(190)),
-                exit = shrinkVertically(
-                    shrinkTowards = Alignment.Bottom,
-                    animationSpec = tween(165),
-                ) + fadeOut(animationSpec = tween(120)),
-            ) {
-            ShortNavigationBar(
-                arrangement = ShortNavigationBarArrangement.EqualWeight,
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                ShortNavigationBarItem(
-                    selected = currentTab == AppTab.SCHEDULE,
-                    onClick = { navigate(AppTab.SCHEDULE) },
-                    icon = { AppIcon(AppIcons.Schedule, contentDescription = "Расписание") },
-                    label = null,
-                )
-                ShortNavigationBarItem(
-                    selected = currentTab == AppTab.BARS,
-                    onClick = {
-                        if (currentTab == AppTab.BARS && barsState.browserVisible) {
-                            exitedBrowserTab = AppTab.BARS
-                            dismissBrowserIme("bars-navbar-back")
-                            logNavigation("BARS navbar back current=${pager.currentPage} target=${pager.targetPage}")
-                            intendedPage = AppTab.BARS.ordinal
-                            val request = ++navigationRequest
-                            explicitNavigation = true
-                            scope.launch {
-                                try {
-                                    pager.scrollToPage(AppTab.BARS.ordinal)
-                                    barsViewModel.hideBrowser()
-                                    logNavigation("BARS navbar back finished current=${pager.currentPage}")
-                                } finally {
-                                    if (navigationRequest == request) explicitNavigation = false
-                                }
-                            }
-                        } else {
-                            navigate(AppTab.BARS)
-                        }
-                    },
-                    icon = {
-                        if (currentTab == AppTab.BARS && barsState.browserVisible) {
-                            AppIcon(
-                                AppIcons.Back,
-                                contentDescription = "Вернуться к оценкам",
-                            )
-                        } else {
-                            AppIcon(
-                                icon = AppIcons.Bars,
-                                contentDescription = "БАРС",
-                            )
-                        }
-                    },
-                    label = null,
-                )
-                ShortNavigationBarItem(
-                    selected = currentTab == AppTab.MAIL,
-                    onClick = {
-                        when {
-                            currentTab == AppTab.MAIL && mailWebVisible -> {
-                                logNavigation("MAIL navbar back")
-                                closeMailBrowser()
-                            }
-                            currentTab == AppTab.MAIL && mailState.selected != null -> {
-                                logNavigation("MAIL navbar close message")
-                                mailViewModel.closeMessage()
-                            }
-                            else -> navigate(AppTab.MAIL)
-                        }
-                    },
-                    icon = {
-                        if (currentTab == AppTab.MAIL &&
-                            (mailWebVisible || mailState.selected != null)
-                        ) {
-                            AppIcon(
-                                AppIcons.Back,
-                                contentDescription = "Вернуться к входящим",
-                            )
-                        } else {
-                            AppIcon(
-                                icon = AppIcons.Mail,
-                                contentDescription = "Почта",
-                            )
-                        }
-                    },
-                    label = null,
-                )
-                ShortNavigationBarItem(
-                    selected = currentTab == AppTab.MAPS,
-                    onClick = { navigate(AppTab.MAPS) },
-                    icon = { AppIcon(AppIcons.Location, contentDescription = "Карта МЭИ") },
-                    label = null,
-                )
-                ShortNavigationBarItem(
-                    selected = currentTab == AppTab.SETTINGS,
-                    onClick = { navigate(AppTab.SETTINGS) },
-                    icon = { AppIcon(AppIcons.Settings, contentDescription = "Настройки") },
-                    label = null,
-                )
-            }
-            }
-        },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-        HorizontalPager(
-            state = pager,
-            modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = nativeSwipeAllowed,
-            beyondViewportPageCount = 4,
-            key = { AppTab.entries[it].name },
-        ) { page ->
-            val destination = AppTab.entries[page]
-            Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-                when (destination) {
-                    AppTab.SCHEDULE -> ScheduleScreen(
-                        state = scheduleState,
-                        onEnsureAgendaWeek = viewModel::ensureAgendaWeek,
-                        onRefreshAgendaWeek = viewModel::refreshAgendaWeek,
-                        onRetryAgendaWeek = viewModel::retryAgendaWeek,
-                        onViewedAgendaWeek = { viewedScheduleWeek = it },
-                        onAgendaScrollingChanged = { agendaScrolling = it },
-                        onLocateRoom = { room ->
-                            campusBuildingForRoom(room)?.let { symbol ->
-                                nextMapFocusId++
-                                mapFocus = CampusMapFocus(
-                                    nextMapFocusId, symbol, room.take(100),
+        Box(Modifier.fillMaxSize().padding(innerPadding)) {
+            AnimatedContent(
+                targetState = service,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    fadeIn(tween(180)) togetherWith fadeOut(tween(110))
+                },
+                label = "superapp-service",
+            ) { destination ->
+                if (destination == null) {
+                    SuperAppHome(
+                        schedule = scheduleState,
+                        bars = barsState,
+                        mail = mailState,
+                        onOpen = { selected -> openService(selected) },
+                    )
+                } else {
+                    savedServiceState.SaveableStateProvider(destination.name) {
+                        Box(Modifier.fillMaxSize()) {
+                            when (destination) {
+                                AppTab.SCHEDULE -> {
+                                    ScheduleScreen(
+                                        state = scheduleState,
+                                        onEnsureAgendaWeek = viewModel::ensureAgendaWeek,
+                                        onRefreshAgendaWeek = viewModel::refreshAgendaWeek,
+                                        onRetryAgendaWeek = viewModel::retryAgendaWeek,
+                                        onViewedAgendaWeek = { viewedScheduleWeek = it },
+                                        onAgendaScrollingChanged = { agendaScrolling = it },
+                                        onLocateRoom = { room ->
+                                            campusBuildingForRoom(room)?.let { building ->
+                                                nextMapFocusId++
+                                                mapFocus = CampusMapFocus(
+                                                    nextMapFocusId, building, room.take(100),
+                                                )
+                                                openService(AppTab.MAPS, viaClassroom = true)
+                                            }
+                                        },
+                                        todayJumpRequest = todayJumpRequest,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    ScheduleDockedSearch(
+                                        state = scheduleState,
+                                        onQueryChanged = viewModel::updateSearchQuery,
+                                        onTypeChanged = viewModel::setSearchType,
+                                        onSelect = viewModel::selectTarget,
+                                        onToggleFavorite = viewModel::toggleFavorite,
+                                        onRenameFavorite = viewModel::renameFavorite,
+                                        visibleWeekOffset = viewedScheduleWeek,
+                                        onRefreshWeek = viewModel::refreshAgendaWeek,
+                                        showWeekInfo = weekInfoVisible,
+                                        expanded = searchExpanded,
+                                        onExpandedChange = { searchExpanded = it },
+                                        onHome = ::goHome,
+                                        active = service == AppTab.SCHEDULE,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                AppTab.BARS -> BarsScreen(
+                                    viewModel = barsViewModel,
+                                    autoRefreshEnabled = barsAutoRefreshEnabled,
+                                    active = service == AppTab.BARS,
+                                    onBrowserExit = {
+                                        barsBrowserJustClosed = true
+                                        dismissIme("bars-browser-back")
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
                                 )
-                                logNavigation("schedule room -> map building=$symbol")
-                                navigate(AppTab.MAPS)
+                                AppTab.MAIL -> {
+                                    MailScreen(
+                                        viewModel = mailViewModel,
+                                        active = service == AppTab.MAIL && !mailWebVisible,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    if (mailWebVisible && service == AppTab.MAIL) {
+                                        WebPortalScreen(
+                                            url = "https://mail.mpei.ru/owa",
+                                            testTag = "portal-mail",
+                                            modifier = Modifier.fillMaxSize()
+                                                .testTag("mail-webview"),
+                                            onDebugEvent = { message ->
+                                                diagnostics.log("MAIL_WEB", message)
+                                            },
+                                        )
+                                    }
+                                }
+                                AppTab.MAPS -> CampusMapScreen(
+                                    active = service == AppTab.MAPS,
+                                    focus = mapFocus,
+                                    onFocusConsumed = { mapFocus = null },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                AppTab.SETTINGS -> SettingsScreen(
+                                    updateViewModel = updateViewModel,
+                                    mailViewModel = mailViewModel,
+                                    barsAutoRefreshEnabled = barsAutoRefreshEnabled,
+                                    onBarsAutoRefreshEnabledChange = { enabled ->
+                                        barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
+                                        barsAutoRefreshEnabled = enabled
+                                    },
+                                    active = service == AppTab.SETTINGS,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
-                        },
-                        todayJumpRequest = todayJumpRequest,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                    AppTab.BARS -> BarsScreen(
-                        viewModel = barsViewModel,
-                        autoRefreshEnabled = barsAutoRefreshEnabled,
-                        active = pager.settledPage == page,
-                        onBrowserExit = {
-                            exitedBrowserTab = AppTab.BARS
-                            dismissBrowserIme("bars-system-back")
-                            logNavigation("BARS Android back: exit guard armed")
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                    AppTab.MAIL -> MailScreen(
-                        viewModel = mailViewModel,
-                        active = pager.currentPage == page && !mailWebVisible,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                    AppTab.MAPS -> CampusMapScreen(
-                        active = pager.settledPage == page && !pager.isScrollInProgress,
-                        focus = mapFocus,
-                        onFocusConsumed = { mapFocus = null },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-
-                    AppTab.SETTINGS -> SettingsScreen(
-                        updateViewModel = updateViewModel,
-                        mailViewModel = mailViewModel,
-                        barsAutoRefreshEnabled = barsAutoRefreshEnabled,
-                        onBarsAutoRefreshEnabledChange = { enabled ->
-                            barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
-                            barsAutoRefreshEnabled = enabled
-                        },
-                        active = pager.currentPage == page,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                if (destination == AppTab.SCHEDULE) {
-                    ScheduleDockedSearch(
-                        state = scheduleState,
-                        onQueryChanged = viewModel::updateSearchQuery,
-                        onTypeChanged = viewModel::setSearchType,
-                        onSelect = viewModel::selectTarget,
-                        onToggleFavorite = viewModel::toggleFavorite,
-                        onRenameFavorite = viewModel::renameFavorite,
-                        visibleWeekOffset = viewedScheduleWeek,
-                        onRefreshWeek = viewModel::refreshAgendaWeek,
-                        showWeekInfo = weekInfoVisible,
-                        expanded = searchExpanded,
-                        onExpandedChange = { searchExpanded = it },
-                        active = pager.currentPage == AppTab.SCHEDULE.ordinal,
-                        // Unlike an independent entrance animation, this tracks
-                        // horizontal pager progress in both directions, including
-                        // an interrupted or reversed edge swipe.
-                        dockRevealProgress = {
-                            scheduleDockRevealProgress(
-                                pager.currentPage,
-                                pager.currentPageOffsetFraction,
-                            )
-                        },
-                        modifier = Modifier.fillMaxSize().align(Alignment.BottomCenter),
-                    )
-                } else if (destination == AppTab.BARS && barsIsWeb) {
-                    // A WebView isn't a Compose nested-scroll child. Only
-                    // deliberate swipes starting within a 24dp edge zone page
-                    // horizontally; in-page web interactions remain native.
-                    WebViewPageEdges(
-                        onPrevious = {
-                            if (page > 0) navigate(AppTab.entries[page - 1])
-                        },
-                        onNext = {
-                            if (page < AppTab.entries.lastIndex) {
-                                navigate(AppTab.entries[page + 1])
-                            }
-                        },
-                    )
+                        }
+                    }
                 }
             }
-        }
 
-        // ОСЭП runs OUTSIDE HorizontalPager. HTML input bring-into-view requests
-        // can no longer cause the pager to scroll when the IME resizes the layout.
-        if (mailWebVisible && intendedPage == AppTab.MAIL.ordinal) {
-            WebPortalScreen(
-                url = "https://mail.mpei.ru/owa",
-                testTag = "portal-mail",
-                modifier = Modifier.fillMaxSize().testTag("mail-webview"),
-                onDebugEvent = { message -> diagnostics.log("MAIL_WEB", message) },
-            )
-            WebViewPageEdges(
-                onPrevious = { navigate(AppTab.BARS) },
-                onNext = { navigate(AppTab.MAPS) },
-            )
-        }
-
-        // One FAB is composed above the pager, so it stays fixed while the
-        // BARS and mail pages slide beneath it; only its label/action changes.
-        AnimatedVisibility(
-            visible = portalAction != null,
-            modifier = Modifier.align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 16.dp),
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(110)),
-        ) {
-            PortalFloatingButton(
-                label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
-                onClick = {
-                    when (portalAction) {
-                        AppTab.BARS -> {
-                            exitedBrowserTab = null
-                            logNavigation("FAB open БАРС browser")
-                            barsViewModel.showBrowser()
+            val portalAction = when (service) {
+                AppTab.BARS -> AppTab.BARS.takeIf {
+                    barsState.authStage == BarsAuthStage.AUTHENTICATED &&
+                        !barsState.browserVisible && !imeVisible
+                }
+                AppTab.MAIL -> AppTab.MAIL.takeIf { !mailWebVisible && !imeVisible }
+                else -> null
+            }
+            AnimatedVisibility(
+                visible = service != null && service != AppTab.SCHEDULE &&
+                    !imeVisible && !(service == AppTab.MAIL && mailWebVisible),
+                modifier = Modifier.align(Alignment.BottomStart)
+                    .padding(start = 16.dp, bottom = 16.dp),
+                enter = fadeIn(tween(160)),
+                exit = fadeOut(tween(110)),
+            ) {
+                FilledTonalIconButton(
+                    onClick = ::goHome,
+                    modifier = Modifier.size(56.dp).testTag("service-home"),
+                ) {
+                    AppIcon(AppIcons.Home, contentDescription = "На главную")
+                }
+            }
+            AnimatedVisibility(
+                visible = portalAction != null,
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(110)),
+            ) {
+                PortalFloatingButton(
+                    label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
+                    onClick = {
+                        when (portalAction) {
+                            AppTab.BARS -> {
+                                barsBrowserJustClosed = false
+                                barsViewModel.showBrowser()
+                            }
+                            AppTab.MAIL -> mailWebVisible = true
+                            else -> Unit
                         }
-                        AppTab.MAIL -> {
-                            logNavigation("FAB open ОСЭП current=${pager.currentPage}")
-                            intendedPage = AppTab.MAIL.ordinal
-                            mailWebVisible = true
-                        }
-                        else -> Unit
-                    }
-                },
-            )
-        }
+                    },
+                )
+            }
         }
     }
 }
 
-/** A single portal action shared between BARS and Mail across pager transitions. */
+/** Browser action shared by the BARS and mail services. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PortalFloatingButton(
@@ -667,7 +403,7 @@ private fun PortalFloatingButton(
     Button(
         onClick = onClick,
         modifier = modifier.heightIn(min = height).widthIn(min = 132.dp)
-            .testTag("portal-floating-$label"),
+            .testTag("portal-floating-" + label),
         contentPadding = ButtonDefaults.contentPaddingFor(height),
         shapes = ButtonDefaults.shapes(),
     ) {
@@ -684,11 +420,11 @@ private fun PortalFloatingButton(
                 (slideInVertically(
                     animationSpec = tween(190),
                     initialOffsetY = { it / 2 },
-                ) + fadeIn(animationSpec = tween(160))) togetherWith
+                ) + fadeIn(tween(160))) togetherWith
                     (slideOutVertically(
                         animationSpec = tween(150),
                         targetOffsetY = { -it / 2 },
-                    ) + fadeOut(animationSpec = tween(120)))
+                    ) + fadeOut(tween(120)))
             },
             label = "portal-action-label",
         ) { currentLabel ->
@@ -696,52 +432,3 @@ private fun PortalFloatingButton(
         }
     }
 }
-
-@Composable
-private fun androidx.compose.foundation.layout.BoxScope.WebViewPageEdges(
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .align(Alignment.CenterStart)
-            .width(24.dp)
-            .fillMaxHeight()
-            .pointerInput(onPrevious) {
-                var drag = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { drag = 0f },
-                    onHorizontalDrag = { _, delta -> drag += delta },
-                    onDragEnd = {
-                        if (drag > 64.dp.toPx()) onPrevious()
-                        drag = 0f
-                    },
-                    onDragCancel = { drag = 0f },
-                )
-            },
-    )
-    Box(
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .width(24.dp)
-            .fillMaxHeight()
-            .pointerInput(onNext) {
-                var drag = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { drag = 0f },
-                    onHorizontalDrag = { _, delta -> drag += delta },
-                    onDragEnd = {
-                        if (drag < -64.dp.toPx()) onNext()
-                        drag = 0f
-                    },
-                    onDragCancel = { drag = 0f },
-                )
-            },
-    )
-}
-
-/** Fraction of the search dock exposed above the short navigation bar. */
-internal fun scheduleDockRevealProgress(
-    currentPage: Int,
-    pageOffsetFraction: Float,
-): Float = (1f - kotlin.math.abs(currentPage + pageOffsetFraction)).coerceIn(0f, 1f)

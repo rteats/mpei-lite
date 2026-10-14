@@ -21,6 +21,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
@@ -146,6 +148,27 @@ internal fun calculateOwaNotificationChanges(
 private fun logMailNotification(context: Context, event: String) {
     (context.applicationContext as? Application)?.let {
         DiagnosticLog(it).log("MAIL_NOTIFY", event)
+    }
+}
+
+
+/** In-process cache invalidation after a completed background OWA fetch.
+ * The encrypted disk snapshot remains the source of truth across process death.
+ * This is deliberately not a second networking or polling mechanism.
+ */
+internal data class MailBackgroundInboxUpdate(
+    val account: String,
+    val firstPage: List<MailSummary>,
+)
+
+internal object MailInboxSyncEvents {
+    private val mutableUpdates = MutableSharedFlow<MailBackgroundInboxUpdate>(
+        extraBufferCapacity = 8,
+    )
+    val updates = mutableUpdates.asSharedFlow()
+
+    fun publish(account: String, firstPage: List<MailSummary>) {
+        mutableUpdates.tryEmit(MailBackgroundInboxUpdate(account, firstPage))
     }
 }
 
@@ -482,6 +505,9 @@ class MailNotificationWorker(
                 }
             }
             prefs.commitOwa(account, changes)
+            // Repository.inbox() has committed the merged, encrypted cache.
+            // Wake the active inbox without starting another OWA request.
+            MailInboxSyncEvents.publish(account, messages)
             log("poll_success baseline=$baseline scanned=${messages.size}" +
                 " new=${newMessages.size} posted=$posted previewOk=$previewsFetched" +
                 " previewFailed=$previewFailures" +

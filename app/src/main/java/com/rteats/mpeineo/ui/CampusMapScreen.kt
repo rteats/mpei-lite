@@ -660,7 +660,7 @@ internal fun CampusMapScreen(
         selected?.let { place ->
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 30.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
                 onClick = {
                     selected = null
                     selectedRoom = null
@@ -684,7 +684,7 @@ internal fun CampusMapScreen(
 
         Surface(
             modifier = Modifier.align(Alignment.BottomStart)
-                .padding(start = 8.dp, bottom = 6.dp)
+                .padding(start = 8.dp, bottom = 82.dp)
                 .clickable {
                     context.startActivity(Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.openstreetmap.org/copyright")))
