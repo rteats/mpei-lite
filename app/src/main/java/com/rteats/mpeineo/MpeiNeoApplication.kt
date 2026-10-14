@@ -9,6 +9,7 @@ import com.rteats.mpeineo.data.FileScheduleCache
 import com.rteats.mpeineo.data.GithubUpdateRepository
 import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.OwaAuthProbe
+import com.rteats.mpeineo.data.OwaInboxProbe
 import com.rteats.mpeineo.data.MpeiScheduleRemote
 import com.rteats.mpeineo.data.ScheduleRepository
 import com.rteats.mpeineo.data.UserPreferences
@@ -82,6 +83,7 @@ class AppContainer(application: Application) {
     val diagnostics = DiagnosticLog(application)
     val mailRepository = MailRepository(application, diagnostics)
     val owaAuthProbe = OwaAuthProbe(application, diagnostics)
+    val owaInboxProbe = OwaInboxProbe(application, diagnostics)
     val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
     internal val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)

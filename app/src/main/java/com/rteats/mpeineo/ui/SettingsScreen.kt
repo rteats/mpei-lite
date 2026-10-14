@@ -243,6 +243,8 @@ internal fun SettingsScreen(
     val owaAuthScope = rememberCoroutineScope()
     var owaAuthBusy by remember { mutableStateOf(false) }
     var owaAuthSummary by remember { mutableStateOf<String?>(null) }
+    var owaInboxBusy by remember { mutableStateOf(false) }
+    var owaInboxSummary by remember { mutableStateOf<String?>(null) }
     val mailState by mailViewModel.state.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
 
@@ -463,6 +465,24 @@ internal fun SettingsScreen(
                                 owaAuthSummary = application.container.owaAuthProbe.check().summary
                             } finally {
                                 owaAuthBusy = false
+                            }
+                        }
+                    },
+                )
+                SettingsAction(
+                    title = "Проверить входящие через OWA",
+                    detail = owaInboxSummary
+                        ?: "Проверка списка входящих без изменения состояния писем",
+                    iconRes = AppIcons.Mail,
+                    enabled = !owaInboxBusy && !owaAuthBusy,
+                    busy = owaInboxBusy,
+                    onClick = {
+                        owaInboxBusy = true
+                        owaAuthScope.launch {
+                            try {
+                                owaInboxSummary = application.container.owaInboxProbe.check().summary
+                            } finally {
+                                owaInboxBusy = false
                             }
                         }
                     },
