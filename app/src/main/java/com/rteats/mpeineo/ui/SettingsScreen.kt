@@ -56,6 +56,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +76,7 @@ import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.R
 import com.rteats.mpeineo.data.MailNotificationPreferences
 import com.rteats.mpeineo.data.MailNotificationScheduler
+import kotlinx.coroutines.launch
 
 /**
  * EasyNotes-inspired surface rows, circular accent badges and trailing
@@ -236,7 +238,11 @@ internal fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val diagnostics = (context.applicationContext as MpeiNeoApplication).container.diagnostics
+    val application = context.applicationContext as MpeiNeoApplication
+    val diagnostics = application.container.diagnostics
+    val owaAuthScope = rememberCoroutineScope()
+    var owaAuthBusy by remember { mutableStateOf(false) }
+    var owaAuthSummary by remember { mutableStateOf<String?>(null) }
     val mailState by mailViewModel.state.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
 
@@ -443,6 +449,24 @@ internal fun SettingsScreen(
                 AppIcons.Diagnostics,
                 logsExpanded, { changeSection("logs", !logsExpanded) },
             ) {
+                SettingsAction(
+                    title = "Проверить сессию ОСЭП",
+                    detail = owaAuthSummary
+                        ?: "Однократная проверка без отправки или изменения писем",
+                    iconRes = AppIcons.Confirm,
+                    enabled = !owaAuthBusy,
+                    busy = owaAuthBusy,
+                    onClick = {
+                        owaAuthBusy = true
+                        owaAuthScope.launch {
+                            try {
+                                owaAuthSummary = application.container.owaAuthProbe.check().summary
+                            } finally {
+                                owaAuthBusy = false
+                            }
+                        }
+                    },
+                )
                 SettingsAction(
                     if (copied) "Скопировано" else "Копировать журнал",
                     "Скопировать диагностические события",
