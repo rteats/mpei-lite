@@ -1,6 +1,8 @@
 package com.rteats.mpeineo.ui
 
 import android.content.Intent
+import android.app.Application
+import android.os.SystemClock
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint as AndroidPaint
@@ -25,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -365,6 +368,12 @@ private fun renderCampusRaster(
     return CampusRaster(bitmap, bounds)
 }
 
+private data class PreparedCampusScene(
+    val geometry: CampusGeometry,
+    val prepared: PreparedCampus,
+    val places: List<CampusPlace>,
+)
+
 /** Map view is precomposed as a tab; unlike MapKit it is safe to render offscreen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -375,24 +384,46 @@ internal fun CampusMapScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val data = remember(context) {
-        runCatching {
-            context.assets.open("campus_osm.json").bufferedReader().use { reader ->
-                Gson().fromJson(reader, CampusGeometry::class.java)
+    var mapLoadFailed by remember(context) { mutableStateOf(false) }
+    val scene by produceState<PreparedCampusScene?>(null, context) {
+        val started = SystemClock.elapsedRealtime()
+        val geometry = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open("campus_osm.json").bufferedReader().use { reader ->
+                    Gson().fromJson(reader, CampusGeometry::class.java)
+                }
+            }.getOrNull()
+        }
+        val result = withContext(Dispatchers.Default) {
+            geometry?.takeIf { it.buildings.isNotEmpty() }?.let {
+                PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
             }
-        }.getOrNull()
+        }
+        val durationMs = SystemClock.elapsedRealtime() - started
+        (context.applicationContext as? Application)?.let {
+            com.rteats.mpeineo.data.DiagnosticLog(it).log(
+                "PERF", "campus_prepare durationMs=$durationMs" +
+                    " buildings=${geometry?.buildings?.size ?: 0}" +
+                    " places=${result?.places?.size ?: 0}")
+        }
+        mapLoadFailed = result == null
+        value = result
     }
 
-    if (data == null || data.buildings.isEmpty()) {
+    val ready = scene
+    if (ready == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Не удалось загрузить схему корпусов",
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (mapLoadFailed) {
+                Text("Не удалось загрузить схему корпусов",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else ContainedLoadingIndicator()
         }
         return
     }
 
-    val prepared = remember(data) { prepareCampus(data) }
-    val places = remember(data) { placesFromGeometry(data) }
+    val data = ready.geometry
+    val prepared = ready.prepared
+    val places = ready.places
     // OSM records the adjacent southern wing of building В separately as
     // "Главный учебный корпус". Both footprints belong to the same campus block.
     val buildingVSouth = remember(data) {
@@ -416,8 +447,14 @@ internal fun CampusMapScreen(
             listOfNotNull(buildingVSouth?.id)
     }
     val raster by produceState<CampusRaster?>(null, prepared, campusIds, palette) {
+        val started = SystemClock.elapsedRealtime()
         value = withContext(Dispatchers.Default) {
             renderCampusRaster(prepared, campusIds, palette)
+        }
+        (context.applicationContext as? Application)?.let {
+            com.rteats.mpeineo.data.DiagnosticLog(it).log(
+                "PERF", "campus_raster durationMs=${SystemClock.elapsedRealtime() - started}" +
+                    " pixels=${value?.bitmap?.width ?: 0}x${value?.bitmap?.height ?: 0}")
         }
     }
     var zoom by rememberSaveable { mutableFloatStateOf(1.45f) }

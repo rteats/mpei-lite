@@ -86,10 +86,27 @@ internal class MailViewModel(
                 if (version != sessionVersion) return@launch
                 repository.credentials.clear()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
-                _state.update {
-                    it.copy(configured = true, loading = false, items = items,
-                        hasMore = items.size == MAIL_PAGE_SIZE, nextPageOffset = items.size,
-                        loadingMore = false, moreError = false)
+                _state.update { old ->
+                    val preserved = mergeOwaInboxPages(items, old.items)
+                    val seenBefore = old.items.mapTo(mutableSetOf()) {
+                        it.uidValidity to it.uid
+                    }
+                    val addedAtHead = items.count {
+                        (it.uidValidity to it.uid) !in seenBefore
+                    }
+                    old.copy(
+                        configured = true,
+                        loading = false,
+                        items = preserved,
+                        nextPageOffset = if (old.nextPageOffset > 0) {
+                            maxOf(old.nextPageOffset + addedAtHead, items.size)
+                        } else items.size,
+                        hasMore = if (old.items.size >= MAIL_PAGE_SIZE && !old.hasMore) {
+                            false
+                        } else items.size == MAIL_PAGE_SIZE,
+                        loadingMore = false,
+                        moreError = false,
+                    )
                 }
                 pendingNotification?.let { target ->
                     pendingNotification = null

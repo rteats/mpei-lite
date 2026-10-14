@@ -27,18 +27,30 @@ internal class MailCache(private val context: Context) {
 
     @Synchronized fun inbox(username: String): MailInboxSnapshot? =
         read(file(username, "inbox"), CachedInbox::class.java)
-            ?.let { MailInboxSnapshot(it.validity, it.items.take(60)) }
+            ?.let { MailInboxSnapshot(it.validity, it.items.take(MAX_OWA_HEADERS)) }
 
     @Synchronized fun saveInbox(username: String, snapshot: MailInboxSnapshot) {
         write(file(username, "inbox"), CachedInbox(snapshot.uidValidity, snapshot.messages.take(60)))
     }
 
-    /** Keep the offline inbox's unread state consistent with an acknowledged IMAP STORE. */
+    /**
+     * OWA paging and background polling share one encrypted inbox. A fresh head page
+     * must not truncate previously downloaded conversations; older pages append.
+     * Keep writes atomic under the cache lock and bound metadata storage.
+     */
+    @Synchronized fun saveOwaPage(username: String, page: List<MailSummary>, offset: Int) {
+        val old = inbox(username)?.messages.orEmpty()
+        val merged = if (offset == 0) page + old else old + page
+        val unique = merged.distinctBy { it.uidValidity to it.uid }.take(MAX_OWA_HEADERS)
+        write(file(username, "inbox"), CachedInbox(0x4F5741L, unique))
+    }
+
+    /** Keep the offline inbox's unread state consistent with an acknowledged server update. */
     @Synchronized fun markRead(username: String, uid: Long, validity: Long) {
         val snapshot = inbox(username) ?: return
         if (snapshot.uidValidity != validity) return
         val updated = markMailRead(snapshot.messages, uid, validity)
-        if (updated != snapshot.messages) saveInbox(username, snapshot.copy(messages = updated))
+        if (updated != snapshot.messages) write(file(username, "inbox"), CachedInbox(validity, updated))
     }
 
     @Synchronized fun message(username: String, uid: Long, validity: Long): MailDetail? =
@@ -76,7 +88,7 @@ internal class MailCache(private val context: Context) {
     }
 
     private fun <T> read(file: File, cls: Class<T>): T? = runCatching {
-        if (!file.isFile || file.length() > 1_000_000) return@runCatching null
+        if (!file.isFile || file.length() > 3_000_000) return@runCatching null
         val bytes = file.readBytes()
         if (bytes.size <= 12) return@runCatching null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -97,6 +109,8 @@ internal class MailCache(private val context: Context) {
             }
         }
     }
+
+    private companion object { const val MAX_OWA_HEADERS = 2000 }
 
     private data class CachedInbox(val validity: Long, val items: List<MailSummary>)
     private data class CachedBody(val validity: Long, val detail: MailDetail)

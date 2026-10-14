@@ -10,9 +10,17 @@ import kotlinx.coroutines.CancellationException
 class ScheduleRepository(
     private val remote: ScheduleRemoteDataSource,
     private val cache: ScheduleCacheStore,
+    private val searchIndex: ScheduleSearchIndex? = null,
 ) {
-    suspend fun search(query: String, type: ScheduleTargetType?): List<ScheduleTarget> =
-        remote.search(query, type)
+    suspend fun cachedSearch(
+        query: String, type: ScheduleTargetType?,
+    ): List<ScheduleTarget> = searchIndex?.search(query, type).orEmpty()
+
+    suspend fun search(query: String, type: ScheduleTargetType?): List<ScheduleTarget> {
+        val results = remote.search(query, type)
+        searchIndex?.remember(results)
+        return results
+    }
 
     suspend fun cachedWeek(
         target: ScheduleTarget,

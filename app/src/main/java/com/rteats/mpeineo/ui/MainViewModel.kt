@@ -258,13 +258,28 @@ class MainViewModel(
 
             _state.update { it.copy(isSearching = true, searchError = null) }
 
+            // Show previously discovered groups/teachers/rooms immediately,
+            // even with no network. Remote results subsequently take priority.
+            val offline = try {
+                container.repository.cachedSearch(query, type)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+            fun stillCurrent() = state.value.searchQuery.trim() == query &&
+                state.value.searchType == type
+            if (stillCurrent()) {
+                _state.update { it.copy(searchResults = offline, searchError = null) }
+            }
             try {
                 val results = container.repository.search(query, type)
-                if (state.value.searchQuery.trim() == query && state.value.searchType == type) {
+                if (stillCurrent()) {
+                    val merged = (results + offline).distinctBy { it.type to it.id }
                     _state.update {
                         it.copy(
                             isSearching = false,
-                            searchResults = results,
+                            searchResults = merged,
                             searchError = null,
                         )
                     }
@@ -272,12 +287,14 @@ class MainViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (state.value.searchQuery.trim() == query && state.value.searchType == type) {
+                if (stillCurrent()) {
                     _state.update {
                         it.copy(
                             isSearching = false,
-                            searchResults = emptyList(),
-                            searchError = error.message ?: "Не удалось выполнить поиск",
+                            searchResults = offline,
+                            searchError = if (offline.isEmpty()) {
+                                error.message ?: "Не удалось выполнить поиск"
+                            } else null,
                         )
                     }
                 }

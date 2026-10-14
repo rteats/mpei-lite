@@ -14,6 +14,7 @@ import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.OwaInboxProbe
 import com.rteats.mpeineo.data.MpeiScheduleRemote
 import com.rteats.mpeineo.data.ScheduleRepository
+import com.rteats.mpeineo.data.ScheduleSearchIndex
 import com.rteats.mpeineo.data.UserPreferences
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -101,5 +102,6 @@ class AppContainer(application: Application) {
     val repository = ScheduleRepository(
         remote = MpeiScheduleRemote(httpClient, gson),
         cache = FileScheduleCache(application, gson),
+        searchIndex = ScheduleSearchIndex(application, gson),
     )
 }

@@ -186,10 +186,10 @@ class OwaMailRepository(
             }
             activeAccount = account
             accountPrefs.edit().putString("last_account", account).apply()
-            // Only the first page is the live inbox snapshot. Fetching older pages
-            // must not replace the newest cached messages or the notification baseline.
-            if (offset == 0) withContext(Dispatchers.IO) {
-                cache.saveInbox(account, MailInboxSnapshot(OWA_UID_VALIDITY, items))
+            // A background poll refreshes the first 60 but never truncates the
+            // previously downloaded older pages. Older pages extend the encrypted cache.
+            withContext(Dispatchers.IO) {
+                cache.saveOwaPage(account, items, offset)
             }
             diagnostics.log("OWA_MAIL",
                 "inbox_success refreshId=" + refreshId +
