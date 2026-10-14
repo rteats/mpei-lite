@@ -167,12 +167,23 @@ internal fun MailScreen(
             }
 
             if (!state.configured) {
-                MailLogin(
-                    usernameHint = state.username,
-                    busy = state.loading,
-                    onLogin = viewModel::login,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Почта ОСЭП", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.size(12.dp))
+                    Text(
+                        "Откройте ОСЭП кнопкой внизу, войдите и вернитесь к входящим.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.size(16.dp))
+                    Button(onClick = viewModel::refresh, enabled = !state.loading) {
+                        Text("Проверить подключение")
+                    }
+                }
             } else {
                 // Preserve the inbox LazyListState while smoothly navigating
                 // into and out of a message; all mail operations remain native.
@@ -377,64 +388,6 @@ private fun MailCertificateCard(
     }
 }
 
-@Composable
-private fun MailLogin(
-    usernameHint: String,
-    busy: Boolean,
-    onLogin: (String, String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var username by rememberSaveable { mutableStateOf(usernameHint) }
-    var password by remember { mutableStateOf("") }
-
-    Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text(
-            "Подключение почты МЭИ",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Используйте те же имя пользователя и пароль IMAP, что и в FairEmail. " +
-                "Подключение: mail.mpei.ru · SSL/TLS · 993. SMTP не требуется.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Имя пользователя IMAP") },
-            placeholder = { Text("Как в настройках FairEmail") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Пароль IMAP") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = { onLogin(username, password) },
-            enabled = !busy && username.isNotBlank() && password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-            else Text("Подключить входящие")
-        }
-        Text(
-            "Пароль шифруется ключом Android Keystore и хранится только на устройстве. " +
-                "Приложение не отправляет письма и не изменяет их статус прочтения.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(90.dp))
-    }
-}
 
 /**
  * Compact inbox surfaces have separate shapes and muted tonal emphasis.
@@ -631,14 +584,30 @@ private fun MailMessage(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
                 )
             }
-            SelectionContainer {
-                Text(
-                    annotatedMailLinks(
-                        detail.body,
-                        linkColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+            if (detail.threadMessages.size > 1) {
+                Text("Сообщений в переписке: ${detail.threadMessages.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                detail.threadMessages.forEachIndexed { index, message ->
+                    if (index > 0) HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                    Text(message.sender.ifBlank { "Неизвестный отправитель" },
+                        style = MaterialTheme.typography.titleSmall)
+                    Text(DateFormat.getDateTimeInstance().format(Date(message.sentAt)),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SelectionContainer {
+                        Text(annotatedMailLinks(message.body,
+                            linkColor = MaterialTheme.colorScheme.primary),
+                            style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            } else {
+                SelectionContainer {
+                    Text(annotatedMailLinks(detail.body,
+                        linkColor = MaterialTheme.colorScheme.primary),
+                        style = MaterialTheme.typography.bodyLarge)
+                }
             }
             Spacer(Modifier.size(100.dp))
         }
