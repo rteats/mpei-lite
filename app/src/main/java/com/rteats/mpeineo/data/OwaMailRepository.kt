@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.text.Html
 import android.webkit.CookieManager
 import android.webkit.WebSettings
+import kotlinx.coroutines.CancellationException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -36,12 +37,103 @@ class OwaMailRepository(
         IllegalStateException("Не удалось получить почту через ОСЭП (" + category + ").")
 
     private val mutex = Mutex()
+    private val cache = MailCache(context)
+    private val accountPrefs = context.getSharedPreferences("owa_mail_account_v1", Context.MODE_PRIVATE)
+    @Volatile private var activeAccount: String? = null
+
+    fun cachedInbox(): List<MailSummary> =
+        accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
+            .orEmpty().filter { it.owaConversationId != null }
+
+    fun cachedMessage(summary: MailSummary): MailDetail? =
+        accountPrefs.getString("last_account", null)?.let {
+            cache.message(it, summary.uid, summary.uidValidity)
+        }
+
+    fun currentAccountKey(): String? = activeAccount
+
+    suspend fun signOut() {
+        val previous = accountPrefs.getString("last_account", null)
+        activeAccount = null
+        accountPrefs.edit().remove("last_account").apply()
+        if (previous != null) withContext(Dispatchers.IO) { cache.clear(previous) }
+        // The cookie jar is shared with BARS; clear mail.mpei.ru only.
+        withContext(Dispatchers.Main) {
+            val jar = CookieManager.getInstance()
+            val names = jar.getCookie(OWA_URL).orEmpty().split(';')
+                .map { it.trim().substringBefore('=').trim() }
+                .filter { it.isNotEmpty() }.distinct()
+            names.forEach { name ->
+                jar.setCookie("https://mail.mpei.ru/", "$name=; Path=/; Max-Age=0; Secure")
+                jar.setCookie(OWA_URL, "$name=; Path=/owa; Max-Age=0; Secure")
+                jar.setCookie(OWA_URL, "$name=; Path=/owa/; Max-Age=0; Secure")
+            }
+            jar.flush()
+        }
+        diagnostics.log("OWA_MAIL", "local_logout cacheCleared=true mailCookiesCleared=true")
+    }
+
+    /** Resolve the authenticated mailbox identity, never from an IMAP account. */
+    private suspend fun authenticatedAccount(): String {
+        val session = withContext(Dispatchers.Main) {
+            val cookies = CookieManager.getInstance().getCookie(OWA_URL).orEmpty()
+            if (cookies.isBlank()) throw LoginRequired()
+            Session(cookies, "", WebSettings.getDefaultUserAgent(context))
+        }
+        val response = withContext(Dispatchers.IO) {
+            val connection = URL(OWA_URL + "sessiondata.ashx?appcacheclient=0")
+                .openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 8000
+                connection.readTimeout = 15000
+                connection.setFixedLengthStreamingMode(0)
+                connection.setRequestProperty("Cookie", session.cookieHeader)
+                connection.setRequestProperty("User-Agent", session.userAgent)
+                connection.setRequestProperty("Origin", "https://mail.mpei.ru")
+                connection.setRequestProperty("Referer", OWA_URL)
+                connection.outputStream.use { }
+                val status = connection.responseCode
+                if (status != 200) {
+                    if (status in listOf(301, 302, 303, 307, 308, 401, 440))
+                        throw LoginRequired()
+                    throw ServiceFailure("identity_http_" + status)
+                }
+                val renewed = connection.headerFields
+                    .filterKeys { it?.equals("Set-Cookie", ignoreCase = true) == true }
+                    .values.flatMap { it.orEmpty() }
+                connection.inputStream.bufferedReader().use { it.readText() } to renewed
+            } finally {
+                connection.disconnect()
+            }
+        }
+        if (response.second.isNotEmpty()) {
+            withContext(Dispatchers.Main) {
+                val jar = CookieManager.getInstance()
+                response.second.forEach { jar.setCookie(OWA_URL, it) }
+                jar.flush()
+            }
+        }
+        val settings = runCatching {
+            JSONObject(response.first).getJSONObject("owaUserConfig").getJSONObject("SessionSettings")
+        }.getOrNull() ?: throw LoginRequired()
+        val username = settings.optString("UserPrincipalName")
+            .ifBlank { settings.optString("UserEmailAddress") }
+            .ifBlank { settings.optString("LogonEmailAddress") }
+        if (username.isBlank()) throw ServiceFailure("identity_missing")
+        return "owa_" + MessageDigest.getInstance("SHA-256")
+            .digest(username.trim().lowercase().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
     private data class Session(val cookieHeader: String, val canary: String, val userAgent: String)
     private data class Reply(val status: Int, val body: String, val setCookies: List<String>)
 
     suspend fun inbox(maxConversations: Int = 60, refreshId: Long = 0L): List<MailSummary> {
         val started = SystemClock.elapsedRealtime()
         return try {
+            val account = authenticatedAccount()
             val body = JSONObject()
                 .put("__type", "FindConversationRequest:#Exchange")
                 .put("ParentFolderId", JSONObject()
@@ -87,12 +179,18 @@ class OwaMailRepository(
                     owaConversationId = id,
                 )
             }
+            activeAccount = account
+            accountPrefs.edit().putString("last_account", account).apply()
+            withContext(Dispatchers.IO) {
+                cache.saveInbox(account, MailInboxSnapshot(OWA_UID_VALIDITY, items))
+            }
             diagnostics.log("OWA_MAIL",
                 "inbox_success refreshId=" + refreshId +
                     " conversations=" + items.size +
                     " durationMs=" + (SystemClock.elapsedRealtime() - started))
             items
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             diagnostics.log("OWA_MAIL",
                 "inbox_failure refreshId=" + refreshId +
                     " category=" + when (e) {
@@ -127,7 +225,7 @@ class OwaMailRepository(
                 .put("MaximumRecipientsToReturn", 10))
             .put("ShapeName", "ItemPartUniqueBody")
             .put("SortOrder", "DateOrderDescending")
-            .put("MaxItemsToReturn", 20)
+            .put("MaxItemsToReturn", 100)
         val result = service("GetConversationItems", "GetConversationItemsAction", body)
         val response = result.optJSONObject("Body")
             ?.optJSONObject("ResponseMessages")
@@ -136,38 +234,46 @@ class OwaMailRepository(
         verifyResponse(response)
         val nodes = response.optJSONObject("Conversation")?.optJSONArray("ConversationNodes")
             ?: throw ServiceFailure("missing_message_nodes")
-        var selected: JSONObject? = null
+        val thread = mutableListOf<MailThreadMessage>()
+        var anyTruncated = false
         for (i in 0 until nodes.length()) {
             val entries = nodes.optJSONObject(i)?.optJSONArray("Items") ?: continue
             for (j in 0 until entries.length()) {
                 val item = entries.optJSONObject(j) ?: continue
-                if (selected == null ||
-                    parseDate(item.optString("DateTimeReceived")) >
-                        parseDate(selected.optString("DateTimeReceived"))) selected = item
+                val unique = item.optJSONObject("UniqueBody") ?: item.optJSONObject("Body")
+                val raw = unique?.optString("Value").orEmpty()
+                val plain = if (unique?.optString("BodyType").equals("HTML", true))
+                    Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                else raw
+                val mailbox = item.optJSONObject("From")?.optJSONObject("Mailbox")
+                    ?: item.optJSONObject("Sender")?.optJSONObject("Mailbox")
+                val sender = mailbox?.optString("Name")?.takeIf { it.isNotBlank() }
+                    ?: mailbox?.optString("EmailAddress").orEmpty()
+                thread.add(MailThreadMessage(
+                    sender.ifBlank { summary.sender },
+                    item.optString("Subject").ifBlank { summary.subject },
+                    parseDate(item.optString("DateTimeReceived")).takeIf { it > 0 } ?: summary.sentAt,
+                    plain,
+                ))
+                anyTruncated = anyTruncated || unique?.optBoolean("IsTruncated", false) == true
             }
         }
-        val item = selected ?: throw ServiceFailure("empty_conversation")
-        val content = item.optJSONObject("UniqueBody")
-        val rawBody = content?.optString("Value").orEmpty()
-        val plainBody = if (content?.optString("BodyType").equals("HTML", true)) {
-            Html.fromHtml(rawBody, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-        } else rawBody
-        val mailbox = item.optJSONObject("From")?.optJSONObject("Mailbox")
-            ?: item.optJSONObject("Sender")?.optJSONObject("Mailbox")
-        val sender = mailbox?.optString("Name")?.takeIf { it.isNotBlank() }
-            ?: mailbox?.optString("EmailAddress").orEmpty()
+        if (thread.isEmpty()) throw ServiceFailure("empty_conversation")
+        val ordered = thread.sortedBy { it.sentAt }
+        val recent = ordered.last()
         val detail = MailDetail(
-            uid = summary.uid,
-            sender = sender.ifBlank { summary.sender },
-            subject = item.optString("Subject").ifBlank { summary.subject },
-            sentAt = parseDate(item.optString("DateTimeReceived"))
-                .takeIf { it > 0 } ?: summary.sentAt,
-            body = plainBody,
-            attachments = emptyList(),
+            uid = summary.uid, sender = recent.sender, subject = recent.subject,
+            sentAt = recent.sentAt, body = recent.body,
+            attachments = emptyList(), threadMessages = ordered,
         )
-        diagnostics.log("OWA_MAIL",
-            "message_success bodyPresent=" + plainBody.isNotBlank() +
-                " truncated=" + (content?.optBoolean("IsTruncated") ?: false))
+        activeAccount?.let { account ->
+            withContext(Dispatchers.IO) {
+                cache.saveMessage(account, summary.uid, summary.uidValidity, detail)
+            }
+        }
+        diagnostics.log("OWA_MAIL", "message_success bodyPresent=" +
+            recent.body.isNotBlank() + " truncated=" + anyTruncated +
+            " threadCount=" + ordered.size)
         return detail
     }
 
