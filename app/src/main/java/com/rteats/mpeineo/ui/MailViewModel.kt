@@ -38,403 +38,125 @@ internal data class MailUiState(
     val error: String? = null,
 )
 
-/** Only the username and message summaries enter Compose state. Never the password. */
+/** Native mail reads and refreshes exclusively through OWA. */
 internal class MailViewModel(
     private val repository: MailRepository,
     private val owaAuthProbe: OwaAuthProbe,
     private val owaMailRepository: OwaMailRepository,
 ) : ViewModel() {
-    private val initialAuth = repository.credentials.load()
-    private val _state = MutableStateFlow(
-        MailUiState(configured = initialAuth != null, username = initialAuth?.username.orEmpty()),
-    )
+    private val _state = MutableStateFlow(MailUiState())
     val state: StateFlow<MailUiState> = _state.asStateFlow()
-    private var inMemoryCredentials: MailCredentials? = initialAuth
-    private var attemptedCredentials: MailCredentials? = initialAuth
     private var sessionVersion = 0L
     private var refreshSequence = 0L
+    private var pendingNotification: Pair<Long, Long>? = null
 
     init {
-        repository.logState("inbox model created credentialsStored=${initialAuth != null}")
-        val version = sessionVersion
-        viewModelScope.launch {
-            if (initialAuth != null) {
-                val cached = repository.cachedInbox(initialAuth.username)
-                if (version == sessionVersion &&
-                    inMemoryCredentials?.username == initialAuth.username && cached.isNotEmpty()) {
-                    _state.update { it.copy(items = cached) }
-                }
-            }
-            // OWA is usable even without IMAP credentials. Don't require
-            // an IMAP account before attempting the existing OWA session.
-            refresh()
+        val cached = owaMailRepository.cachedInbox()
+        if (cached.isNotEmpty()) {
+            _state.update { it.copy(configured = true, items = cached) }
         }
-    }
-
-    fun login(username: String, password: String) {
-        if (username.isBlank() || password.isBlank()) {
-            _state.update { it.copy(error = "Введите имя пользователя IMAP и пароль.") }
-            return
-        }
-        val auth = MailCredentials(username.trim(), password)
-        repository.logState("login requested")
-        attemptedCredentials = auth
-        val version = ++sessionVersion
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null, notice = null, certificate = null) }
-            runCatching { repository.refreshInbox(auth) }
-                .onSuccess { items ->
-                    repository.logState("login success messages=${items.size}")
-                    if (version != sessionVersion) return@onSuccess
-                    // An obsolete login must never restore credentials after logout.
-                    repository.credentials.save(auth)
-                    inMemoryCredentials = auth
-                    _state.update {
-                        it.copy(configured = true, username = auth.username, items = items, loading = false, certificate = null)
-                    }
-                }.onFailure { cause ->
-                    if (version != sessionVersion) return@onFailure
-                    repository.logState("login failure type=${cause.javaClass.simpleName}")
-                    handleConnectionFailure(cause, version)
-                }
-        }
+        refresh()
     }
 
     fun refresh() {
         if (_state.value.loading) return
-        val refreshId = ++refreshSequence
         val version = sessionVersion
-        val auth = inMemoryCredentials
-        repository.logState(
-            "refresh requested id=" + refreshId + " protocol=OWA-first cachedItems=" +
-                _state.value.items.size,
-        )
+        val id = ++refreshSequence
+        repository.logState("refresh requested id=$id protocol=OWA cachedItems=${_state.value.items.size}")
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            // Native OWA uses the WebView session; no password or IMAP login.
-            val owaResult = runCatching { owaMailRepository.inbox(refreshId = refreshId) }
-            if (version != sessionVersion) return@launch
-            if (owaResult.isSuccess) {
-                val items = owaResult.getOrThrow()
-                repository.logState("refresh success id=" + refreshId + " protocol=OWA items=" + items.size)
+            _state.update { it.copy(loading = true, error = null, notice = null) }
+            try {
+                val items = owaMailRepository.inbox(refreshId = id)
+                if (version != sessionVersion) return@launch
+                repository.credentials.clear()
+                repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
+                _state.update { it.copy(configured = true, loading = false, items = items) }
+                pendingNotification?.let { target ->
+                    pendingNotification = null
+                    items.firstOrNull { it.uid == target.first && it.uidValidity == target.second }
+                        ?.let(::open)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("refresh failure id=$id protocol=OWA type=${failure.javaClass.simpleName}")
+                val needsLogin = failure is OwaMailRepository.LoginRequired
                 _state.update {
-                    it.copy(configured = true, loading = false, items = items,
-                        error = null, notice = null)
+                    it.copy(
+                        configured = it.items.isNotEmpty() || (!needsLogin && it.configured),
+                        loading = false,
+                        error = if (needsLogin) "Сессия ОСЭП недействительна. Войдите через кнопку ОСЭП."
+                            else if (it.items.isEmpty()) "Не удалось получить почту через ОСЭП." else null,
+                        notice = if (it.items.isNotEmpty()) "Показаны сохранённые письма" else null,
+                    )
                 }
-                return@launch
             }
-
-            val owaFailure = owaResult.exceptionOrNull()!!
-            repository.logState(
-                "OWA refresh unavailable id=" + refreshId + " type=" +
-                    owaFailure.javaClass.simpleName,
-            )
-            if (auth == null) {
-                _state.update {
-                    it.copy(loading = false,
-                        configured = it.items.isNotEmpty(),
-                        error = if (it.items.isNotEmpty()) null else
-                            "Откройте ОСЭП, войдите и вернитесь к входящим.",
-                        notice = if (it.items.isNotEmpty()) "ОСЭП недоступен, показаны сохранённые письма"
-                            else null)
-                }
-                return@launch
-            }
-
-            attemptedCredentials = auth
-            // Only fall back to the unchanged legacy IMAP implementation.
-            // OWA success must never trigger the unreliable IMAPS connection.
-            runCatching { repository.refreshInbox(auth) }
-                .onSuccess { items ->
-                    if (version == sessionVersion) {
-                        repository.logState("refresh success id=" + refreshId + " protocol=IMAPS items=" + items.size)
-                        _state.update {
-                            it.copy(configured = true, items = items, loading = false)
-                        }
-                    }
-                }
-                .onFailure { cause ->
-                    if (version == sessionVersion) {
-                        repository.logState("refresh failure id=" + refreshId +
-                            " protocol=IMAPS type=" + cause.javaClass.simpleName)
-                        handleConnectionFailure(cause, version)
-                    }
-                }
         }
     }
 
     fun open(summary: MailSummary) {
-        if (summary.owaConversationId != null) {
-            val version = sessionVersion
-            _state.update {
-                it.copy(selected = summary, message = null, loadingMessage = true,
-                    error = null, notice = null)
-            }
-            viewModelScope.launch {
-                runCatching { owaMailRepository.message(summary) }
-                    .onSuccess { body ->
-                        if (version != sessionVersion) return@onSuccess
-                        _state.update { current ->
-                            if (current.selected?.uid != summary.uid ||
-                                current.selected?.uidValidity != summary.uidValidity) current
-                            else current.copy(message = body, loadingMessage = false,
-                                notice = if (summary.hasAttachment)
-                                    "Вложения пока доступны через ОСЭП" else null)
-                        }
-                    }.onFailure { failure ->
-                        if (version != sessionVersion) return@onFailure
-                        repository.logState("OWA message failure type=" + failure.javaClass.simpleName)
-                        _state.update { current ->
-                            if (current.selected?.uid != summary.uid) current
-                            else current.copy(loadingMessage = false,
-                                error = "Не удалось открыть письмо через ОСЭП. Попробуйте обновить входящие.")
-                        }
-                    }
-            }
-            return
-        }
-        val auth = inMemoryCredentials ?: return
         val version = sessionVersion
+        val cached = owaMailRepository.cachedMessage(summary)
         _state.update {
-            it.copy(selected = summary, message = null, loadingMessage = true, error = null, notice = null)
+            it.copy(selected = summary, message = cached,
+                loadingMessage = cached == null, error = null, notice = null)
         }
         viewModelScope.launch {
-            val cached = repository.cachedMessage(auth.username, summary.uid, summary.uidValidity)
-            if (version != sessionVersion) return@launch
-            if (cached != null) {
+            try {
+                val detail = owaMailRepository.message(summary)
+                if (version != sessionVersion) return@launch
                 _state.update { current ->
-                    if (current.selected?.uid == summary.uid &&
-                        current.selected?.uidValidity == summary.uidValidity
-                    ) current.copy(message = cached, loadingMessage = false)
-                    else current
+                    if (current.selected?.uid != summary.uid ||
+                        current.selected?.uidValidity != summary.uidValidity) current
+                    else current.copy(message = detail, loadingMessage = false,
+                        notice = if (summary.hasAttachment)
+                            "Вложения пока доступны через ОСЭП" else null)
                 }
-                markReadAfterOpening(auth, summary, version)
-                return@launch
-            }
-            runCatching { repository.readMessage(auth, summary.uid, summary.uidValidity) }
-                .onSuccess { body ->
-                    if (version != sessionVersion) return@onSuccess
-                    _state.update { current ->
-                        if (current.selected?.uid != summary.uid ||
-                            current.selected?.uidValidity != summary.uidValidity
-                        ) current
-                        else current.copy(message = body, loadingMessage = false)
-                    }
-                    markReadAfterOpening(auth, summary, version)
-                }
-                .onFailure { cause ->
-                    if (version != sessionVersion) return@onFailure
-                    _state.update { current ->
-                        if (current.selected?.uid != summary.uid ||
-                            current.selected?.uidValidity != summary.uidValidity
-                        ) current
-                        else current.copy(loadingMessage = false, error = readableError(cause))
-                    }
-                }
-        }
-    }
-
-    /**
-     * A message counts as opened only once its body (or offline cached body)
-     * is displayed. Mark it as read on the actual server without delaying the
-     * message screen; an unsuccessful write must not falsify the local flags.
-     */
-    private fun markReadAfterOpening(
-        auth: MailCredentials,
-        summary: MailSummary,
-        version: Long,
-    ) {
-        if (!summary.unread || version != sessionVersion) return
-        viewModelScope.launch {
-            runCatching {
-                repository.markAsRead(auth, summary.uid, summary.uidValidity)
-            }.onSuccess {
-                if (version != sessionVersion) return@onSuccess
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("OWA message failure type=${failure.javaClass.simpleName}")
                 _state.update { current ->
-                    current.copy(
-                        items = markMailRead(current.items, summary.uid, summary.uidValidity),
-                        selected = current.selected?.let { selected ->
-                            if (selected.uid == summary.uid &&
-                                selected.uidValidity == summary.uidValidity
-                            ) selected.copy(unread = false) else selected
-                        },
-                    )
-                }
-            }.onFailure { cause ->
-                if (version != sessionVersion) return@onFailure
-                _state.update { current ->
-                    if (current.selected?.uid == summary.uid &&
-                        current.selected?.uidValidity == summary.uidValidity
-                    ) current.copy(
-                        notice = "Письмо открыто, но не удалось отметить его прочитанным: " +
-                            readableError(cause),
-                    ) else current
+                    if (current.selected?.uid != summary.uid) current
+                    else current.copy(loadingMessage = false,
+                        error = if (cached == null) "Не удалось открыть переписку через ОСЭП." else null,
+                        notice = if (cached != null) "Показана сохранённая переписка" else null)
                 }
             }
         }
     }
 
-    /** Open the exact UID referenced by an email notification. */
     fun openFromNotification(uid: Long, validity: Long) {
-        if (uid <= 0L || validity <= 0L || inMemoryCredentials == null) return
-        val summary = _state.value.items.firstOrNull {
-            it.uid == uid && it.uidValidity == validity
-        } ?: MailSummary(
-            uid = uid,
-            uidValidity = validity,
-            sender = "",
-            subject = "",
-            sentAt = 0L,
-            unread = true,
-            hasAttachment = false,
-        )
-        open(summary)
+        if (uid <= 0 || validity <= 0) return
+        _state.value.items.firstOrNull { it.uid == uid && it.uidValidity == validity }
+            ?.let { open(it); return }
+        pendingNotification = uid to validity
+        refresh()
     }
 
     fun closeMessage() {
-        // AnimatedContent keeps the outgoing message composed until its exit
-        // finishes. Retain its body so back navigation doesn't replace the
-        // outgoing message with a placeholder in the middle of the animation.
-        // open() and logout() clear the old body when appropriate.
-        _state.update {
-            it.copy(selected = null, loadingMessage = false, notice = null, error = null)
-        }
+        _state.update { it.copy(selected = null, loadingMessage = false, notice = null, error = null) }
     }
 
     fun download(attachment: MailAttachment) {
-        val auth = inMemoryCredentials ?: return
-        val version = sessionVersion
-        val summary = _state.value.selected ?: return
-        if (summary.owaConversationId != null) {
-            _state.update { it.copy(notice = "Загрузите вложение через ОСЭП.") }
-            return
-        }
-        if (_state.value.savingAttachment != null) return
-        viewModelScope.launch {
-            _state.update { it.copy(savingAttachment = attachment.partPath, notice = null, error = null) }
-            runCatching {
-                repository.saveAttachment(auth, summary.uid, summary.uidValidity, attachment)
-            }.onSuccess { destination ->
-                if (version == sessionVersion) {
-                    _state.update { it.copy(savingAttachment = null, notice = "Сохранено: $destination") }
-                }
-            }.onFailure { cause ->
-                if (version == sessionVersion) {
-                    _state.update { it.copy(savingAttachment = null, error = readableError(cause)) }
-                }
-            }
-        }
+        _state.update { it.copy(notice = "Вложения пока доступны через ОСЭП.") }
     }
 
     fun logout() {
         sessionVersion++
+        pendingNotification = null
         viewModelScope.coroutineContext.cancelChildren()
         MailNotificationScheduler.stopAndClear(repository.contextForNotifications)
-        inMemoryCredentials?.username?.let(repository::clearCachedMail)
         repository.credentials.clear()
         repository.forgetTrustedCertificate()
-        attemptedCredentials = null
-        inMemoryCredentials = null
         _state.value = MailUiState()
-    }
-
-    /**
-     * Don't accept trust automatically. The user must independently compare
-     * the SHA-256 fingerprint and explicitly approve the exact certificate.
-     */
-    fun approveCertificate() {
-        val candidate = _state.value.certificate ?: return
-        val auth = attemptedCredentials ?: return
-        val version = sessionVersion
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                val live = repository.inspectServerCertificate()
-                require(live.sha256 == candidate.sha256) {
-                    "Сертификат сервера изменился. Проверьте новый отпечаток."
-                }
-                require(live.currentlyValid && live.matchesMailHostname) {
-                    "Сертификат просрочен либо не принадлежит mail.mpei.ru."
-                }
-                if (version != sessionVersion) return@runCatching
-                repository.trustCertificate(live)
-            }.onSuccess {
-                if (version != sessionVersion) return@onSuccess
-                _state.update { it.copy(loading = false, certificate = null) }
-                if (_state.value.configured) refresh() else login(auth.username, auth.password)
-            }.onFailure { problem ->
-                if (version != sessionVersion) return@onFailure
-                _state.update {
-                    it.copy(
-                        loading = false,
-                        certificate = null,
-                        error = readableError(problem),
-                    )
-                }
+            try { owaMailRepository.signOut() }
+            catch (failure: Exception) {
+                repository.logState("OWA local logout failed type=${failure.javaClass.simpleName}")
             }
-        }
-    }
-
-    fun dismissCertificateWarning() {
-        _state.update { it.copy(certificate = null, inspectingCertificate = false) }
-    }
-
-    private suspend fun handleConnectionFailure(cause: Throwable, version: Long) {
-        if (version != sessionVersion) return
-        val descriptions = generateSequence(cause) { it.cause }
-            .take(8).mapNotNull { it.message }.joinToString(" ")
-        val likelyTlsIssue = descriptions.contains("certificate", ignoreCase = true) ||
-            descriptions.contains("PKIX", ignoreCase = true) ||
-            descriptions.contains("SSLHandshake", ignoreCase = true)
-
-        repository.logState(
-            "connection failure tlsSuspected=$likelyTlsIssue type=${cause.javaClass.simpleName}"
-        )
-        if (!likelyTlsIssue) {
-            _state.update {
-                it.copy(loading = false, inspectingCertificate = false, error = readableError(cause))
-            }
-            return
-        }
-
-        _state.update {
-            it.copy(
-                loading = false,
-                inspectingCertificate = true,
-                certificate = null,
-                error = "Сертификат mail.mpei.ru не доверен. Для подключения проверьте его SHA-256 отпечаток.",
-            )
-        }
-        runCatching { repository.inspectServerCertificate() }
-            .onSuccess { cert ->
-                if (version != sessionVersion) return@onSuccess
-                _state.update {
-                    it.copy(certificate = cert, inspectingCertificate = false)
-                }
-            }
-            .onFailure { failure ->
-                if (version != sessionVersion) return@onFailure
-                _state.update {
-                    it.copy(
-                        inspectingCertificate = false,
-                        error = "Не удалось получить сертификат: " + readableError(failure),
-                    )
-                }
-            }
-    }
-
-    private fun readableError(t: Throwable): String {
-        val message = t.message.orEmpty()
-        val endedUnexpectedly = generateSequence(t) { it.cause }
-            .take(8).any { it is java.io.EOFException }
-        return when {
-            endedUnexpectedly ->
-                "Сервер mail.mpei.ru преждевременно закрыл соединение. " +
-                    "Сохранённые письма доступны; попробуйте позже или откройте ОСЭП."
-            message.contains("authentication", true) || message.contains("login failed", true) ->
-                "Не удалось войти в IMAP. Проверьте имя пользователя и пароль FairEmail."
-            message.contains("timeout", true) -> "Сервер почты не ответил. Повторите позже."
-            else -> message.take(240).ifBlank { "Не удалось получить почту через IMAP." }
         }
     }
 
@@ -443,11 +165,10 @@ internal class MailViewModel(
             repo: MailRepository,
             owaAuthProbe: OwaAuthProbe,
             owaMailRepository: OwaMailRepository,
-        ): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    MailViewModel(repo, owaAuthProbe, owaMailRepository) as T
-            }
+        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                MailViewModel(repo, owaAuthProbe, owaMailRepository) as T
+        }
     }
 }
