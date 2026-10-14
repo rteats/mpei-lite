@@ -259,7 +259,7 @@ class MailNotificationWorker(
     override suspend fun doWork(): Result {
         val prefs = MailNotificationPreferences(applicationContext)
         if (!prefs.enabled) return Result.success()
-        val repository = OwaMailRepository(applicationContext, DiagnosticLog(applicationContext))
+        val repository = OwaMailRepository(applicationContext, DiagnosticLog(applicationContext as android.app.Application))
         return try {
             val messages = repository.inbox(maxConversations = 60)
             val account = repository.currentAccountKey() ?: return Result.retry()
