@@ -14,7 +14,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -513,19 +512,9 @@ internal fun CampusMapScreen(
                     viewport = it
                     pan = fitPan(pan, zoom)
                 }
-                .pointerInput(prepared) {
-                    detectTransformGestures { centroid, gesturePan, gestureZoom, _ ->
-                        val nextZoom = (zoom * gestureZoom).coerceIn(.65f, 5f)
-                        val ratio = nextZoom / zoom
-                        val cursor = Offset(
-                            centroid.x - size.width / 2f,
-                            centroid.y - size.height / 2f,
-                        )
-                        val nextPan = (pan - cursor) * ratio + cursor + gesturePan
-                        zoom = nextZoom
-                        pan = fitPan(nextPan, nextZoom)
-                    }
-                }
+                // Full-screen right-swipe now belongs to the service back gesture.
+                // Map drag/pinch transformation is temporarily disabled; zoom controls,
+                // building selection and recenter remain available.
                 .pointerInput(prepared, places) {
                     detectTapGestures { tap ->
                         val scale = mapScale().takeIf { it > 0 } ?: return@detectTapGestures

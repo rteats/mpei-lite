@@ -6,14 +6,22 @@ import android.view.WindowInsets as AndroidWindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -21,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +37,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -39,10 +47,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -57,8 +70,16 @@ import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.MpeiNeoApplication
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
+
+private enum class ServiceNavDirection { PUSH, POP }
+
+/** Swipe-back completion measured as a fraction of the current screen width. */
+internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
+    widthPx > 0f && distancePx >= widthPx * 0.20f
+
 
 /**
  * Compatibility helper for the old pager policy tests. The super-app shell no
@@ -145,6 +166,12 @@ fun MpeiNeoApp(
     var service by rememberSaveable {
         mutableStateOf<AppTab?>(if (initialMailTab) AppTab.MAIL else null)
     }
+    var navDirection by remember { mutableStateOf(ServiceNavDirection.PUSH) }
+    var skipPopTransition by remember { mutableStateOf(false) }
+    var swipePx by remember { mutableFloatStateOf(0f) }
+    var gestureSettling by remember { mutableStateOf(false) }
+    val navigationScope = rememberCoroutineScope()
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var returnFromMapToSchedule by rememberSaveable { mutableStateOf(false) }
     val savedServiceState = rememberSaveableStateHolder()
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
@@ -188,6 +215,9 @@ fun MpeiNeoApp(
         }
         searchExpanded = false
         barsBrowserJustClosed = false
+        navDirection = ServiceNavDirection.PUSH
+        skipPopTransition = false
+        swipePx = 0f
         returnFromMapToSchedule = viaClassroom
         logNavigation("superapp navigate from=" + (service?.name ?: "HOME") +
             " to=" + target.name + " classroom=" + viaClassroom)
@@ -200,6 +230,7 @@ fun MpeiNeoApp(
         mailWebVisible = false
         searchExpanded = false
         barsBrowserJustClosed = false
+        navDirection = ServiceNavDirection.POP
         returnFromMapToSchedule = false
         logNavigation("superapp HOME from=" + (service?.name ?: "HOME"))
         service = null
@@ -225,6 +256,7 @@ fun MpeiNeoApp(
     BackHandler(enabled = service != null && !mailWebVisible) {
         if (service == AppTab.MAPS && returnFromMapToSchedule) {
             openService(AppTab.SCHEDULE)
+            navDirection = ServiceNavDirection.POP
         } else goHome()
     }
     BackHandler(enabled = service == AppTab.MAIL && mailWebVisible) {
@@ -236,11 +268,45 @@ fun MpeiNeoApp(
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
+            // A right-swipe temporarily reveals the launcher behind the page.
+            val previewBack = service != null && !searchExpanded && !imeVisible &&
+                !(service == AppTab.MAIL && (mailWebVisible || mailState.selected != null)) &&
+                service != AppTab.BARS &&
+                !(service == AppTab.MAPS && returnFromMapToSchedule)
+            if (service != null && swipePx > 0f && previewBack) {
+                SuperAppHome(
+                    schedule = scheduleState,
+                    bars = barsState,
+                    mail = mailState,
+                    onOpen = { /* covered by the interactive page */ },
+                )
+            }
             AnimatedContent(
                 targetState = service,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().clipToBounds(),
                 transitionSpec = {
-                    fadeIn(tween(180)) togetherWith fadeOut(tween(110))
+                    when {
+                        skipPopTransition && navDirection == ServiceNavDirection.POP ->
+                            EnterTransition.None togetherWith ExitTransition.None
+                        navDirection == ServiceNavDirection.POP ->
+                            (slideInHorizontally(
+                                initialOffsetX = { -it / 6 },
+                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                            ) + fadeIn(tween(260))) togetherWith
+                                (slideOutHorizontally(
+                                    targetOffsetX = { it },
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                ) + fadeOut(tween(180)))
+                        else ->
+                            (slideInHorizontally(
+                                initialOffsetX = { it },
+                                animationSpec = tween(340, easing = FastOutSlowInEasing),
+                            ) + fadeIn(tween(240))) togetherWith
+                                (slideOutHorizontally(
+                                    targetOffsetX = { -it / 6 },
+                                    animationSpec = tween(340, easing = FastOutSlowInEasing),
+                                ) + fadeOut(tween(200)))
+                    }
                 },
                 label = "superapp-service",
             ) { destination ->
@@ -253,7 +319,88 @@ fun MpeiNeoApp(
                     )
                 } else {
                     savedServiceState.SaveableStateProvider(destination.name) {
-                        Box(Modifier.fillMaxSize()) {
+                        // Watch horizontal drags across the whole native page.
+                        // Android's edge zones continue to use native Back; child
+                        // horizontal scroll controls keep their own gestures.
+                        val canSwipe = destination == service && !imeVisible &&
+                            !searchExpanded && !gestureSettling
+                        var acceptedGesture = false
+                        var gestureDistance = 0f
+                        Box(
+                            Modifier.fillMaxSize()
+                                .graphicsLayer {
+                                    translationX = if (destination == service) swipePx else 0f
+                                }
+                                .pointerInput(destination, canSwipe, previewBack) {
+                                    if (!canSwipe) return@pointerInput
+                                    val systemEdge = 24.dp.toPx()
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { start ->
+                                            acceptedGesture = start.x >= systemEdge &&
+                                                start.x <= size.width - systemEdge
+                                            gestureDistance = 0f
+                                        },
+                                        onHorizontalDrag = { change, amount ->
+                                            if (acceptedGesture) {
+                                                gestureDistance = (gestureDistance + amount)
+                                                    .coerceAtLeast(0f)
+                                                if (previewBack) {
+                                                    swipePx = gestureDistance
+                                                        .coerceAtMost(size.width.toFloat())
+                                                }
+                                                if (amount > 0f) change.consume()
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            if (previewBack && acceptedGesture) {
+                                                navigationScope.launch {
+                                                    animate(
+                                                        swipePx, 0f,
+                                                        animationSpec = tween(180),
+                                                    ) { value, _ -> swipePx = value }
+                                                }
+                                            }
+                                            acceptedGesture = false
+                                        },
+                                        onDragEnd = {
+                                            if (acceptedGesture &&
+                                                shouldCommitServiceBackSwipe(
+                                                    gestureDistance,
+                                                    size.width.toFloat(),
+                                                )
+                                            ) {
+                                                if (previewBack) {
+                                                    gestureSettling = true
+                                                    navigationScope.launch {
+                                                        animate(
+                                                            swipePx, size.width.toFloat(),
+                                                            animationSpec = tween(
+                                                                180, easing = FastOutSlowInEasing,
+                                                            ),
+                                                        ) { value, _ -> swipePx = value }
+                                                        skipPopTransition = true
+                                                        backDispatcher?.onBackPressed()
+                                                        delay(50)
+                                                        swipePx = 0f
+                                                        skipPopTransition = false
+                                                        gestureSettling = false
+                                                    }
+                                                } else {
+                                                    backDispatcher?.onBackPressed()
+                                                }
+                                            } else if (previewBack) {
+                                                navigationScope.launch {
+                                                    animate(
+                                                        swipePx, 0f,
+                                                        animationSpec = tween(180),
+                                                    ) { value, _ -> swipePx = value }
+                                                }
+                                            }
+                                            acceptedGesture = false
+                                        },
+                                    )
+                                },
+                        ) {
                             when (destination) {
                                 AppTab.SCHEDULE -> {
                                     ScheduleScreen(
@@ -287,7 +434,6 @@ fun MpeiNeoApp(
                                         showWeekInfo = weekInfoVisible,
                                         expanded = searchExpanded,
                                         onExpandedChange = { searchExpanded = it },
-                                        onHome = ::goHome,
                                         active = service == AppTab.SCHEDULE,
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -338,54 +484,42 @@ fun MpeiNeoApp(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
+                            // The portal FAB is part of the page. It moves with the
+                            // foreground rather than staying behind on a back swipe.
+                            val portalAction = when (destination) {
+                                AppTab.BARS -> AppTab.BARS.takeIf {
+                                    barsState.authStage == BarsAuthStage.AUTHENTICATED &&
+                                        !barsState.browserVisible && !imeVisible
+                                }
+                                AppTab.MAIL -> AppTab.MAIL.takeIf {
+                                    !mailWebVisible && !imeVisible
+                                }
+                                else -> null
+                            }
+                            AnimatedVisibility(
+                                visible = portalAction != null && destination == service,
+                                modifier = Modifier.align(Alignment.BottomEnd)
+                                    .padding(end = 16.dp, bottom = 16.dp),
+                                enter = fadeIn(tween(150)),
+                                exit = fadeOut(tween(110)),
+                            ) {
+                                PortalFloatingButton(
+                                    label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
+                                    onClick = {
+                                        when (portalAction) {
+                                            AppTab.BARS -> {
+                                                barsBrowserJustClosed = false
+                                                barsViewModel.showBrowser()
+                                            }
+                                            AppTab.MAIL -> mailWebVisible = true
+                                            else -> Unit
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
-            }
-
-            val portalAction = when (service) {
-                AppTab.BARS -> AppTab.BARS.takeIf {
-                    barsState.authStage == BarsAuthStage.AUTHENTICATED &&
-                        !barsState.browserVisible && !imeVisible
-                }
-                AppTab.MAIL -> AppTab.MAIL.takeIf { !mailWebVisible && !imeVisible }
-                else -> null
-            }
-            AnimatedVisibility(
-                visible = service != null && service != AppTab.SCHEDULE &&
-                    !imeVisible && !(service == AppTab.MAIL && mailWebVisible),
-                modifier = Modifier.align(Alignment.BottomStart)
-                    .padding(start = 16.dp, bottom = 16.dp),
-                enter = fadeIn(tween(160)),
-                exit = fadeOut(tween(110)),
-            ) {
-                FilledTonalIconButton(
-                    onClick = ::goHome,
-                    modifier = Modifier.size(56.dp).testTag("service-home"),
-                ) {
-                    AppIcon(AppIcons.Home, contentDescription = "На главную")
-                }
-            }
-            AnimatedVisibility(
-                visible = portalAction != null,
-                modifier = Modifier.align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp),
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(110)),
-            ) {
-                PortalFloatingButton(
-                    label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
-                    onClick = {
-                        when (portalAction) {
-                            AppTab.BARS -> {
-                                barsBrowserJustClosed = false
-                                barsViewModel.showBrowser()
-                            }
-                            AppTab.MAIL -> mailWebVisible = true
-                            else -> Unit
-                        }
-                    },
-                )
             }
         }
     }

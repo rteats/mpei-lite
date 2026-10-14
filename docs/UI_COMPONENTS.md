@@ -2,10 +2,10 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Short bottom navigation | ShortNavigationBar / MpeiNeoApp.kt | Five icon-only Material 3 Expressive destinations; native horizontal pager uses identical full-height page constraints to avoid jumps when changing tabs. |
-| Schedule destination (Пары) | MpeiNeoApp.kt / ScheduleAgenda.kt | Tap to switch to Schedule and jump to today even if already selected. |
-| BARS navigation item | MpeiNeoApp.kt | Becomes a back arrow labelled Оценки when the BARS browser is visible. |
-| Bottom floating search bar | ScheduleDockedSearch.kt | Raised Material surface (shadow elevation 10dp), bottom-to-top fading scrim; floats immediately above the navbar. Collapsed placeholder displays the selected group, teacher, or room (including a custom favorite name). No separate target card or month/year header. |
+| Super-app home | SuperAppHome.kt | Root launcher with four large service cards (Schedule, BARS, Mail, Campus), cached metadata, and a Settings action. No permanent navbar. |
+| Service push/pop | MpeiNeoApp.kt | Opening a service slides it in from the right; Android Back and full-width right-swipes pop toward Home (or the contextual Schedule origin). Native service page follows the finger, with a 20% threshold and a settling animation; the Android OS owns system-back edge zones. |
+| Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
+| Bottom floating search bar | ScheduleDockedSearch.kt | Tonal search dock at screen bottom without a navbar. Favorites and suggestions expand upward; selected schedule appears in collapsed placeholder. |
 | Expanded search | ScheduleDockedSearch.kt | Favorites appear in a floating panel ABOVE the bottom search input on focus. As text is entered, matching favorites stay above API results; category filters apply to both. The popup overlays the agenda without resizing it. It responds to keyboard insets and is dismissed when navigating away. |
 | Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
@@ -27,18 +27,25 @@ and refreshed from the network; the user can also pull down in the agenda for
 an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
-Navigation retains Material 3 Expressive ShortNavigationBar but removes all visual labels; each icon has an accessibility description. The search popup stays above the input and adapts to the IME.
+Navigation uses a service launcher as its root instead of a bottom navigation bar. Search suggestions remain above the schedule dock and adapt to the IME.
 
-## Native tab swipes and WebViews
+## Service navigation, back swipes and WebViews
 
-All five pages are pages of one horizontal Compose pager. Native Schedule,
-BARS grades, and Settings accept horizontal swipes, synchronized with icon
-selection. BARS login/browser and the OWA Mail WebView retain native WebView
-touch handling instead of allowing the pager to steal website interactions.
-Narrow 24dp edge-gesture areas permit swiping between those WebView pages and
-their neighbors. The Schedule search is part of the Schedule pager page itself,
-so it travels together with the timeline and does not resize the page during
-navigation. The search scrim and gradient are independent of the navbar.
+The four primary services are launched from Home, while Settings is opened
+from the Home action. Service entry uses a horizontal push animation;
+returning to the previous level uses a matching pop animation.
+
+On native pages, rightward dragging from anywhere outside Android's reserved
+system-back edge zones triggers an interactive swipe back. A release past 20%
+of screen width commits; a shorter gesture cancels. Back dispatches through
+the existing Android stack, so Mail messages and BARS discipline details
+close before leaving their service. The existing content animations handle
+these internal transitions. Browser-specific Back behavior is preserved.
+
+Schedule-to-Map classroom navigation returns to Schedule, not Home. The
+BARS and OWA embedded browsers retain native WebView gestures; Android's
+system Back remains available if the Compose gesture is not delivered through
+a WebView. There is no global horizontal pager or Home FAB.
 
 ## BARS weighted-grade forecasts
 
@@ -87,8 +94,9 @@ connections fail closed and require another explicit verification.
 
 ## Campus map
 
-The fifth tab in `CampusMapScreen.kt` renders true offline OpenStreetMap
-building footprints, roads, paths and green areas via Compose Canvas with
-Monet colors. Individual building polygons are tappable; pan, pinch zoom,
-recenter and building list are native. OSM attribution is on the map.
+The Campus service in `CampusMapScreen.kt` renders an offline OpenStreetMap
+campus footprint via Compose Canvas with Monet colors. Buildings remain
+tappable and zoom/recenter controls are available. Map drag/pinch transformations
+are temporarily disabled to prioritize the full-width swipe-back gesture.
+OSM attribution remains visible.
 See `docs/OFFLINE_CAMPUS_MAP.md`.
