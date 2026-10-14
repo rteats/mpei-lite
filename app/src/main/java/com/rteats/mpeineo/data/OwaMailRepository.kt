@@ -2,6 +2,11 @@ package com.rteats.mpeineo.data
 
 import android.content.Context
 import android.os.SystemClock
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.content.ContentValues
+import android.util.Base64
 import android.text.Html
 import android.webkit.CookieManager
 import android.webkit.WebSettings
@@ -203,6 +208,77 @@ class OwaMailRepository(
         }
     }
 
+
+    /** Mark a conversation read only when the Exchange service confirms NoError.
+     *  This action format is based on EWS; the OWA JSON transport still needs device testing. */
+    suspend fun markRead(summary: MailSummary) {
+        val id = summary.owaConversationId?.takeIf { it.isNotBlank() }
+            ?: throw ServiceFailure("missing_conversation_id")
+        val body = JSONObject()
+            .put("__type", "ApplyConversationActionRequest:#Exchange")
+            .put("ConversationActions", JSONArray().put(JSONObject()
+                .put("__type", "ConversationAction:#Exchange")
+                .put("Action", "SetReadState")
+                .put("IsRead", true)
+                .put("ProcessRightAway", true)
+                .put("ConversationId", JSONObject()
+                    .put("__type", "ItemId:#Exchange").put("Id", id))))
+        val response = service("ApplyConversationAction", "ApplyConversationAction", body)
+            .optJSONObject("Body")?.optJSONObject("ResponseMessages")
+            ?.optJSONArray("Items")?.optJSONObject(0)
+            ?: throw ServiceFailure("missing_read_confirmation")
+        verifyResponse(response)
+        diagnostics.log("OWA_MAIL", "read_state_success")
+    }
+
+    suspend fun downloadAttachment(attachment: MailAttachment): String {
+        val id = attachment.owaAttachmentId?.takeIf { it.isNotBlank() }
+            ?: throw ServiceFailure("attachment_id_not_available")
+        val body = JSONObject()
+            .put("__type", "GetAttachmentRequest:#Exchange")
+            .put("AttachmentIds", JSONArray().put(JSONObject()
+                .put("__type", "AttachmentId:#Exchange").put("Id", id)))
+        val response = service("GetAttachment", "GetAttachment", body)
+            .optJSONObject("Body")?.optJSONObject("ResponseMessages")
+            ?.optJSONArray("Items")?.optJSONObject(0)
+            ?: throw ServiceFailure("missing_attachment_response")
+        verifyResponse(response)
+        val result = response.optJSONArray("Attachments")?.optJSONObject(0)
+            ?: throw ServiceFailure("missing_attachment")
+        val encoded = result.optString("Content")
+        if (encoded.isBlank() || encoded.length > 29_000_000)
+            throw ServiceFailure("invalid_attachment_content")
+        val bytes = Base64.decode(encoded, Base64.DEFAULT)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
+            throw ServiceFailure("requires_android_10_downloads")
+        val filename = attachment.name.substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[\\u0000-\\u001f]"), "").take(160)
+            .ifBlank { "attachment" }
+        withContext(Dispatchers.IO) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, filename)
+                put(MediaStore.Downloads.MIME_TYPE,
+                    attachment.mimeType.ifBlank { "application/octet-stream" })
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MPEI Neo")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw ServiceFailure("download_insert_failed")
+            try {
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw ServiceFailure("download_stream_failed")
+                val complete = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                resolver.update(uri, complete, null, null)
+            } catch (failure: Exception) {
+                resolver.delete(uri, null, null)
+                throw failure
+            }
+        }
+        diagnostics.log("OWA_MAIL", "attachment_saved bytes=" + bytes.size)
+        return filename
+    }
+
     suspend fun message(summary: MailSummary): MailDetail {
         val id = summary.owaConversationId?.takeIf { it.isNotBlank() }
             ?: throw ServiceFailure("missing_conversation_id")
@@ -235,6 +311,7 @@ class OwaMailRepository(
         val nodes = response.optJSONObject("Conversation")?.optJSONArray("ConversationNodes")
             ?: throw ServiceFailure("missing_message_nodes")
         val thread = mutableListOf<MailThreadMessage>()
+        val foundAttachments = mutableListOf<MailAttachment>()
         var anyTruncated = false
         for (i in 0 until nodes.length()) {
             val entries = nodes.optJSONObject(i)?.optJSONArray("Items") ?: continue
@@ -255,6 +332,20 @@ class OwaMailRepository(
                     parseDate(item.optString("DateTimeReceived")).takeIf { it > 0 } ?: summary.sentAt,
                     plain,
                 ))
+                val rawAttachments = item.optJSONArray("Attachments")
+                for (k in 0 until (rawAttachments?.length() ?: 0)) {
+                    val file = rawAttachments?.optJSONObject(k) ?: continue
+                    if (file.optBoolean("IsInline", false)) continue
+                    val attachmentId = file.optJSONObject("AttachmentId")
+                        ?.optString("Id")?.takeIf { it.isNotBlank() } ?: continue
+                    foundAttachments.add(MailAttachment(
+                        name = file.optString("Name").ifBlank { "attachment" },
+                        mimeType = file.optString("ContentType"),
+                        size = file.optInt("Size"),
+                        partPath = listOf(i, j, k),
+                        owaAttachmentId = attachmentId,
+                    ))
+                }
                 anyTruncated = anyTruncated || unique?.optBoolean("IsTruncated", false) == true
             }
         }
@@ -264,7 +355,7 @@ class OwaMailRepository(
         val detail = MailDetail(
             uid = summary.uid, sender = recent.sender, subject = recent.subject,
             sentAt = recent.sentAt, body = recent.body,
-            attachments = emptyList(), threadMessages = ordered,
+            attachments = foundAttachments, threadMessages = ordered,
         )
         activeAccount?.let { account ->
             withContext(Dispatchers.IO) {
@@ -273,7 +364,8 @@ class OwaMailRepository(
         }
         diagnostics.log("OWA_MAIL", "message_success bodyPresent=" +
             recent.body.isNotBlank() + " truncated=" + anyTruncated +
-            " threadCount=" + ordered.size)
+            " threadCount=" + ordered.size +
+            " attachments=" + foundAttachments.size)
         return detail
     }
 

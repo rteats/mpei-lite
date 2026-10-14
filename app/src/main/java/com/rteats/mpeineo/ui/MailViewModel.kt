@@ -110,8 +110,29 @@ internal class MailViewModel(
                     if (current.selected?.uid != summary.uid ||
                         current.selected?.uidValidity != summary.uidValidity) current
                     else current.copy(message = detail, loadingMessage = false,
-                        notice = if (summary.hasAttachment)
-                            "Вложения пока доступны через ОСЭП" else null)
+                        notice = null)
+                }
+                if (summary.unread && _state.value.selected?.uid == summary.uid) {
+                    try {
+                        owaMailRepository.markRead(summary)
+                        if (version == sessionVersion) {
+                            _state.update { state ->
+                                state.copy(
+                                    items = com.rteats.mpeineo.data.markMailRead(
+                                        state.items, summary.uid, summary.uidValidity),
+                                    selected = state.selected?.let {
+                                        if (it.uid == summary.uid && it.uidValidity == summary.uidValidity)
+                                            it.copy(unread = false) else it
+                                    },
+                                )
+                            }
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        repository.logState("OWA read_state failure type=${failure.javaClass.simpleName}" +
+                            " category=" + (failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty())
+                    }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
@@ -141,7 +162,24 @@ internal class MailViewModel(
     }
 
     fun download(attachment: MailAttachment) {
-        _state.update { it.copy(notice = "Вложения пока доступны через ОСЭП.") }
+        if (_state.value.savingAttachment != null) return
+        val version = sessionVersion
+        viewModelScope.launch {
+            _state.update { it.copy(savingAttachment = attachment.partPath, error = null) }
+            try {
+                val file = owaMailRepository.downloadAttachment(attachment)
+                if (version != sessionVersion) return@launch
+                _state.update { it.copy(savingAttachment = null, notice = "Сохранено: " + file) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("OWA attachment failure type=${failure.javaClass.simpleName}" +
+                    " category=" + (failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty())
+                _state.update { it.copy(savingAttachment = null,
+                    error = "Не удалось загрузить вложение через ОСЭП.") }
+            }
+        }
     }
 
     fun logout() {

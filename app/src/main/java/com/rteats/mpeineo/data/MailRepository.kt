@@ -48,6 +48,7 @@ data class MailAttachment(
     val mimeType: String,
     val size: Int,
     val partPath: List<Int>,
+    val owaAttachmentId: String? = null,
 )
 data class MailThreadMessage(
     val sender: String,
