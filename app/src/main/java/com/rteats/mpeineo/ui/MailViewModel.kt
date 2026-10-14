@@ -30,6 +30,10 @@ internal data class MailUiState(
     val username: String = "",
     val loading: Boolean = false,
     val items: List<MailSummary> = emptyList(),
+    val loadingMore: Boolean = false,
+    val hasMore: Boolean = false,
+    val nextPageOffset: Int = 0,
+    val moreError: Boolean = false,
     val selected: MailSummary? = null,
     val message: MailDetail? = null,
     val loadingMessage: Boolean = false,
@@ -37,6 +41,13 @@ internal data class MailUiState(
     val notice: String? = null,
     val error: String? = null,
 )
+
+/** Preserve OWA's server-provided newest-first order and avoid duplicate rows
+ *  when a conversation shifts across page boundaries during a new delivery. */
+internal fun mergeOwaInboxPages(
+    existing: List<MailSummary>,
+    older: List<MailSummary>,
+): List<MailSummary> = (existing + older).distinctBy { it.uidValidity to it.uid }
 
 /** Native mail reads and refreshes exclusively through OWA. */
 internal class MailViewModel(
@@ -49,28 +60,36 @@ internal class MailViewModel(
     private var sessionVersion = 0L
     private var refreshSequence = 0L
     private var pendingNotification: Pair<Long, Long>? = null
+    private companion object { const val PAGE_SIZE = 60 }
 
     init {
         val cached = owaMailRepository.cachedInbox()
         if (cached.isNotEmpty()) {
-            _state.update { it.copy(configured = true, items = cached) }
+            _state.update {
+                it.copy(configured = true, items = cached,
+                    hasMore = cached.size == PAGE_SIZE, nextPageOffset = cached.size)
+            }
         }
         refresh()
     }
 
     fun refresh() {
-        if (_state.value.loading) return
+        if (_state.value.loading || _state.value.loadingMore) return
         val version = sessionVersion
         val id = ++refreshSequence
         repository.logState("refresh requested id=$id protocol=OWA cachedItems=${_state.value.items.size}")
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, notice = null) }
             try {
-                val items = owaMailRepository.inbox(refreshId = id)
+                val items = owaMailRepository.inbox(maxConversations = PAGE_SIZE, refreshId = id)
                 if (version != sessionVersion) return@launch
                 repository.credentials.clear()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
-                _state.update { it.copy(configured = true, loading = false, items = items) }
+                _state.update {
+                    it.copy(configured = true, loading = false, items = items,
+                        hasMore = items.size == PAGE_SIZE, nextPageOffset = items.size,
+                        loadingMore = false, moreError = false)
+                }
                 pendingNotification?.let { target ->
                     pendingNotification = null
                     items.firstOrNull { it.uid == target.first && it.uidValidity == target.second }
@@ -91,6 +110,42 @@ internal class MailViewModel(
                         notice = if (it.items.isNotEmpty()) "Показаны сохранённые письма" else null,
                     )
                 }
+            }
+        }
+    }
+
+    /** Demand-driven older conversation pages. Only first page is persisted
+     *  in the existing encrypted inbox cache, keeping it small and recent. */
+    fun loadMore() {
+        val old = _state.value
+        if (old.loading || old.loadingMore || !old.hasMore || old.items.isEmpty()) return
+        val offset = old.nextPageOffset
+        val version = sessionVersion
+        _state.update { it.copy(loadingMore = true, moreError = false) }
+        viewModelScope.launch {
+            try {
+                val older = owaMailRepository.inbox(
+                    maxConversations = PAGE_SIZE, offset = offset,
+                )
+                if (version != sessionVersion ||
+                    _state.value.nextPageOffset != offset) return@launch
+                _state.update {
+                    it.copy(
+                        loadingMore = false,
+                        items = mergeOwaInboxPages(it.items, older),
+                        hasMore = older.size == PAGE_SIZE,
+                        nextPageOffset = offset + older.size,
+                        moreError = false,
+                    )
+                }
+                repository.logState("OWA page success offset=$offset returned=${older.size}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("OWA page failure offset=$offset" +
+                    " type=${failure.javaClass.simpleName}")
+                _state.update { it.copy(loadingMore = false, moreError = true) }
             }
         }
     }

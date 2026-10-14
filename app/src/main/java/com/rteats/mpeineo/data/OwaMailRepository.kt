@@ -135,7 +135,7 @@ class OwaMailRepository(
     private data class Session(val cookieHeader: String, val canary: String, val userAgent: String)
     private data class Reply(val status: Int, val body: String, val setCookies: List<String>)
 
-    suspend fun inbox(maxConversations: Int = 60, refreshId: Long = 0L): List<MailSummary> {
+    suspend fun inbox(maxConversations: Int = 60, refreshId: Long = 0L, offset: Int = 0): List<MailSummary> {
         val started = SystemClock.elapsedRealtime()
         return try {
             val account = authenticatedAccount()
@@ -153,7 +153,7 @@ class OwaMailRepository(
                 .put("Paging", JSONObject()
                     .put("__type", "IndexedPageView:#Exchange")
                     .put("BasePoint", "Beginning")
-                    .put("Offset", 0)
+                    .put("Offset", offset.coerceIn(0, 100_000))
                     .put("MaxEntriesReturned", maxConversations.coerceIn(1, 100)))
                 .put("ViewFilter", "All")
                 .put("SortOrder", JSONArray().put(JSONObject()
@@ -186,11 +186,14 @@ class OwaMailRepository(
             }
             activeAccount = account
             accountPrefs.edit().putString("last_account", account).apply()
-            withContext(Dispatchers.IO) {
+            // Only the first page is the live inbox snapshot. Fetching older pages
+            // must not replace the newest cached messages or the notification baseline.
+            if (offset == 0) withContext(Dispatchers.IO) {
                 cache.saveInbox(account, MailInboxSnapshot(OWA_UID_VALIDITY, items))
             }
             diagnostics.log("OWA_MAIL",
                 "inbox_success refreshId=" + refreshId +
+                    " offset=" + offset +
                     " conversations=" + items.size +
                     " durationMs=" + (SystemClock.elapsedRealtime() - started))
             items
@@ -198,6 +201,7 @@ class OwaMailRepository(
             if (e is CancellationException) throw e
             diagnostics.log("OWA_MAIL",
                 "inbox_failure refreshId=" + refreshId +
+                    " offset=" + offset +
                     " category=" + when (e) {
                         is LoginRequired -> "LOGIN_REQUIRED"
                         is ServiceFailure -> e.category

@@ -393,6 +393,11 @@ internal fun CampusMapScreen(
 
     val prepared = remember(data) { prepareCampus(data) }
     val places = remember(data) { placesFromGeometry(data) }
+    // OSM records the adjacent southern wing of building В separately as
+    // "Главный учебный корпус". Both footprints belong to the same campus block.
+    val buildingVSouth = remember(data) {
+        data.buildings.firstOrNull { it.name == "Главный учебный корпус" }
+    }
     val colors = MaterialTheme.colorScheme
     val palette = MapPaintColors(
         background = colors.surface.toArgb(),
@@ -406,7 +411,10 @@ internal fun CampusMapScreen(
         campusBuilding = colors.primaryContainer.toArgb(),
         buildingOutline = colors.outlineVariant.toArgb(),
     )
-    val campusIds = remember(places) { places.map { it.footprint.id }.toSet() }
+    val campusIds = remember(places, buildingVSouth) {
+        places.map { it.footprint.id }.toSet() +
+            listOfNotNull(buildingVSouth?.id)
+    }
     val raster by produceState<CampusRaster?>(null, prepared, campusIds, palette) {
         value = withContext(Dispatchers.Default) {
             renderCampusRaster(prepared, campusIds, palette)
@@ -489,7 +497,10 @@ internal fun CampusMapScreen(
                         )
                         val polygonHit = places.asReversed().firstOrNull {
                             insideFootprint(point, it.footprint.p)
-                        }
+                        } ?: if (buildingVSouth != null &&
+                            insideFootprint(point, buildingVSouth.p)) {
+                            places.firstOrNull { it.symbol == "В" }
+                        } else null
                         val nearest = places.minByOrNull {
                             hypot((point.x - it.center.x).toDouble(),
                                 (point.y - it.center.y).toDouble())
@@ -536,21 +547,21 @@ internal fun CampusMapScreen(
 
             // Selection stays sharp and costs only one vector path redraw.
             selected?.let { place ->
-                val selectedPath = prepared.buildings.firstOrNull {
-                    it.source.id == place.footprint.id
-                }?.path
-                if (selectedPath != null) {
+                val selectedPaths = prepared.buildings.filter {
+                    it.source.id == place.footprint.id ||
+                        (place.symbol == "В" && it.source.id == buildingVSouth?.id)
+                }.map { it.path }
+                if (selectedPaths.isNotEmpty()) {
                     clipRect {
                         withTransform({
                             translate(origin.x, origin.y)
                             scale(scale, scale, pivot = Offset.Zero)
                         }) {
-                            drawPath(selectedPath, colors.primary)
-                            drawPath(
-                                selectedPath,
-                                colors.primary,
-                                style = Stroke(width = 2.dp.toPx() / scale),
-                            )
+                            selectedPaths.forEach { path ->
+                                drawPath(path, colors.primary)
+                                drawPath(path, colors.primary,
+                                    style = Stroke(width = 2.dp.toPx() / scale))
+                            }
                         }
                     }
                 }

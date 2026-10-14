@@ -50,6 +50,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +75,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.MailServerCertificate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.DateFormat
 import java.util.Date
 
@@ -85,6 +88,25 @@ internal fun MailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val inboxScrollState = rememberLazyListState()
+    var inboxQuery by rememberSaveable { mutableStateOf("") }
+    val visibleMessages = if (inboxQuery.isBlank()) state.items else state.items.filter {
+        it.sender.contains(inboxQuery.trim(), ignoreCase = true) ||
+            it.subject.contains(inboxQuery.trim(), ignoreCase = true)
+    }
+    // Search is explicitly local to downloaded pages, not a server-wide search.
+    LaunchedEffect(inboxScrollState, state.items.size, state.hasMore,
+        state.loadingMore, state.loading, state.moreError, inboxQuery,
+        state.selected, active) {
+        if (active && state.selected == null && inboxQuery.isBlank() &&
+            state.hasMore && !state.loadingMore &&
+            !state.loading && !state.moreError) {
+            snapshotFlow {
+                inboxScrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            }.distinctUntilChanged().collect { last ->
+                if (last >= state.items.size - 4) viewModel.loadMore()
+            }
+        }
+    }
     val motion = MaterialTheme.motionScheme
 
     BackHandler(enabled = active && state.selected != null) {
@@ -189,31 +211,68 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                if (state.items.isEmpty()) {
-                                    item {
+                                item(key = "inbox-search") {
+                                    OutlinedTextField(
+                                        value = inboxQuery,
+                                        onValueChange = { inboxQuery = it },
+                                        placeholder = { Text("Поиск по загруженным письмам") },
+                                        leadingIcon = {
+                                            AppIcon(AppIcons.Search, contentDescription = null)
+                                        },
+                                        trailingIcon = if (inboxQuery.isNotBlank()) {
+                                            {
+                                                TextButton(onClick = { inboxQuery = "" }) {
+                                                    Text("Сброс")
+                                                }
+                                            }
+                                        } else null,
+                                        singleLine = true,
+                                        shape = MaterialTheme.shapes.extraLarge,
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                    )
+                                }
+                                if (visibleMessages.isEmpty()) {
+                                    item(key = "empty-inbox") {
                                         Box(
                                             modifier = Modifier.fillMaxWidth().padding(32.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             if (state.loading) ContainedLoadingIndicator()
                                             else Text(
-                                                "Писем нет. Потяните вниз для обновления.",
+                                                if (inboxQuery.isNotBlank()) "Среди загруженных писем совпадений нет"
+                                                else "Писем нет. Потяните вниз для обновления.",
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
                                     }
                                 }
                                 items(
-                                    items = state.items,
+                                    items = visibleMessages,
                                     key = { "${it.uidValidity}-${it.uid}" },
                                 ) { item ->
                                     MailInboxRow(
                                         summary = item,
                                         onClick = { viewModel.open(item) },
-                                        // The screen transition owns row movement; avoid
-                                        // competing lazy-item placement animations on reentry.
                                         modifier = Modifier,
                                     )
+                                }
+                                if (state.hasMore || state.loadingMore || state.moreError) {
+                                    item(key = "inbox-older") {
+                                        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center) {
+                                            if (state.loadingMore) {
+                                                ContainedLoadingIndicator()
+                                            } else {
+                                                TextButton(
+                                                    onClick = viewModel::loadMore,
+                                                    enabled = !state.loading,
+                                                ) {
+                                                    Text(if (state.moreError) "Повторить загрузку старых писем"
+                                                        else "Загрузить предыдущие письма")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
