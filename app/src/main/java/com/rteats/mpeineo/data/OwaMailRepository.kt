@@ -228,6 +228,12 @@ class OwaMailRepository(
             ?.optJSONArray("Items")?.optJSONObject(0)
             ?: throw ServiceFailure("missing_read_confirmation")
         verifyResponse(response)
+        // Keep the encrypted offline snapshot in sync only after server acknowledgment.
+        activeAccount?.let { account ->
+            withContext(Dispatchers.IO) {
+                cache.markRead(account, summary.uid, summary.uidValidity)
+            }
+        }
         diagnostics.log("OWA_MAIL", "read_state_success")
     }
 
