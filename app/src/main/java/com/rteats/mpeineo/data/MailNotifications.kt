@@ -24,9 +24,8 @@ import com.rteats.mpeineo.MainActivity
 import java.util.concurrent.TimeUnit
 
 /**
- * Background mail notifications are opt-in. Store only an IMAP UID checkpoint,
- * never a message body, cookie, password, or entire inbox in preferences.
- * IMAP UID and UIDVALIDITY together identify messages within one mailbox.
+ * Background notifications use an authenticated OWA session. Only a hashed
+ * mailbox identity, conversation IDs and timestamps are persisted for deltas.
  */
 class MailNotificationPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("mail_notifications_v1", Context.MODE_PRIVATE)
@@ -63,12 +62,33 @@ class MailNotificationPreferences(context: Context) {
         return newMessages.sortedBy { it.uid }
     }
 
+    /** OWA conversation IDs are stable hashes, not sequential IMAP UIDs. */
+    @Synchronized
+    fun checkpointOwa(account: String, messages: List<MailSummary>): List<MailSummary> {
+        val oldAccount = prefs.getString("owa_account", null)
+        val oldTime = prefs.getLong("owa_latest_time", -1L)
+        val known = prefs.getStringSet("owa_known", emptySet()).orEmpty()
+        val latest = messages.maxOfOrNull { it.sentAt } ?: 0L
+        val newcomers = if (oldAccount == account && oldTime >= 0) {
+            messages.filter {
+                it.sentAt > oldTime || (it.sentAt == oldTime && it.uid.toString() !in known)
+            }
+        } else emptyList()
+        prefs.edit()
+            .putString("owa_account", account)
+            .putLong("owa_latest_time", maxOf(if (oldAccount == account) oldTime else 0L, latest))
+            .putStringSet("owa_known", messages.map { it.uid.toString() }.toSet())
+            .commit()
+        return newcomers.sortedBy { it.sentAt }
+    }
+
     fun clearAccount() {
         prefs.edit()
             .putBoolean("enabled", false)
             .remove("account")
             .remove("uid_validity")
             .remove("last_uid")
+            .remove("owa_account").remove("owa_latest_time").remove("owa_known")
             .commit()
     }
 
@@ -78,6 +98,7 @@ class MailNotificationPreferences(context: Context) {
 }
 
 object MailNotificationScheduler {
+    // Keep the old WorkManager key so upgrades do not create duplicate workers.
     private const val UNIQUE_WORK = "mpei_imap_notification_poll"
     const val CHANNEL_ID = "mpei_mail_new_messages"
 
@@ -238,35 +259,25 @@ class MailNotificationWorker(
     override suspend fun doWork(): Result {
         val prefs = MailNotificationPreferences(applicationContext)
         if (!prefs.enabled) return Result.success()
-        val repository = MailRepository(applicationContext)
-        val credentials = repository.credentials.load() ?: return Result.success()
-
+        val repository = OwaMailRepository(applicationContext, DiagnosticLog(applicationContext))
         return try {
-            // Headers only; READ_ONLY + PEEK does not mark messages as seen.
-            val snapshot = repository.inboxSnapshot(credentials, maxMessages = 60)
-            val stillEnabled = MailNotificationPreferences(applicationContext).enabled
-            val stillAccount = repository.credentials.load()?.username == credentials.username
-            if (stillEnabled && stillAccount) {
-                val newMessages = prefs.checkpoint(
-                    credentials.username, snapshot.uidValidity, snapshot.messages,
-                )
+            val messages = repository.inbox(maxConversations = 60)
+            val account = repository.currentAccountKey() ?: return Result.retry()
+            if (MailNotificationPreferences(applicationContext).enabled) {
+                val newMessages = prefs.checkpointOwa(account, messages)
                 if (newMessages.isNotEmpty()) {
-                    // Fetch bodies only after identifying new UIDs; preview
-                    // errors must not prevent ordinary new-mail notifications.
-                    val previews = runCatching {
-                        repository.notificationPreviews(
-                            credentials,
-                            snapshot.uidValidity,
-                            newMessages.map { it.uid },
-                        )
-                    }.getOrDefault(emptyMap())
+                    val previews = newMessages.take(5).mapNotNull { summary ->
+                        try {
+                            summary.uid to repository.message(summary).body.take(180)
+                        } catch (_: Exception) { null }
+                    }.toMap()
                     MailNotificationScheduler.show(applicationContext, newMessages, previews)
                 }
             }
             Result.success()
+        } catch (_: OwaMailRepository.LoginRequired) {
+            Result.success()
         } catch (_: Exception) {
-            // Keep the prior UID checkpoint so transient IMAP/TLS errors never
-            // generate false notifications. WorkManager will retry later.
             Result.retry()
         }
     }
