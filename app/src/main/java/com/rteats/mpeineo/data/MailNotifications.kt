@@ -69,7 +69,7 @@ class MailNotificationPreferences(context: Context) {
      *  Calculate arrivals without acknowledging them until alerts have been posted.
      */
     @Synchronized
-    fun pendingOwa(account: String, messages: List<MailSummary>): OwaNotificationChanges {
+    internal fun pendingOwa(account: String, messages: List<MailSummary>): OwaNotificationChanges {
         val sameAccount = prefs.getString("owa_account", null) == account
         val oldTime = if (sameAccount) prefs.getLong("owa_latest_time", -1L) else -1L
         val known = if (sameAccount) prefs.getStringSet("owa_known", emptySet()).orEmpty()
@@ -78,7 +78,7 @@ class MailNotificationPreferences(context: Context) {
     }
 
     @Synchronized
-    fun commitOwa(account: String, change: OwaNotificationChanges) {
+    internal fun commitOwa(account: String, change: OwaNotificationChanges) {
         if (!enabled) return // Settings may have disabled notifications during the poll.
         val stored = prefs.edit()
             .putString("owa_account", account)
