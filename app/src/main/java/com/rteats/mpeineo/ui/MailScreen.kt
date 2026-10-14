@@ -84,7 +84,6 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
-    var showCertificateDetails by remember { mutableStateOf(false) }
     val inboxScrollState = rememberLazyListState()
     val motion = MaterialTheme.motionScheme
 
@@ -92,31 +91,6 @@ internal fun MailScreen(
         viewModel.closeMessage()
     }
 
-    state.certificate?.takeIf { showCertificateDetails }?.let { certificate ->
-        ModalBottomSheet(
-            onDismissRequest = { showCertificateDetails = false },
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-                    .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.78f)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                MailCertificateCard(
-                    certificate = certificate,
-                    busy = state.loading,
-                    onApprove = {
-                        showCertificateDetails = false
-                        viewModel.approveCertificate()
-                    },
-                    onDismiss = {
-                        showCertificateDetails = false
-                        viewModel.dismissCertificateWarning()
-                    },
-                )
-                Spacer(Modifier.size(28.dp))
-            }
-        }
-    }
 
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
@@ -137,24 +111,6 @@ internal fun MailScreen(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(12.dp),
                     )
-                }
-            }
-            if (state.inspectingCertificate) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                    Text("Получаем сведения о TLS-сертификате…")
-                }
-            }
-            if (state.certificate != null) {
-                TextButton(
-                    onClick = { showCertificateDetails = true },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                ) {
-                    Text("Проверить сертификат и подключиться")
                 }
             }
             state.notice?.let { note ->
@@ -264,126 +220,6 @@ internal fun MailScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-
-/**
- * Explicit certificate exception for mail.mpei.ru only. We show the actual
- * leaf SHA-256, certificate identity and validity before requesting consent.
- */
-@Composable
-private fun MailCertificateCard(
-    certificate: MailServerCertificate,
-    busy: Boolean,
-    onApprove: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var checked by remember(certificate.sha256) { mutableStateOf(false) }
-    val allowed = certificate.currentlyValid && certificate.matchesMailHostname
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            Text(
-                "Сертификат почтового сервера",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "MPEI использует центр сертификации, которому Android не доверяет " +
-                    "по умолчанию. Сравните отпечаток SHA-256 ниже с тем, который " +
-                    "показывает FairEmail для mail.mpei.ru:993, либо подтвердите его " +
-                    "у администраторов МЭИ. Сходство названия недостаточно.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                "Сервер: mail.mpei.ru:993",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text(
-                "Кому выдан: ${certificate.subject}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                "Кем выдан: ${certificate.issuer}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                "Действует до: " +
-                    DateFormat.getDateInstance(DateFormat.MEDIUM)
-                        .format(Date(certificate.validUntil)),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                "SHA-256 отпечаток сертификата:",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            SelectionContainer {
-                Text(
-                    certificate.sha256.chunked(2).joinToString(":"),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            certificate.chainIssuerSha256?.let { caFingerprint ->
-                Text(
-                    "SHA-256 сертификата CA (если сервер его отправил):",
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                SelectionContainer {
-                    Text(
-                        caFingerprint.chunked(2).joinToString(":"),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-            if (!allowed) {
-                Text(
-                    if (!certificate.currentlyValid) {
-                        "Сертификат недействителен по сроку. Его нельзя подтвердить."
-                    } else {
-                        "Имя mail.mpei.ru отсутствует в сертификате. Подключение заблокировано."
-                    },
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { checked = !checked },
-                ) {
-                    Checkbox(
-                        checked = checked,
-                        onCheckedChange = { checked = it },
-                    )
-                    Text(
-                        "Я сверил SHA-256 по независимому доверенному источнику",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = checked && !busy,
-                    onClick = onApprove,
-                ) {
-                    Text("Доверять этому сертификату и подключиться")
-                }
-            }
-            TextButton(onClick = onDismiss) {
-                Text("Не доверять")
-            }
-            Text(
-                "Доверие действует только для точного сертификата сервера " +
-                    "mail.mpei.ru и не отключает проверку имени хоста. " +
-                    "При замене сертификата потребуется новое подтверждение.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
