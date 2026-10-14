@@ -100,7 +100,19 @@ internal fun WebPortalScreen(
 
                         override fun onPageFinished(view: WebView, url: String) {
                             canGoBack = view.canGoBack()
-                            debugEvent("webview page finished canGoBack=$canGoBack")
+                            // Persist the manually established OWA login for
+                            // cold-start and idle-session testing.
+                            if (url.startsWith("https://mail.mpei.ru/", ignoreCase = true)) {
+                                CookieManager.getInstance().flush()
+                            }
+                            val stage = when {
+                                url.contains("CookieAuth.dll", ignoreCase = true) ||
+                                    url.contains("/auth/", ignoreCase = true) -> "login"
+                                url.startsWith("https://mail.mpei.ru/owa", ignoreCase = true) -> "owa"
+                                else -> "other"
+                            }
+                            // Never log the actual URL: redirects may carry auth tokens.
+                            debugEvent("webview page finished stage=$stage canGoBack=$canGoBack")
                         }
                     }
 
