@@ -164,7 +164,27 @@ object MailNotificationScheduler {
             return
         }
         snapshot(context, "startup_before_reconcile")
-        schedule(context, ExistingPeriodicWorkPolicy.KEEP)
+        val future = WorkManager.getInstance(context).getWorkInfosForUniqueWork(UNIQUE_WORK)
+        future.addListener({
+            try {
+                val work = future.get()
+                val stuckInRetry = work.any {
+                    it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0
+                }
+                val policy = if (stuckInRetry) {
+                    logMailNotification(context,
+                        "startup_recover reason=stale_backoff attempts=" +
+                            work.maxOf { it.runAttemptCount })
+                    ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+                } else ExistingPeriodicWorkPolicy.KEEP
+                if (MailNotificationPreferences(context).enabled) schedule(context, policy)
+            } catch (failure: Exception) {
+                logMailNotification(context,
+                    "startup_recover_error type=${failure.javaClass.simpleName}")
+                if (MailNotificationPreferences(context).enabled)
+                    schedule(context, ExistingPeriodicWorkPolicy.KEEP)
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     /** Record the actual WorkManager state, not just the settings preference. */
@@ -228,7 +248,7 @@ object MailNotificationScheduler {
         val prefs = MailNotificationPreferences(context)
         if (value) {
             prefs.enabled = true
-            schedule(context)
+            schedule(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
             logMailNotification(context,
                 "schedule_enabled intervalMin=${prefs.intervalMinutes} permission=${canNotify(context)}")
         } else {
@@ -244,7 +264,7 @@ object MailNotificationScheduler {
     fun changeInterval(context: Context, intervalMinutes: Int) {
         MailNotificationPreferences(context).intervalMinutes = intervalMinutes
         if (MailNotificationPreferences(context).enabled) {
-            schedule(context)
+            schedule(context, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE)
             logMailNotification(context, "schedule_interval_changed intervalMin=$intervalMinutes")
         }
     }
@@ -474,10 +494,14 @@ class MailNotificationWorker(
             log("poll_skip reason=login_required durationMs=${SystemClock.elapsedRealtime() - started}")
             Result.success()
         } catch (failure: Exception) {
-            log("poll_retry type=${failure.javaClass.simpleName}" +
+            // Result.retry() on a periodic request applies growing WorkManager
+            // backoff, replacing the chosen 15/30/60-minute cadence with hours.
+            // The checkpoint remains untouched, so the next period can retry.
+            log("poll_failure type=${failure.javaClass.simpleName}" +
                 " category=${(failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty()}" +
-                " attempt=$runAttemptCount durationMs=${SystemClock.elapsedRealtime() - started}")
-            Result.retry()
+                " source=$source attempt=$runAttemptCount policy=next_period" +
+                " durationMs=${SystemClock.elapsedRealtime() - started}")
+            Result.success()
         }
     }
 }

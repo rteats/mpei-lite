@@ -33,6 +33,7 @@ internal data class BarsUiState(
     val semester: String = "",
     val studentDetails: List<BarsStudentDetail> = emptyList(),
     val disciplines: List<BarsDiscipline> = emptyList(),
+    val gradeChanges: Map<String, List<BarsGradeChange>> = emptyMap(),
     val isLoading: Boolean = true,
     val browserVisible: Boolean = false,
     val sessionUrl: String = BARS_MARKS_URL,
@@ -284,6 +285,26 @@ internal class BarsViewModel(
                     "extraction success disciplines=${payload.disciplines.size}",
                 )
                 val updatedAt = System.currentTimeMillis()
+                val old = _state.value
+                val previous = if (old.disciplines.isEmpty()) null else
+                    BarsExtractionPayload(
+                        name = old.profileName,
+                        group = old.profileGroup,
+                        semester = old.semester,
+                        disciplines = old.disciplines,
+                    )
+                val changed = detectBarsGradeChanges(previous, payload)
+                val sameAccount = previous != null &&
+                    (previous.name.isBlank() || payload.name.isBlank() ||
+                        previous.name.trim() == payload.name.trim()) &&
+                    (previous.group.isBlank() || payload.group.isBlank() ||
+                        previous.group.trim() == payload.group.trim()) &&
+                    (previous.semester.isBlank() || payload.semester.isBlank() ||
+                        previous.semester.trim() == payload.semester.trim())
+                if (changed.isNotEmpty()) {
+                    diagnostics.log("BARS", "grade_changes disciplines=${changed.size}" +
+                        " marks=${changed.values.sumOf { it.size }}")
+                }
                 viewModelScope.launch(Dispatchers.IO) {
                     snapshots.write(BarsCachedSnapshot(updatedAt, payload))
                 }
@@ -295,6 +316,7 @@ internal class BarsViewModel(
                         semester = payload.semester,
                         studentDetails = payload.studentDetails.orEmpty(),
                         disciplines = payload.disciplines,
+                        gradeChanges = if (sameAccount) it.gradeChanges + changed else changed,
                         isLoading = false,
                         lastUpdatedAtMillis = updatedAt,
                         loginRequired = false,
@@ -305,6 +327,10 @@ internal class BarsViewModel(
             .onFailure { error ->
                 extractionFailed(error.message ?: "Не удалось разобрать данные БАРС")
             }
+    }
+
+    fun acknowledgeGradeChanges(disciplineName: String) {
+        _state.update { it.copy(gradeChanges = it.gradeChanges - disciplineName) }
     }
 
     fun extractionFailed(message: String) {
