@@ -358,7 +358,7 @@ internal fun SettingsScreen(
             ) {
                 SettingsSwitchRow(
                     "Уведомления о новых письмах",
-                    "Фоновая проверка IMAP, без постоянного подключения",
+                    "Фоновая проверка через сессию ОСЭП",
                     AppIcons.Notifications,
                     notificationsEnabled, mailState.configured,
                     ::toggleNotifications,
@@ -416,10 +416,10 @@ internal fun SettingsScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
-                if (mailState.username.isNotBlank()) {
+                if (mailState.configured) {
                     SettingsAction(
-                        "Отключить IMAP",
-                        "Отключить почту и остановить проверку новых писем",
+                        "Выйти из ОСЭП",
+                        "Удалить локальную сессию ОСЭП и сохранённые письма",
                         AppIcons.Logout,
                         onClick = {
                             mailViewModel.logout()
@@ -427,7 +427,7 @@ internal fun SettingsScreen(
                         },
                     )
                 } else {
-                    Text("Для настройки уведомлений войдите в почту на вкладке «Почта».",
+                    Text("Для уведомлений сначала войдите в ОСЭП через вкладку почты.",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium)
