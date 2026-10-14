@@ -275,7 +275,9 @@ internal fun SettingsScreen(
     var pollMinutes by remember { mutableStateOf(notificationPrefs.intervalMinutes) }
 
     LaunchedEffect(mailState.configured) {
-        if (!mailState.configured) notificationsEnabled = false
+        // OWA authentication is checked asynchronously at startup. Do not
+        // display an enabled notification schedule as disabled during bootstrap.
+        notificationsEnabled = mailState.configured && notificationPrefs.enabled
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
