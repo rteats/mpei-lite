@@ -378,8 +378,7 @@ internal fun BarsScreen(
             probe = viewModel::probeNetwork,
             onTimeout = {
               if (!state.browserVisible &&
-                summaryFetchAttempted &&
-                BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL)
+                summaryFetchAttempted && state.isSummaryLoading
               ) {
                 summaryExtractionStarted = false
                 viewModel.summaryCaptureFailed(
