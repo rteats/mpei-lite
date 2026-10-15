@@ -111,7 +111,7 @@ internal fun MailScreen(
     }
     val motion = MaterialTheme.motionScheme
 
-    BackHandler(enabled = active && state.selected != null) {
+    BackHandler(enabled = active && !state.composing && state.selected != null) {
         viewModel.closeMessage()
     }
 
@@ -122,6 +122,13 @@ internal fun MailScreen(
         // The app scaffold already handles safe-area insets; no second blank header.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
+        if (state.composing) {
+            MailComposeScreen(
+                state = state,
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxSize().padding(insets),
+            )
+        } else {
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
             if (state.configured) {
                 if (state.error != null) {
@@ -318,6 +325,7 @@ internal fun MailScreen(
                     }
                 }
             }
+        }
         }
     }
 }

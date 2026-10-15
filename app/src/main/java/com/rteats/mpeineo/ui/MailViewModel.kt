@@ -1,6 +1,11 @@
 package com.rteats.mpeineo.ui
 
 import androidx.lifecycle.ViewModel
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.rteats.mpeineo.data.OutgoingMail
+import com.rteats.mpeineo.data.OutgoingFile
+import com.rteats.mpeineo.data.OwaComposeProtocol
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.data.MailAttachment
@@ -42,6 +47,12 @@ internal data class MailUiState(
     val savingAttachment: List<Int>? = null,
     val notice: String? = null,
     val error: String? = null,
+    val composing: Boolean = false,
+    val draft: OutgoingMail = OutgoingMail(),
+    val outgoingFiles: List<OutgoingFile> = emptyList(),
+    val sending: Boolean = false,
+    val sendStage: String? = null,
+    val sendError: String? = null,
 )
 
 /** Preserve OWA's server-provided newest-first order and avoid duplicate rows
@@ -287,6 +298,121 @@ internal class MailViewModel(
                     " category=" + (failure as? OwaMailRepository.ServiceFailure)?.category.orEmpty())
                 _state.update { it.copy(savingAttachment = null,
                     error = "Не удалось загрузить вложение через ОСЭП.") }
+            }
+        }
+    }
+
+    fun startCompose() {
+        _state.update { it.copy(composing = true, sendError = null) }
+    }
+
+    /** Closing retains the unsent in-memory draft and selected file URIs. */
+    fun closeCompose() {
+        if (_state.value.sending) return
+        _state.update { it.copy(composing = false, sendError = null) }
+    }
+
+    fun editDraft(change: (OutgoingMail) -> OutgoingMail) {
+        _state.update {
+            if (it.sending) it else it.copy(draft = change(it.draft), sendError = null)
+        }
+    }
+
+    fun addOutgoingFiles(uris: List<Uri>) {
+        if (_state.value.sending) return
+        val resolver = repository.contextForNotifications.contentResolver
+        val files = uris.distinct().mapNotNull { uri ->
+            try {
+                var name = "attachment"
+                var size = -1L
+                resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                    null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (nameColumn >= 0) name = cursor.getString(nameColumn) ?: name
+                        if (sizeColumn >= 0 && !cursor.isNull(sizeColumn))
+                            size = cursor.getLong(sizeColumn)
+                    }
+                }
+                OutgoingFile(
+                    uri = uri,
+                    name = name.substringAfterLast('/').substringAfterLast('\\')
+                        .replace(Regex("[\\u0000-\\u001f]"), "").take(160)
+                        .ifBlank { "attachment" },
+                    mimeType = resolver.getType(uri) ?: "application/octet-stream",
+                    size = size,
+                )
+            } catch (_: Exception) { null }
+        }
+        _state.update { old ->
+            if (old.sending) old else {
+                val combined = (old.outgoingFiles + files).distinctBy { it.uri }
+                old.copy(
+                    outgoingFiles = if (combined.size <= 8) combined else old.outgoingFiles,
+                    sendError = when {
+                        files.size != uris.distinct().size -> "Не удалось прочитать часть вложений."
+                        combined.size > 8 -> "Можно прикрепить не более 8 файлов."
+                        combined.any { it.size > 10L * 1024 * 1024 } ->
+                            "Размер одного вложения не должен превышать 10 МБ."
+                        else -> null
+                    },
+                )
+            }
+        }
+    }
+
+    fun removeOutgoingFile(uri: Uri) {
+        _state.update { old ->
+            if (old.sending) old else old.copy(
+                outgoingFiles = old.outgoingFiles.filterNot { it.uri == uri },
+                sendError = null,
+            )
+        }
+    }
+
+    fun sendDraft() {
+        val current = _state.value
+        if (!current.composing || current.sending) return
+        if (!OwaComposeProtocol.validRecipients(current.draft)) {
+            _state.update { it.copy(sendError = "Проверьте адреса получателей.") }
+            return
+        }
+        val version = sessionVersion
+        _state.update { it.copy(sending = true, sendError = null, sendStage = "Подготовка…") }
+        viewModelScope.launch {
+            try {
+                owaMailRepository.sendMail(current.draft, current.outgoingFiles) { stage ->
+                    _state.update { old -> old.copy(sendStage = stage) }
+                }
+                if (version != sessionVersion) return@launch
+                _state.update {
+                    it.copy(
+                        composing = false, draft = OutgoingMail(), outgoingFiles = emptyList(),
+                        sending = false, sendStage = null, sendError = null,
+                        notice = "Письмо отправлено",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("OWA send failed type=${failure.javaClass.simpleName}")
+                _state.update {
+                    it.copy(
+                        sending = false, sendStage = null,
+                        sendError = if (failure is OwaMailRepository.LoginRequired) {
+                            "Сессия ОСЭП истекла. Войдите повторно; черновик сохранён."
+                        } else if (failure is OwaMailRepository.ServiceFailure &&
+                            failure.category in setOf("invalid_recipients", "message_too_long",
+                                "attachment_limit", "attachment_too_large", "attachment_unavailable")) {
+                            "Проверьте получателей и вложения. Черновик сохранён."
+                        } else {
+                            "Не удалось подтвердить отправку. Проверьте папку «Отправленные» " +
+                                "в ОСЭП перед повторной попыткой."
+                        },
+                    )
+                }
             }
         }
     }
