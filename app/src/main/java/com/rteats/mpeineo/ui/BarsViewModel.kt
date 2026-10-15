@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.update
 internal const val BARS_BASE_URL = "https://bars.mpei.ru"
 internal const val BARS_LOGIN_URL = "$BARS_BASE_URL/bars_web/"
 internal const val BARS_MARKS_URL = "$BARS_BASE_URL/bars_web/ST_Study/Main/Main"
+internal const val BARS_SUMMARY_URL = "$BARS_BASE_URL/bars_web/ST_Study/Main/Summary"
 
 internal enum class BarsAuthStage {
     CHECKING,
@@ -38,6 +39,10 @@ internal data class BarsUiState(
     val browserVisible: Boolean = false,
     val sessionUrl: String = BARS_MARKS_URL,
     val lastUpdatedAtMillis: Long = 0L,
+    val rawMain: String = "",
+    val rawSummary: String = "",
+    val rawCapturedAtMillis: Long = 0L,
+    val rawStatus: String = "",
     val error: String? = null,
     val loginRequired: Boolean = false,
 ) {
@@ -162,6 +167,8 @@ internal data class BarsPageState(
     val isAuthFlow: Boolean = false,
     val isStudentList: Boolean = false,
     val isMarksPage: Boolean = false,
+    val isSummaryPage: Boolean = false,
+    val isSummaryReady: Boolean = false,
 )
 
 internal object BarsPayloadParser {
@@ -180,6 +187,7 @@ internal class BarsViewModel(
     private val snapshots: BarsSnapshotStore,
 ) : ViewModel() {
 
+    private val cachedRaw = snapshots.readRaw()
     private val _state = MutableStateFlow(
         snapshots.read()?.let { cached ->
             BarsUiState(
@@ -190,9 +198,16 @@ internal class BarsViewModel(
                 studentDetails = cached.payload.studentDetails.orEmpty(),
                 disciplines = cached.payload.disciplines,
                 lastUpdatedAtMillis = cached.updatedAtMillis,
+                rawMain = cachedRaw?.main.orEmpty(),
+                rawSummary = cachedRaw?.summary.orEmpty(),
+                rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
                 isLoading = true,
             )
-        } ?: BarsUiState()
+        } ?: BarsUiState(
+            rawMain = cachedRaw?.main.orEmpty(),
+            rawSummary = cachedRaw?.summary.orEmpty(),
+            rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
+        )
     )
     val state: StateFlow<BarsUiState> = _state.asStateFlow()
 
@@ -327,6 +342,29 @@ internal class BarsViewModel(
             .onFailure { error ->
                 extractionFailed(error.message ?: "Не удалось разобрать данные БАРС")
             }
+    }
+
+    /** Intentionally never send profile, grade or attendance text to diagnostics. */
+    fun rawSnapshotReceived(source: String, text: String) {
+        if (source !in setOf("MAIN", "SUMMARY") || text.isBlank() ||
+            text.length > 380_000) return
+        _state.update {
+            when (source) {
+                "MAIN" -> it.copy(rawMain = text, rawCapturedAtMillis = System.currentTimeMillis(),
+                    rawStatus = "")
+                else -> it.copy(rawSummary = text, rawCapturedAtMillis = System.currentTimeMillis(),
+                    rawStatus = "")
+            }
+        }
+        diagnostics.log("BARS", "raw capture source=$source chars=${text.length}")
+        viewModelScope.launch(Dispatchers.IO) {
+            snapshots.writeRaw(source, text)
+        }
+    }
+
+    fun rawCaptureStatus(message: String) {
+        _state.update { it.copy(rawStatus = message) }
+        diagnostics.log("BARS", "raw capture status=" + message.take(100))
     }
 
     fun acknowledgeGradeChanges(disciplineName: String) {

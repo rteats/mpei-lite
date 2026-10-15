@@ -28,6 +28,7 @@ internal class BarsJavascriptBridge(
     private val onData: (Int, String) -> Unit,
     private val onExtractionError: (Int, String) -> Unit,
     private val onError: (String) -> Unit,
+    private val onRawSnapshot: (String, String) -> Unit = { _, _ -> },
 ) {
     @JavascriptInterface
     fun onPageState(json: String) = onPageState.invoke(json)
@@ -40,6 +41,9 @@ internal class BarsJavascriptBridge(
 
     @JavascriptInterface
     fun onError(message: String) = onError.invoke(message)
+
+    @JavascriptInterface
+    fun onRawSnapshot(page: String, rawText: String) = onRawSnapshot.invoke(page, rawText)
 }
 
 internal val BARS_PAGE_STATE_SCRIPT = """
@@ -63,6 +67,12 @@ internal val BARS_PAGE_STATE_SCRIPT = """
                 const path = (window.location.pathname || "").toLowerCase();
                 const hasPassword = !!document.querySelector('input[type="password"]');
                 const marks = !!document.getElementById("div-Student_SemesterSheet__Mark");
+                const summaryRoute = path.indexOf("/main/summary") >= 0;
+                const markMatrix = document.getElementById("tableMarkSummary");
+                const attendance = document.getElementById("tableSkipSummary");
+                const summaryReady = summaryRoute && !!markMatrix && !!attendance &&
+                    markMatrix.querySelectorAll("tr").length >= 4 &&
+                    attendance.querySelectorAll("tr").length >= 4;
                 const studentList = path.indexOf("/student/liststudent") >= 0;
                 const hasOneTimeCodeInput = !!document.querySelector(
                     'input[autocomplete="one-time-code"], ' +
@@ -86,14 +96,16 @@ internal val BARS_PAGE_STATE_SCRIPT = """
                     isLoginPage: hasPassword,
                     isAuthFlow: path.indexOf("/auth") >= 0 || hasTwoFactorUi,
                     isStudentList: studentList,
-                    isMarksPage: marks
+                    isMarksPage: marks,
+                    isSummaryPage: summaryRoute,
+                    isSummaryReady: summaryReady
                 };
                 const signature = JSON.stringify(payload);
                 if (signature !== lastSignature) {
                     lastSignature = signature;
                     MpeiNeoBars.onPageState(signature);
                 }
-                if (marks && window.__mpeiNeoBarsStateObserver) {
+                if ((marks || summaryReady) && window.__mpeiNeoBarsStateObserver) {
                     window.__mpeiNeoBarsStateObserver.disconnect();
                     window.__mpeiNeoBarsStateObserver = null;
                 }

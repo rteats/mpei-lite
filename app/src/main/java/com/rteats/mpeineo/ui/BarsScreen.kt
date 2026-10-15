@@ -118,6 +118,8 @@ internal fun BarsScreen(
   var retryNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
   var redirectingToMarks by remember { mutableStateOf(false) }
   var marksExtractionStarted by remember { mutableStateOf(false) }
+  var summaryFetchAttempted by remember { mutableStateOf(false) }
+  var summaryExtractionStarted by remember { mutableStateOf(false) }
   var needsFullViewport by remember { mutableStateOf(true) }
   var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
   var mainFrameFailed by remember { mutableStateOf(false) }
@@ -456,6 +458,16 @@ internal fun BarsScreen(
                     return@post
                   }
 
+                  // Summary has independent AJAX-populated grade and attendance tables.
+                  if (page.isSummaryPage && summaryFetchAttempted) {
+                    if (page.isSummaryReady && !summaryExtractionStarted) {
+                      summaryExtractionStarted = true
+                      viewModel.logWebEvent("summary tables ready")
+                      view.evaluateJavascript(BARS_SUMMARY_RAW_SCRIPT, null)
+                    }
+                    return@post
+                  }
+
                   when (classifyBarsPage(page)) {
                     BarsPageKind.MARKS_READY -> {
                       redirectingToMarks = false
@@ -524,6 +536,34 @@ internal fun BarsScreen(
                   viewModel.logWebEvent("extraction bridge returned data")
                   CookieManager.getInstance().flush()
                   viewModel.extractionReceived(json)
+                  // Extract Main before visiting Summary. The flag prevents a
+                  // second trip when the WebView returns to Main.
+                  view.evaluateJavascript(BARS_MAIN_RAW_SCRIPT, null)
+                }
+              },
+              onRawSnapshot = { source, raw ->
+                view.post {
+                  if (webView !== view || state.browserVisible || mainFrameFailed ||
+                    !BarsDocumentPolicy.isTrusted(view.url.orEmpty())) return@post
+                  val valid = when (source) {
+                    "MAIN" -> BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+                    "SUMMARY" -> BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL)
+                    else -> false
+                  }
+                  if (!valid) return@post
+                  viewModel.rawSnapshotReceived(source, raw)
+                  if (source == "MAIN" && !summaryFetchAttempted &&
+                    !state.browserVisible
+                  ) {
+                    summaryFetchAttempted = true
+                    summaryExtractionStarted = false
+                    viewModel.logWebEvent("raw summary capture starting")
+                    view.loadUrl(BARS_SUMMARY_URL)
+                  }
+                  if (source == "SUMMARY" && summaryFetchAttempted) {
+                    viewModel.logWebEvent("summary captured; restoring marks")
+                    view.loadUrl(BARS_MARKS_URL)
+                  }
                 }
               },
               onExtractionError = { token, message ->
@@ -636,6 +676,20 @@ internal fun BarsScreen(
                 return
               }
               view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
+              if (url.contains("/Main/Summary", ignoreCase = true) &&
+                summaryFetchAttempted
+              ) {
+                view.postDelayed({
+                  if (webView === view && !summaryExtractionStarted &&
+                    view.url.orEmpty().contains("/Main/Summary", ignoreCase = true) &&
+                    !state.browserVisible
+                  ) {
+                    viewModel.rawCaptureStatus("Таблицы Summary не загрузились за 12 секунд")
+                    viewModel.logWebEvent("summary timeout; restoring marks")
+                    view.loadUrl(BARS_MARKS_URL)
+                  }
+                }, 12_000L)
+              }
             }
 
             override fun onPageCommitVisible(view: WebView, url: String) {

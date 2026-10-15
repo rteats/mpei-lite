@@ -12,9 +12,16 @@ internal data class BarsCachedSnapshot(
     val payload: BarsExtractionPayload,
 )
 
+internal data class BarsRawSnapshot(
+    val main: String = "",
+    val summary: String = "",
+    val updatedAtMillis: Long = 0L,
+)
+
 internal class BarsSnapshotStore(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "bars_grade_snapshot.json"))
     private val gson = Gson()
+    private val rawFile = AtomicFile(File(context.noBackupFilesDir, "bars_raw_snapshot.json"))
 
     fun read(): BarsCachedSnapshot? = runCatching {
         if (!file.baseFile.exists() || file.baseFile.length() > 1_000_000L) return null
@@ -42,6 +49,35 @@ internal class BarsSnapshotStore(context: Context) {
             file.finishWrite(stream)
         } catch (error: Exception) {
             stream?.let(file::failWrite)
+        }
+    }
+
+    fun readRaw(): BarsRawSnapshot? = runCatching {
+        if (!rawFile.baseFile.exists() || rawFile.baseFile.length() > 900_000L) return null
+        gson.fromJson(
+            rawFile.openRead().bufferedReader(Charsets.UTF_8).use { it.readText() },
+            BarsRawSnapshot::class.java,
+        )?.takeIf { it.updatedAtMillis > 0L &&
+            it.updatedAtMillis <= System.currentTimeMillis() }
+    }.getOrNull()
+
+    @Synchronized
+    fun writeRaw(source: String, text: String) {
+        if (text.length > 380_000 || source !in setOf("MAIN", "SUMMARY")) return
+        val previous = readRaw() ?: BarsRawSnapshot()
+        val next = when (source) {
+            "MAIN" -> previous.copy(main = text, updatedAtMillis = System.currentTimeMillis())
+            else -> previous.copy(summary = text, updatedAtMillis = System.currentTimeMillis())
+        }
+        val bytes = gson.toJson(next).toByteArray(Charsets.UTF_8)
+        if (bytes.size > 900_000) return
+        var stream: java.io.FileOutputStream? = null
+        try {
+            stream = rawFile.startWrite()
+            stream.write(bytes)
+            rawFile.finishWrite(stream)
+        } catch (_: Exception) {
+            stream?.let(rawFile::failWrite)
         }
     }
 }
