@@ -48,6 +48,9 @@ class BarsReportParserTest {
         assertTrue(parsed.gradeRows[0][1].isEmphasized)
         assertEquals("", parsed.gradeRows[0][2].value)
         assertEquals(2, parsed.gradeRows[0][2].columnSpan)
+        // The first heading occupies two rows in the source table.
+        assertEquals("Предмет", parsed.gradeRows[1][0].value)
+        assertEquals(3, parsed.gradeRows[1].size)
         assertEquals(3, parsed.attendanceRows[0][1].columnSpan)
         assertEquals(listOf("ТБ — текущий балл"), parsed.notes)
     }

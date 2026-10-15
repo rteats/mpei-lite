@@ -96,7 +96,68 @@ internal object BarsReportParser {
                 }
             }
         }
-        return BarsSummaryReport(semester, grades, attendance, notes.distinct())
+        return BarsSummaryReport(
+            semester, alignRows(grades), alignRows(attendance), notes.distinct(),
+        )
+    }
+
+    /**
+     * The official report uses rowspan/colspan. Insert carried cells into
+     * subsequent rows, otherwise a discipline's multi-week assessment can
+     * shift into the fixed first column and corrupt table alignment.
+     */
+    private fun alignRows(rows: List<List<BarsReportCell>>): List<List<BarsReportCell>> {
+        data class Carry(val cell: BarsReportCell, val start: Int, val remaining: Int)
+        val active = mutableMapOf<Int, Carry>()
+        return rows.map { source ->
+            val occupied = active.toMap()
+            active.clear()
+            occupied.forEach { (column, carry) ->
+                if (carry.remaining > 1) {
+                    active[column] = carry.copy(remaining = carry.remaining - 1)
+                }
+            }
+
+            val placed = mutableMapOf<Int, BarsReportCell>()
+            var cursor = 0
+            source.forEach { cell ->
+                while ((cursor until cursor + cell.columnSpan).any {
+                    it in occupied || it in placed
+                }) cursor++
+                placed[cursor] = cell
+                if (cell.rowSpan > 1) {
+                    val carry = Carry(cell, cursor, cell.rowSpan - 1)
+                    (cursor until cursor + cell.columnSpan).forEach { active[it] = carry }
+                }
+                cursor += cell.columnSpan
+            }
+
+            val lastColumn = maxOf(
+                (placed.entries.maxOfOrNull { it.key + it.value.columnSpan } ?: 0),
+                ((occupied.keys.maxOrNull() ?: -1) + 1),
+            )
+            buildList {
+                var column = 0
+                while (column < lastColumn) {
+                    val cell = placed[column]
+                    val carry = occupied[column]
+                    when {
+                        cell != null -> {
+                            add(cell)
+                            column += cell.columnSpan
+                        }
+                        carry != null && carry.start == column -> {
+                            add(carry.cell.copy(rowSpan = 1))
+                            column += carry.cell.columnSpan
+                        }
+                        else -> {
+                            add(BarsReportCell(""))
+                            column++
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun parseCell(text: String): BarsReportCell {

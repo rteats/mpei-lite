@@ -1150,6 +1150,7 @@ private fun BarsUserHeader(
   state: BarsUiState,
 ) {
   var showStudentDetails by rememberSaveable { mutableStateOf(false) }
+  var showAllIndicators by rememberSaveable { mutableStateOf(false) }
   val extras = remember(state.rawMain) { BarsReportParser.parseMain(state.rawMain) }
   Column(
     modifier = Modifier.fillMaxWidth()
@@ -1201,17 +1202,24 @@ private fun BarsUserHeader(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
       ) {
-        extras.indicators.forEach { indicator ->
-          Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-          ) {
-            Text(
-              indicator,
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+        (if (showAllIndicators) extras.indicators else extras.indicators.take(3))
+          .forEach { indicator ->
+            Surface(
+              shape = MaterialTheme.shapes.large,
+              color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+              Text(
+                indicator,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+              )
+            }
+          }
+        if (extras.indicators.size > 3) {
+          TextButton(onClick = { showAllIndicators = !showAllIndicators }) {
+            Text(if (showAllIndicators) "Свернуть"
+              else "Ещё " + (extras.indicators.size - 3))
           }
         }
       }
