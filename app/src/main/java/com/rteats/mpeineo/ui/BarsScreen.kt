@@ -185,6 +185,8 @@ internal fun BarsScreen(
       ) {
         viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
         redirectingToMarks = false
+        summaryFetchAttempted = false
+        summaryExtractionStarted = false
         mainFrameFailed = false
         needsFullViewport = true
         marksReadiness?.reset()
@@ -232,6 +234,8 @@ internal fun BarsScreen(
         error = state.error,
         onRetry = {
           mainFrameFailed = false
+          summaryFetchAttempted = false
+          summaryExtractionStarted = false
           needsFullViewport = true
           marksReadiness?.reset()
           viewModel.checking()
@@ -255,6 +259,8 @@ internal fun BarsScreen(
         onRefresh = {
           manuallyRequestedConnection = true
           redirectingToMarks = false
+          summaryFetchAttempted = false
+          summaryExtractionStarted = false
           mainFrameFailed = false
           if (state.loginRequired) {
             viewModel.showBrowser()
@@ -268,6 +274,33 @@ internal fun BarsScreen(
         onOpenBrowser = {
           marksReadiness?.navigationStarted()
           viewModel.showBrowser()
+        },
+        onRefreshSummary = {
+          manuallyRequestedConnection = true
+          if (state.loginRequired) {
+            viewModel.showBrowser()
+          } else if (!state.isSummaryLoading) {
+            val view = webView
+            summaryFetchAttempted = false
+            summaryExtractionStarted = false
+            mainFrameFailed = false
+            if (view != null &&
+              BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
+              !state.isLoading && navigationController != null
+            ) {
+              summaryFetchAttempted = true
+              viewModel.summaryCaptureStarted()
+              needsFullViewport = true
+              navigationController?.load(BARS_SUMMARY_URL, "manual Summary refresh")
+            } else {
+              // The live document is not Main yet. Revalidate marks first;
+              // their extraction callback will chain into Summary.
+              needsFullViewport = true
+              marksReadiness?.reset()
+              viewModel.startRefresh()
+              retryNavigation?.invoke()
+            }
+          }
         },
       )
     }
@@ -383,7 +416,16 @@ internal fun BarsScreen(
             log = viewModel::logWebEvent,
             probe = viewModel::probeNetwork,
             onTimeout = {
-              if (!state.browserVisible) {
+              if (!state.browserVisible &&
+                summaryFetchAttempted && state.isSummaryLoading
+              ) {
+                summaryExtractionStarted = false
+                viewModel.summaryCaptureFailed(
+                  "Не удалось загрузить Сводку: сервер БАРС не ответил.",
+                )
+                // A Summary failure should not erase successfully cached marks.
+                navigationController?.load(BARS_MARKS_URL, "restore marks after Summary timeout")
+              } else if (!state.browserVisible) {
                 needsFullViewport = false
                 viewModel.extractionFailed(
                   "Тайм-аут подключения к БАРС. Сессия не сброшена. " +
@@ -491,11 +533,11 @@ internal fun BarsScreen(
                   val currentLocation = safeBarsLocation(page.url)
                   val marksLocation = safeBarsLocation(BARS_MARKS_URL)
                   val signature =
-                    "$currentLocation|${page.isLoginPage}|${page.isAuthFlow}|${page.isStudentList}|${page.isMarksPage}"
+                    "$currentLocation|${page.isLoginPage}|${page.isAuthFlow}|${page.isStudentList}|${page.isMarksPage}|${page.isSummaryReady}"
                   if (signature != lastPageStateSignature) {
                     lastPageStateSignature = signature
                     viewModel.logWebEvent(
-                      "pageState path=$currentLocation login=${page.isLoginPage} authFlow=${page.isAuthFlow} studentList=${page.isStudentList} marks=${page.isMarksPage}",
+                      "pageState path=$currentLocation login=${page.isLoginPage} authFlow=${page.isAuthFlow} studentList=${page.isStudentList} marks=${page.isMarksPage} summary=${page.isSummaryPage} ready=${page.isSummaryReady}",
                     )
                   }
 
@@ -521,6 +563,12 @@ internal fun BarsScreen(
                     BarsPageKind.MARKS_READY -> {
                       redirectingToMarks = false
                       readiness.reset()
+                      if (summaryFetchAttempted && state.isSummaryLoading) {
+                        // Redirected back to Main without a Summary payload.
+                        viewModel.summaryCaptureFailed(
+                          "Сводка не вернула данные. Нажмите «Обновить», чтобы повторить.",
+                        )
+                      }
                       if (!marksExtractionStarted) {
                         marksExtractionStarted = true
                         viewModel.authenticatedPage(page.url)
@@ -537,6 +585,11 @@ internal fun BarsScreen(
                     BarsPageKind.AUTH_FLOW -> {
                       redirectingToMarks = false
                       readiness.reset()
+                      if (summaryFetchAttempted && state.isSummaryLoading) {
+                        viewModel.summaryCaptureFailed(
+                          "Для загрузки Сводки требуется повторный вход в БАРС.",
+                        )
+                      }
                       viewModel.webAuth(page.url)
                     }
                     BarsPageKind.MARKS_LOADING -> {
@@ -606,12 +659,20 @@ internal fun BarsScreen(
                   ) {
                     summaryFetchAttempted = true
                     summaryExtractionStarted = false
-                    viewModel.logWebEvent("raw summary capture starting")
-                    view.loadUrl(BARS_SUMMARY_URL)
+                    needsFullViewport = true
+                    viewModel.summaryCaptureStarted()
+                    viewModel.logWebEvent("automatic Summary capture starting")
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_SUMMARY_URL,
+                      reason = "automatic Summary capture",
+                    )
                   }
                   if (source == "SUMMARY" && summaryFetchAttempted) {
                     viewModel.logWebEvent("summary captured; restoring marks")
-                    view.loadUrl(BARS_MARKS_URL)
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_MARKS_URL,
+                      reason = "restore marks after Summary",
+                    )
                   }
                 }
               },
@@ -725,19 +786,27 @@ internal fun BarsScreen(
                 return
               }
               view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
-              if (url.contains("/Main/Summary", ignoreCase = true) &&
+              if (BarsDocumentPolicy.isCurrent(url, BARS_SUMMARY_URL) &&
                 summaryFetchAttempted
               ) {
+                // Starting the extraction script is not proof of success.
+                // If its bridge never returns, restore the native screen too.
                 view.postDelayed({
-                  if (webView === view && !summaryExtractionStarted &&
-                    view.url.orEmpty().contains("/Main/Summary", ignoreCase = true) &&
-                    !state.browserVisible
+                  if (webView === view &&
+                    BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL) &&
+                    summaryFetchAttempted && !state.browserVisible
                   ) {
-                    viewModel.rawCaptureStatus("Таблицы Summary не загрузились за 12 секунд")
-                    viewModel.logWebEvent("summary timeout; restoring marks")
-                    view.loadUrl(BARS_MARKS_URL)
+                    summaryExtractionStarted = false
+                    viewModel.summaryCaptureFailed(
+                      "Таблицы Сводки не загрузились. Можно повторить.",
+                    )
+                    viewModel.logWebEvent("Summary AJAX deadline; restoring marks")
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_MARKS_URL,
+                      reason = "restore marks after Summary AJAX timeout",
+                    )
                   }
-                }, 12_000L)
+                }, 20_000L)
               }
             }
 
@@ -777,10 +846,26 @@ internal fun BarsScreen(
                     retryable = code in 500..599,
                   )
                   if (!retryScheduled && !state.browserVisible) {
-                    needsFullViewport = false
-                    viewModel.extractionFailed(
-                      "Сервер БАРС вернул ошибку HTTP $code. Повторите позже.",
-                    )
+                    if (summaryFetchAttempted &&
+                      BarsDocumentPolicy.isCurrent(request.url.toString(), BARS_SUMMARY_URL)
+                    ) {
+                      viewModel.summaryCaptureFailed(
+                        "Сводка БАРС вернула ошибку HTTP $code.",
+                      )
+                      view.post {
+                        if (webView === view) {
+                          loadBarsWithWatchdog(
+                            targetUrl = BARS_MARKS_URL,
+                            reason = "restore marks after Summary HTTP failure",
+                          )
+                        }
+                      }
+                    } else {
+                      needsFullViewport = false
+                      viewModel.extractionFailed(
+                        "Сервер БАРС вернул ошибку HTTP $code. Повторите позже.",
+                      )
+                    }
                   }
                 }
               }
@@ -837,15 +922,31 @@ internal fun BarsScreen(
               if (canRetry) return
 
               if (!state.browserVisible) {
-                needsFullViewport = false
-                viewModel.extractionFailed(
-                  if (error.errorCode == WebViewClient.ERROR_TIMEOUT) {
-                    "Сервер БАРС не ответил (тайм-аут сети). " +
-                      "Сессия сохранена. Попробуйте Wi-Fi или откройте сайт в браузере."
-                  } else {
-                    "Не удалось открыть БАРС: ${error.description}. Нажмите «Повторить»."
-                  },
-                )
+                if (summaryFetchAttempted &&
+                  BarsDocumentPolicy.isCurrent(failedUrl, BARS_SUMMARY_URL)
+                ) {
+                  viewModel.summaryCaptureFailed(
+                    "Не удалось загрузить Сводку (ошибка сети ${error.errorCode}).",
+                  )
+                  view.post {
+                    if (webView === view) {
+                      loadBarsWithWatchdog(
+                        targetUrl = BARS_MARKS_URL,
+                        reason = "restore marks after Summary network failure",
+                      )
+                    }
+                  }
+                } else {
+                  needsFullViewport = false
+                  viewModel.extractionFailed(
+                    if (error.errorCode == WebViewClient.ERROR_TIMEOUT) {
+                      "Сервер БАРС не ответил (тайм-аут сети). " +
+                        "Сессия сохранена. Попробуйте Wi-Fi или откройте сайт в браузере."
+                    } else {
+                      "Не удалось открыть БАРС: ${error.description}. Нажмите «Повторить»."
+                    },
+                  )
+                }
               }
             }
 
@@ -974,6 +1075,7 @@ private fun BarsNativeDashboard(
   onRefresh: () -> Unit,
   onOpenBrowser: () -> Unit,
   onAcknowledgeGrades: (String) -> Unit,
+  onRefreshSummary: () -> Unit,
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
@@ -1123,6 +1225,9 @@ private fun BarsNativeDashboard(
               gradeScroll = gradeReportScroll,
               attendanceScroll = attendanceReportScroll,
               onOpenDiscipline = { selectedDisciplineName = it },
+              isSummaryLoading = state.isSummaryLoading,
+              summaryError = state.summaryError,
+              onRetrySummary = onRefreshSummary,
             )
           } else if (state.disciplines.isEmpty() && !state.isLoading) {
             item(key = "empty") {

@@ -19,6 +19,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -322,6 +324,9 @@ internal fun LazyListScope.barsReportEntries(
     gradeScroll: ScrollState,
     attendanceScroll: ScrollState,
     onOpenDiscipline: (String) -> Unit,
+    isSummaryLoading: Boolean,
+    summaryError: String?,
+    onRetrySummary: () -> Unit,
 ) {
     if (section == "controls") {
         item(key = "controls-heading") {
@@ -373,17 +378,40 @@ internal fun LazyListScope.barsReportEntries(
         row.drop(1).sumOf { it.columnSpan }
     } ?: 1).coerceIn(1, 120)
     item(key = "report-heading") {
-        BarsReportHeading(
-            if (isGrades) "Оценки по неделям" else "Посещаемость",
-            listOf(report.semester, "Данные БАРС")
-                .filter { it.isNotBlank() }.joinToString(" · "),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                BarsReportHeading(
+                    if (isGrades) "Оценки по неделям" else "Посещаемость",
+                    listOf(report.semester, "Данные БАРС")
+                        .filter { it.isNotBlank() }.joinToString(" · "),
+                )
+            }
+            if (!isSummaryLoading) {
+                TextButton(onClick = onRetrySummary) { Text("Обновить") }
+            } else {
+                CircularProgressIndicator(modifier = Modifier.width(24.dp))
+            }
+        }
+    }
+    if (summaryError != null) {
+        item(key = "summary-error") {
+            Text(
+                summaryError,
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
     if (rows.isEmpty()) {
         item(key = "report-empty") {
             BarsReportEmpty(
-                "Данные ещё не загружены. Обновите БАРС, чтобы увидеть " +
-                    if (isGrades) "оценки по неделям." else "посещаемость.",
+                if (isSummaryLoading) "Получаем данные из Сводки БАРС…"
+                else "Данные Сводки пока не получены. Нажмите «Обновить»."
             )
         }
     } else {

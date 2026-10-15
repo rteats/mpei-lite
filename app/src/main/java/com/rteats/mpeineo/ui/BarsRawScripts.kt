@@ -58,8 +58,14 @@ internal val BARS_SUMMARY_RAW_SCRIPT = """
   const clean = s => (s || '').replace(/\s+/g, ' ').trim();
   const grades = document.getElementById('tableMarkSummary');
   const attendance = document.getElementById('tableSkipSummary');
-  if (!grades || !attendance || grades.querySelectorAll('tr').length < 4 ||
-      attendance.querySelectorAll('tr').length < 4) return;
+  function hasReportData(table) {
+    if (!table) return false;
+    const rows = Array.from(table.querySelectorAll('tr'));
+    return rows.length >= 2 && rows.some((row, index) => index > 0 &&
+      Array.from(row.querySelectorAll('td,th')).some(cell =>
+        !!clean(cell.textContent)));
+  }
+  if (!hasReportData(grades) || !hasReportData(attendance)) return;
   const lines = ['Источник: /ST_Study/Main/Summary'];
   const semester = document.querySelector('#div-Summary .filter-option-inner-inner');
   if (semester) lines.push('Семестр: ' + clean(semester.textContent));

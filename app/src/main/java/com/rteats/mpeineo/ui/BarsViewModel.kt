@@ -43,6 +43,8 @@ internal data class BarsUiState(
     val rawSummary: String = "",
     val rawCapturedAtMillis: Long = 0L,
     val rawStatus: String = "",
+    val isSummaryLoading: Boolean = false,
+    val summaryError: String? = null,
     val error: String? = null,
     val loginRequired: Boolean = false,
 ) {
@@ -344,6 +346,21 @@ internal class BarsViewModel(
             }
     }
 
+    /** The two Summary reports have a separate loading/error state from cached marks. */
+    fun summaryCaptureStarted() {
+        _state.update {
+            it.copy(isSummaryLoading = true, summaryError = null, rawStatus = "")
+        }
+        diagnostics.log("BARS", "summary capture started")
+    }
+
+    fun summaryCaptureFailed(reason: String) {
+        _state.update {
+            it.copy(isSummaryLoading = false, summaryError = reason, rawStatus = reason)
+        }
+        diagnostics.log("BARS", "summary capture failed reason=" + reason.take(120))
+    }
+
     /** Intentionally never send profile, grade or attendance text to diagnostics. */
     fun rawSnapshotReceived(source: String, text: String) {
         if (source !in setOf("MAIN", "SUMMARY") || text.isBlank() ||
@@ -353,7 +370,7 @@ internal class BarsViewModel(
                 "MAIN" -> it.copy(rawMain = text, rawCapturedAtMillis = System.currentTimeMillis(),
                     rawStatus = "")
                 else -> it.copy(rawSummary = text, rawCapturedAtMillis = System.currentTimeMillis(),
-                    rawStatus = "")
+                    isSummaryLoading = false, summaryError = null, rawStatus = "")
             }
         }
         diagnostics.log("BARS", "raw capture source=$source chars=${text.length}")
