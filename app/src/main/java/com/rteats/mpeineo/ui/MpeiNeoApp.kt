@@ -574,7 +574,7 @@ fun MpeiNeoApp(
                         Box(
                             modifier = Modifier.align(Alignment.CenterStart)
                                 .width(96.dp).fillMaxHeight()
-                                .padding(top = 88.dp, bottom = 104.dp)
+                                .padding(top = 88.dp, bottom = 200.dp)
                                 .testTag("campus-map-swipe-back-zone")
                                 .serviceBackGesture(
                                     eligible = true,
