@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 
 internal data class MailUiState(
     val configured: Boolean = false,
+    val loginRequired: Boolean = false,
     val certificate: MailServerCertificate? = null,
     val inspectingCertificate: Boolean = false,
     val username: String = "",
@@ -109,7 +110,9 @@ internal class MailViewModel(
         val id = ++refreshSequence
         repository.logState("refresh requested id=$id protocol=OWA cachedItems=${_state.value.items.size}")
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null, notice = null) }
+            _state.update {
+                it.copy(loading = true, error = null, notice = null, loginRequired = false)
+            }
             try {
                 val items = owaMailRepository.inbox(maxConversations = MAIL_PAGE_SIZE, refreshId = id)
                 if (version != sessionVersion) return@launch
@@ -125,6 +128,7 @@ internal class MailViewModel(
                     }
                     old.copy(
                         configured = true,
+                        loginRequired = false,
                         loading = false,
                         items = preserved,
                         nextPageOffset = if (old.nextPageOffset > 0) {
@@ -151,10 +155,13 @@ internal class MailViewModel(
                 _state.update {
                     it.copy(
                         configured = it.items.isNotEmpty() || (!needsLogin && it.configured),
+                        loginRequired = needsLogin,
                         loading = false,
-                        error = if (needsLogin) "Сессия ОСЭП недействительна. Войдите через кнопку ОСЭП."
-                            else if (it.items.isEmpty()) "Не удалось получить почту через ОСЭП." else null,
-                        notice = if (it.items.isNotEmpty()) "Показаны сохранённые письма" else null,
+                        error = if (needsLogin) "Требуется повторный вход в ОСЭП."
+                            else "Не удалось обновить почту через ОСЭП.",
+                        // A failed refresh has one recoverable status, not a
+                        // second cached-data notice below the error.
+                        notice = null,
                     )
                 }
             }
