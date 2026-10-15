@@ -9,6 +9,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.webkit.ConsoleMessage
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
@@ -70,6 +72,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -122,6 +125,9 @@ internal fun BarsScreen(
   modifier: Modifier = Modifier,
 ) {
   val state by viewModel.state.collectAsState()
+  val browserCanInteract by rememberUpdatedState(
+    active && (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
+  )
   var webView by remember { mutableStateOf<WebView?>(null) }
   var navigationController by remember { mutableStateOf<BarsNavigationController?>(null) }
   var marksReadiness by remember { mutableStateOf<BarsMarksReadiness?>(null) }
@@ -287,6 +293,39 @@ internal fun BarsScreen(
         ),
       factory = { context ->
         WebView(context).also { view ->
+          // Let Chromium own pointer events when the official browser is visible.
+          // This listener never consumes events, including nested HTML scrolling.
+          val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+          var touchDownX = 0f
+          var touchDownY = 0f
+          var verticalGestureLogged = false
+          view.setOnTouchListener { touched, event ->
+            if (!browserCanInteract) return@setOnTouchListener false
+            when (event.actionMasked) {
+              MotionEvent.ACTION_DOWN -> {
+                touchDownX = event.x
+                touchDownY = event.y
+                verticalGestureLogged = false
+                touched.parent?.requestDisallowInterceptTouchEvent(true)
+              }
+              MotionEvent.ACTION_MOVE -> {
+                if (!verticalGestureLogged &&
+                    kotlin.math.abs(event.y - touchDownY) > touchSlop &&
+                    kotlin.math.abs(event.y - touchDownY) >
+                      kotlin.math.abs(event.x - touchDownX)) {
+                  verticalGestureLogged = true
+                  viewModel.logWebEvent(
+                    "vertical browser gesture enabled=${touched.isEnabled} " +
+                      "width=${touched.width} height=${touched.height} " +
+                      "scrollY=${view.scrollY} contentHeight=${view.contentHeight}"
+                  )
+                }
+              }
+              MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                touched.parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            false
+          }
           view.setOnFocusChangeListener { _, focused ->
             viewModel.logWebEvent(
               "browser focus changed focused=$focused browser=${state.browserVisible} " +
@@ -846,11 +885,10 @@ internal fun BarsScreen(
       },
       update = { view ->
         webView = view
-        // A background validation WebView must not consume taps or
-        // horizontal pager swipes. Keep JS/network running; only
-        // interactive login and the explicit browser accept input.
-        view.isEnabled = active && (state.browserVisible ||
-          state.authStage == BarsAuthStage.WEB_AUTH)
+        // Keep Chromium enabled when moving between background sync and
+        // interactive browsing. Toggling View.isEnabled can leave scroll
+        // gestures unresponsive. Hidden WebViews stay behind native content
+        // or offscreen at Home, so they cannot intercept native input.
       },
         onRelease = { view ->
           viewModel.logWebEvent(
@@ -875,6 +913,7 @@ internal fun BarsScreen(
           view.isFocusableInTouchMode = false
           view.isFocusable = false
           view.onFocusChangeListener = null
+          view.setOnTouchListener(null)
           view.stopLoading()
           view.removeJavascriptInterface(BARS_JS_INTERFACE)
           view.webViewClient = WebViewClient()
@@ -910,14 +949,13 @@ private fun BarsCheckingState(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       } else {
-        Text(
-          text = error,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.error,
+        ServiceStatus(
+          title = "Не удалось подключиться к БАРС",
+          detail = error,
+          tone = ServiceStatusTone.ERROR,
+          actionLabel = "Повторить",
+          onAction = onRetry,
         )
-        Button(onClick = onRetry) {
-          Text("Повторить")
-        }
       }
     }
   }
@@ -1025,28 +1063,14 @@ private fun BarsNativeDashboard(
         ) {
           if (state.loginRequired) {
             item(key = "session-expired") {
-              Surface(
-                modifier = Modifier.fillMaxWidth()
-                  .padding(horizontal = 8.dp, vertical = 6.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-              ) {
-                Row(
-                  modifier = Modifier.fillMaxWidth().padding(12.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                  Text(
-                    "Сессия БАРС истекла. Сохранённые оценки доступны.",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                  )
-                  TextButton(onClick = onOpenBrowser) {
-                    Text("Войти")
-                  }
-                }
-              }
+              ServiceStatus(
+                title = "Сессия БАРС истекла",
+                detail = "Сохранённые оценки доступны.",
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                tone = ServiceStatusTone.RECOVERY,
+                actionLabel = "Войти",
+                onAction = onOpenBrowser,
+              )
             }
           }
           item(key = "profile") {
@@ -1058,32 +1082,18 @@ private fun BarsNativeDashboard(
           }?.let { message ->
             item(key = "error") {
               val hasCachedGrades = state.disciplines.isNotEmpty()
-              Surface(
-                modifier = Modifier.fillMaxWidth()
-                  .padding(horizontal = 8.dp),
-                shape = MaterialTheme.shapes.large,
-                color = if (hasCachedGrades) {
-                  MaterialTheme.colorScheme.surfaceContainer
-                } else MaterialTheme.colorScheme.errorContainer,
-              ) {
-                Row(
-                  modifier = Modifier.padding(12.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                  Text(
-                    if (hasCachedGrades) {
-                      "Не удалось обновить. Показаны сохранённые оценки."
-                    } else message,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (hasCachedGrades) {
-                      MaterialTheme.colorScheme.onSurfaceVariant
-                    } else MaterialTheme.colorScheme.onErrorContainer,
-                  )
-                  TextButton(onClick = onRefresh) { Text("Повторить") }
-                }
-              }
+              ServiceStatus(
+                title = if (hasCachedGrades) {
+                  "Не удалось обновить БАРС"
+                } else "Не удалось загрузить БАРС",
+                detail = if (hasCachedGrades) "Показаны сохранённые оценки." else message,
+                modifier = Modifier.padding(horizontal = 8.dp),
+                tone = if (hasCachedGrades) {
+                  ServiceStatusTone.RECOVERY
+                } else ServiceStatusTone.ERROR,
+                actionLabel = "Повторить",
+                onAction = onRefresh,
+              )
             }
           }
 
