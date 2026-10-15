@@ -360,3 +360,49 @@ internal val BARS_EXTRACT_SCRIPT = """
         extract(0);
     })();
 """.trimIndent()
+
+/**
+ * Resolve the REAL per-student URLs from BARS' rendered navigation menu.
+ * The current site requires ?studentID=... for Summary and Main.
+ * This is run only on the authenticated Main page. The ID never goes to logs.
+ */
+internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
+(function() {
+    const routes = {main: '', summary: ''};
+    document.querySelectorAll('a[href]').forEach(function(anchor) {
+        try {
+            const link = new URL(anchor.getAttribute('href'), window.location.href);
+            if (link.origin !== window.location.origin ||
+                !link.searchParams.get('studentID')) return;
+            if (link.pathname === '/bars_web/ST_Study/Main/Main') {
+                routes.main = link.href;
+            } else if (link.pathname === '/bars_web/ST_Study/Main/Summary') {
+                routes.summary = link.href;
+            }
+        } catch (_) {}
+    });
+    return JSON.stringify(routes);
+})()
+""".trimIndent()
+
+/** Emit only safe structural diagnostics; never document text or query values. */
+internal val BARS_SUMMARY_DIAGNOSTICS_SCRIPT = """
+(function() {
+    const grades = document.getElementById('tableMarkSummary');
+    const attendance = document.getElementById('tableSkipSummary');
+    const plain = ((document.body && document.body.textContent) || '')
+        .slice(0, 8000).toLowerCase();
+    const rejected = /invalid request|неверный запрос|некорректный запрос|ошибочный запрос/
+        .test(plain);
+    const queryPresent = new URLSearchParams(window.location.search).has('studentID');
+    const rows = function(table) {
+        return table ? table.querySelectorAll('tr').length : 0;
+    };
+    MpeiNeoBars.onSummaryDiagnostic(
+        'route=summary studentParam=' + queryPresent +
+        ' gradeRows=' + rows(grades) +
+        ' attendanceRows=' + rows(attendance) +
+        ' serverReject=' + rejected
+    );
+})()
+""".trimIndent()
