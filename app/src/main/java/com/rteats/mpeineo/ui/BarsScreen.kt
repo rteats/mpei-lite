@@ -106,6 +106,9 @@ internal fun BarsScreen(
   active: Boolean = true,
   onBrowserExit: () -> Unit = {},
   onDetailOpenChange: (Boolean) -> Unit = {},
+  openDisciplineName: String? = null,
+  openDisciplineRequest: Int = 0,
+  onOpenDisciplineConsumed: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val state by viewModel.state.collectAsState()
@@ -226,6 +229,9 @@ internal fun BarsScreen(
         state = state,
         active = active,
         onDetailOpenChange = onDetailOpenChange,
+        openDisciplineName = openDisciplineName,
+        openDisciplineRequest = openDisciplineRequest,
+        onOpenDisciplineConsumed = onOpenDisciplineConsumed,
         showCachedRefreshErrors = autoRefreshEnabled || manuallyRequestedConnection,
         onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
         onRefresh = {
@@ -859,6 +865,9 @@ private fun BarsNativeDashboard(
   state: BarsUiState,
   active: Boolean,
   onDetailOpenChange: (Boolean) -> Unit,
+  openDisciplineName: String?,
+  openDisciplineRequest: Int,
+  onOpenDisciplineConsumed: () -> Unit,
   showCachedRefreshErrors: Boolean,
   onRefresh: () -> Unit,
   onOpenBrowser: () -> Unit,
@@ -870,6 +879,15 @@ private fun BarsNativeDashboard(
     it.disciplineName == selectedDisciplineName
   }
   val motion = MaterialTheme.motionScheme
+
+  androidx.compose.runtime.LaunchedEffect(openDisciplineRequest, openDisciplineName,
+      state.disciplines, active) {
+    if (active && openDisciplineName != null &&
+        state.disciplines.any { it.disciplineName == openDisciplineName }) {
+      selectedDisciplineName = openDisciplineName
+      onOpenDisciplineConsumed()
+    }
+  }
 
   androidx.compose.runtime.SideEffect {
     onDetailOpenChange(selectedDiscipline != null)

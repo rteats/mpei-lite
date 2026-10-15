@@ -215,7 +215,7 @@ internal fun ScheduleDockedSearch(
     }
 
     BoxWithConstraints(modifier = modifier) {
-        // The docked field stays anchored while the unified surface grows UP.
+        // The search field stays at the top while suggestions expand DOWN.
         val panelMaxHeight = (maxHeight - 90.dp).coerceAtLeast(0.dp)
         val rowCount = favorites.size + otherResults.size
         val suggestedHeight = (118 + rowCount.coerceAtMost(6) * 74 +
@@ -238,28 +238,151 @@ internal fun ScheduleDockedSearch(
             )
         }
 
-        // Suggestions and the search field share one continuous tonal surface:
-        // no detached popover, second shadow, seam, or discontinuous radii.
+        // Suggestions and the search field share one surface at the top.
         Surface(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .graphicsLayer {
                     // Move the tonal surface into the navigation bar as the
                     // Schedule page leaves. Directly follows pager progress.
                     val reveal = dockRevealProgress().coerceIn(0f, 1f)
                     translationY = size.height * (1f - reveal)
                 },
-            shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+            shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
             Column {
+                // Search stays pinned to the top of the Schedule surface.
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(searchCorner),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(
+                                alpha = if (expanded) 0.52f else 0.30f,
+                            ),
+                        ),
+                    ) {
+                TextField(
+                    value = fieldValue,
+                    onValueChange = { updated ->
+                        fieldValue = updated
+                        if (updated.text != state.searchQuery) onQueryChanged(updated.text)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("schedule-docked-search")
+                        .focusRequester(searchFocusRequester)
+                        .onFocusChanged { focus ->
+                            if (focus.isFocused && !searchHasFocus) {
+                                searchHasFocus = true
+                                fieldValue = fieldValue.copy(
+                                    selection = TextRange(0, fieldValue.text.length),
+                                )
+                                if (!expanded) {
+                                    onExpandedChange(true)
+                                }
+                            } else if (!focus.isFocused) {
+                                searchHasFocus = false
+                            }
+                        },
+                    singleLine = true,
+                    shape = RoundedCornerShape(searchCorner),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    // Results already load as the user types. Submitting via
+                    // the IME closes this transient search mode too.
+                    keyboardActions = KeyboardActions(onSearch = { closeSearch() }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                    placeholder = {
+                        Text(
+                            if (expanded) "Группа, преподаватель или аудитория" else
+                                selected?.displayName(state.favoriteNames) ?: "Найти расписание",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    // Keep the touch target a constant 48dp on both sides
+                    // of the transition. Crossfade only equally sized glyphs:
+                    // swapping an Icon for a whole IconButton made the search
+                    // symbol jump to a corner while measuring two layouts.
+                    leadingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (expanded) closeSearch()
+                                else {
+                                    searchFocusRequester.requestFocus()
+                                    keyboard?.show()
+                                }
+                            },
+                        ) {
+                            Crossfade(
+                                targetState = expanded,
+                                animationSpec = tween(160),
+                                label = "schedule-search-leading",
+                            ) { isExpanded ->
+                                AppIcon(
+                                    icon = if (isExpanded) {
+                                        AppIcons.Back
+                                    } else AppIcons.Search,
+                                    contentDescription = if (isExpanded) {
+                                        "Закрыть поиск"
+                                    } else "Найти расписание",
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    },
+                    trailingIcon = {
+                        if (!expanded && selected != null && !alreadyFavorite) {
+                            IconButton(onClick = { onToggleFavorite(selected) }) {
+                                AppIcon(AppIcons.Favorite, contentDescription = "Добавить в избранное")
+                            }
+                        }
+                    },
+                )
+                    }
+                    if (!expanded && selected != null) {
+                        val refreshing = visibleWeekOffset in state.agendaLoadingOffsets
+                        FilledTonalIconButton(
+                            onClick = { onRefreshWeek(visibleWeekOffset) },
+                            enabled = !refreshing,
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Crossfade(
+                                targetState = refreshing,
+                                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                label = "schedule-week-refresh",
+                            ) { loading ->
+                                if (loading) {
+                                    LoadingIndicator(modifier = Modifier.size(24.dp))
+                                } else {
+                                    AppIcon(
+                                        AppIcons.Refresh,
+                                        contentDescription = "Обновить эту неделю",
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 AnimatedVisibility(
                     visible = expanded && panelHeight > 0.dp,
                     enter = expandVertically(
-                        expandFrom = Alignment.Bottom,
+                        expandFrom = Alignment.Top,
                         animationSpec = tween(245),
                     ) + fadeIn(tween(155)),
                     exit = shrinkVertically(
-                        shrinkTowards = Alignment.Bottom,
+                        shrinkTowards = Alignment.Top,
                         animationSpec = tween(175),
                     ) + fadeOut(tween(95)),
                 ) {
@@ -481,137 +604,13 @@ internal fun ScheduleDockedSearch(
                     }
                 }
 
-                // Keep the actual search field pinned above the navigation bar,
-                // regardless of how many suggestions are currently displayed.
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(searchCorner),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(
-                                alpha = if (expanded) 0.52f else 0.30f,
-                            ),
-                        ),
-                    ) {
-                TextField(
-                    value = fieldValue,
-                    onValueChange = { updated ->
-                        fieldValue = updated
-                        if (updated.text != state.searchQuery) onQueryChanged(updated.text)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                        .testTag("schedule-docked-search")
-                        .focusRequester(searchFocusRequester)
-                        .onFocusChanged { focus ->
-                            if (focus.isFocused && !searchHasFocus) {
-                                searchHasFocus = true
-                                fieldValue = fieldValue.copy(
-                                    selection = TextRange(0, fieldValue.text.length),
-                                )
-                                if (!expanded) {
-                                    onExpandedChange(true)
-                                }
-                            } else if (!focus.isFocused) {
-                                searchHasFocus = false
-                            }
-                        },
-                    singleLine = true,
-                    shape = RoundedCornerShape(searchCorner),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    // Results already load as the user types. Submitting via
-                    // the IME closes this transient search mode too.
-                    keyboardActions = KeyboardActions(onSearch = { closeSearch() }),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                    ),
-                    placeholder = {
-                        Text(
-                            if (expanded) "Группа, преподаватель или аудитория" else
-                                selected?.displayName(state.favoriteNames) ?: "Найти расписание",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    // Keep the touch target a constant 48dp on both sides
-                    // of the transition. Crossfade only equally sized glyphs:
-                    // swapping an Icon for a whole IconButton made the search
-                    // symbol jump to a corner while measuring two layouts.
-                    leadingIcon = {
-                        IconButton(
-                            onClick = {
-                                if (expanded) closeSearch()
-                                else {
-                                    searchFocusRequester.requestFocus()
-                                    keyboard?.show()
-                                }
-                            },
-                        ) {
-                            Crossfade(
-                                targetState = expanded,
-                                animationSpec = tween(160),
-                                label = "schedule-search-leading",
-                            ) { isExpanded ->
-                                AppIcon(
-                                    icon = if (isExpanded) {
-                                        AppIcons.Back
-                                    } else AppIcons.Search,
-                                    contentDescription = if (isExpanded) {
-                                        "Закрыть поиск"
-                                    } else "Найти расписание",
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
-                    },
-                    trailingIcon = {
-                        if (!expanded && selected != null && !alreadyFavorite) {
-                            IconButton(onClick = { onToggleFavorite(selected) }) {
-                                AppIcon(AppIcons.Favorite, contentDescription = "Добавить в избранное")
-                            }
-                        }
-                    },
-                )
-                    }
-                    if (!expanded && selected != null) {
-                        val refreshing = visibleWeekOffset in state.agendaLoadingOffsets
-                        FilledTonalIconButton(
-                            onClick = { onRefreshWeek(visibleWeekOffset) },
-                            enabled = !refreshing,
-                            modifier = Modifier.size(56.dp),
-                        ) {
-                            Crossfade(
-                                targetState = refreshing,
-                                animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                                label = "schedule-week-refresh",
-                            ) { loading ->
-                                if (loading) {
-                                    LoadingIndicator(modifier = Modifier.size(24.dp))
-                                } else {
-                                    AppIcon(
-                                        AppIcons.Refresh,
-                                        contentDescription = "Обновить эту неделю",
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+
             }
         }
 
         AnimatedVisibility(
             visible = showWeekInfo && selected != null && !expanded && active,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp),
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(220)),
         ) {

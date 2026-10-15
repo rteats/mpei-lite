@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -65,6 +67,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.MailNotificationTarget
+import com.rteats.mpeineo.data.MailSummary
+import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.MpeiNeoApplication
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -176,6 +180,12 @@ fun MpeiNeoApp(
     var widthPx by remember { mutableFloatStateOf(1f) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     var searchExpanded by remember { mutableStateOf(false) }
+    var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
+    var globalQuery by rememberSaveable { mutableStateOf("") }
+    val searchHistory = remember(application) { GlobalSearchHistory(application) }
+    var recentQueries by remember { mutableStateOf(searchHistory.load()) }
+    var barsSearchRequest by remember { mutableIntStateOf(0) }
+    var barsRequestedDiscipline by remember { mutableStateOf<String?>(null) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
@@ -270,6 +280,51 @@ fun MpeiNeoApp(
         mailViewModel.refresh()
     }
 
+    fun updateGlobalQuery(value: String) {
+        globalQuery = value
+        viewModel.updateSearchQuery(value)
+    }
+
+    fun rememberGlobalQuery() {
+        if (globalQuery.isNotBlank()) recentQueries = searchHistory.record(globalQuery)
+    }
+
+    fun closeGlobalSearch() {
+        globalSearchOpen = false
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        globalQuery = ""
+        viewModel.updateSearchQuery("")
+    }
+
+    fun openGlobalSearch() {
+        globalSearchOpen = true
+        globalQuery = ""
+        viewModel.updateSearchQuery("")
+    }
+
+    fun openScheduleResult(target: ScheduleTarget) {
+        rememberGlobalQuery()
+        closeGlobalSearch()
+        viewModel.selectTarget(target)
+        openService(AppTab.SCHEDULE)
+    }
+
+    fun openMailResult(summary: MailSummary) {
+        rememberGlobalQuery()
+        closeGlobalSearch()
+        openService(AppTab.MAIL)
+        mailViewModel.open(summary)
+    }
+
+    fun openBarsResult(discipline: String) {
+        rememberGlobalQuery()
+        closeGlobalSearch()
+        barsSearchRequest++
+        barsRequestedDiscipline = discipline
+        openService(AppTab.BARS)
+    }
+
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
         openService(AppTab.MAIL)
@@ -337,6 +392,9 @@ fun MpeiNeoApp(
                             autoRefreshEnabled = barsAutoRefreshEnabled,
                             active = active,
                             onDetailOpenChange = { if (active) barsDetailOpen = it },
+                            openDisciplineName = barsRequestedDiscipline,
+                            openDisciplineRequest = barsSearchRequest,
+                            onOpenDisciplineConsumed = { barsRequestedDiscipline = null },
                             onBrowserExit = {
                                 barsBrowserJustClosed = true
                                 dismissIme("bars-browser-back")
@@ -435,6 +493,9 @@ fun MpeiNeoApp(
                                 openService(target)
                             }
                         },
+                        onSearch = {
+                            if (currentService == null && !isTransitioning) openGlobalSearch()
+                        },
                     )
                 } else serviceContent(beneathService, false)
             }
@@ -499,6 +560,35 @@ fun MpeiNeoApp(
                 ) {
                     serviceContent(currentService, true)
                 }
+            }
+            AnimatedVisibility(
+                visible = globalSearchOpen,
+                modifier = Modifier.align(Alignment.TopCenter).fillMaxSize(),
+                enter = expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                ) + fadeIn(tween(160)),
+                exit = shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(220, easing = FastOutSlowInEasing),
+                ) + fadeOut(tween(110)),
+            ) {
+                GlobalSearchScreen(
+                    query = globalQuery,
+                    onQueryChange = ::updateGlobalQuery,
+                    history = recentQueries,
+                    onHistorySelected = ::updateGlobalQuery,
+                    onRemoveHistory = { recentQueries = searchHistory.remove(it) },
+                    onClearHistory = { recentQueries = searchHistory.clear() },
+                    schedule = scheduleState,
+                    mail = mailState,
+                    bars = barsState,
+                    onSchedule = ::openScheduleResult,
+                    onMail = ::openMailResult,
+                    onDiscipline = ::openBarsResult,
+                    onClose = ::closeGlobalSearch,
+                    onSubmit = ::rememberGlobalQuery,
+                )
             }
         }
     }

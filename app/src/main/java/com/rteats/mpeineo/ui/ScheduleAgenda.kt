@@ -255,10 +255,9 @@ internal fun ScheduleAgenda(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationY = visualPull * 0.22f },
                     state = listState,
-                    // The floating search dock is drawn over the schedule.
-                    // Reserve enough scrollable space for the last lessons to
-                    // move fully above it, including larger font/display sizes.
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 124.dp),
+                    // The top search overlays the agenda. Keep the first day clear
+                    // and let the last day scroll to the bottom.
+                    contentPadding = PaddingValues(top = 106.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     for (dayIndex in 0..6) {

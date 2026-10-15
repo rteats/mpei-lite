@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
@@ -79,7 +80,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.DateFormat
 import java.util.Date
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailScreen(
     viewModel: MailViewModel,
@@ -211,7 +212,8 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                item(key = "inbox-search") {
+                                stickyHeader(key = "inbox-search") {
+                                    Surface(color = MaterialTheme.colorScheme.background) {
                                     OutlinedTextField(
                                         value = inboxQuery,
                                         onValueChange = { inboxQuery = it },
@@ -230,6 +232,7 @@ internal fun MailScreen(
                                         shape = MaterialTheme.shapes.extraLarge,
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                                     )
+                                    }
                                 }
                                 if (visibleMessages.isEmpty()) {
                                     item(key = "empty-inbox") {

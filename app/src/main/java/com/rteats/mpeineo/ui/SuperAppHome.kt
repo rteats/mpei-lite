@@ -1,5 +1,6 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ internal fun SuperAppHome(
     bars: BarsUiState,
     mail: MailUiState,
     onOpen: (AppTab) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val unread = mail.items.count { it.unread }
     val entries = listOf(
@@ -77,20 +79,28 @@ internal fun SuperAppHome(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "МЭИ",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        "Учебные сервисы",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Surface(
+                    modifier = Modifier.weight(1f).height(58.dp)
+                        .clickable(onClick = onSearch).testTag("superapp-global-search"),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AppIcon(AppIcons.Search, contentDescription = null)
+                        Text(
+                            "Поиск по МЭИ",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { onOpen(AppTab.SETTINGS) },
