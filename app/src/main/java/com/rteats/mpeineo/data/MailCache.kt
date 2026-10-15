@@ -62,7 +62,7 @@ internal class MailCache(private val context: Context) {
                 .distinctBy { it.uidValidity to it.uid }
                 .take(MAX_OWA_HEADERS)
                 .map { message ->
-                    if (message.recipients.isNotEmpty()) message
+                    if (!message.recipients.isNullOrEmpty()) message
                     else oldById[message.uidValidity to message.uid]
                         ?.recipients?.takeIf { it.isNotEmpty() }
                         ?.let { message.copy(recipients = it) } ?: message
