@@ -136,6 +136,7 @@ internal fun BarsScreen(
   var marksExtractionStarted by remember { mutableStateOf(false) }
   var summaryFetchAttempted by remember { mutableStateOf(false) }
   var summaryExtractionStarted by remember { mutableStateOf(false) }
+  var officialMainUrl by remember { mutableStateOf<String?>(null) }
   var needsFullViewport by remember { mutableStateOf(true) }
   var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
   var mainFrameFailed by remember { mutableStateOf(false) }
@@ -224,6 +225,53 @@ internal fun BarsScreen(
     }
   }
 
+  fun restoreOfficialMarks(reason: String) {
+    // A bare Main route can be rejected without BARS' selected student.
+    val target = officialMainUrl?.takeIf {
+      BarsAuthenticatedRoutePolicy.isStudentRoute(it, "Main")
+    } ?: BARS_LOGIN_URL
+    viewModel.logWebEvent(
+      "restore marks officialLink=" + (target != BARS_LOGIN_URL),
+    )
+    navigationController?.load(target, reason)
+  }
+
+  fun requestOfficialSummary(view: WebView, reason: String) {
+    val controller = navigationController ?: return
+    if (webView !== view || state.browserVisible ||
+      !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+    ) return
+    // Reserve the attempt before the asynchronous JavaScript callback.
+    summaryFetchAttempted = true
+    summaryExtractionStarted = false
+    view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
+      if (webView !== view || state.browserVisible ||
+        navigationController !== controller ||
+        !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+      ) return@evaluateJavascript
+
+      val routes = BarsAuthenticatedRoutePolicy.parseJsResult(result)
+      if (routes == null) {
+        viewModel.logWebEvent(
+          "Summary route unavailable: official student-scoped menu links missing",
+        )
+        needsFullViewport = false
+        viewModel.summaryCaptureFailed(
+          "БАРС не предоставил ссылку на Сводку для текущего студента. " +
+            "Откройте БАРС или повторите обновление.",
+        )
+        return@evaluateJavascript
+      }
+      officialMainUrl = routes.main
+      needsFullViewport = true
+      viewModel.summaryCaptureStarted()
+      viewModel.logWebEvent(
+        "Summary official navigation linkFound=true studentParam=true",
+      )
+      controller.load(routes.summary, reason)
+    }
+  }
+
   Box(
     modifier = modifier
       .fillMaxSize()
@@ -288,10 +336,7 @@ internal fun BarsScreen(
               BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
               !state.isLoading && navigationController != null
             ) {
-              summaryFetchAttempted = true
-              viewModel.summaryCaptureStarted()
-              needsFullViewport = true
-              navigationController?.load(BARS_SUMMARY_URL, "manual Summary refresh")
+              requestOfficialSummary(view, "manual Summary refresh")
             } else {
               // The live document is not Main yet. Revalidate marks first;
               // their extraction callback will chain into Summary.
@@ -424,7 +469,7 @@ internal fun BarsScreen(
                   "Не удалось загрузить Сводку: сервер БАРС не ответил.",
                 )
                 // A Summary failure should not erase successfully cached marks.
-                navigationController?.load(BARS_MARKS_URL, "restore marks after Summary timeout")
+                restoreOfficialMarks("restore marks after Summary timeout")
               } else if (!state.browserVisible) {
                 needsFullViewport = false
                 viewModel.extractionFailed(
@@ -481,6 +526,9 @@ internal fun BarsScreen(
 
           view.addJavascriptInterface(
             BarsJavascriptBridge(
+              onSummaryDiagnostic = { safeMessage ->
+                viewModel.logWebEvent("Summary DOM " + safeMessage.take(180))
+              },
               onPageState = { json ->
                 view.post {
                   if (webView !== view) return@post
@@ -590,6 +638,7 @@ internal fun BarsScreen(
                           "Для загрузки Сводки требуется повторный вход в БАРС.",
                         )
                       }
+                      officialMainUrl = null
                       viewModel.webAuth(page.url)
                     }
                     BarsPageKind.MARKS_LOADING -> {
@@ -657,22 +706,12 @@ internal fun BarsScreen(
                   if (source == "MAIN" && !summaryFetchAttempted &&
                     !state.browserVisible
                   ) {
-                    summaryFetchAttempted = true
-                    summaryExtractionStarted = false
-                    needsFullViewport = true
-                    viewModel.summaryCaptureStarted()
-                    viewModel.logWebEvent("automatic Summary capture starting")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_SUMMARY_URL,
-                      reason = "automatic Summary capture",
-                    )
+                    viewModel.logWebEvent("automatic Summary capture: resolving official link")
+                    requestOfficialSummary(view, "automatic Summary capture")
                   }
                   if (source == "SUMMARY" && summaryFetchAttempted) {
                     viewModel.logWebEvent("summary captured; restoring marks")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_MARKS_URL,
-                      reason = "restore marks after Summary",
-                    )
+                    restoreOfficialMarks("restore marks after Summary")
                   }
                 }
               },
@@ -789,22 +828,23 @@ internal fun BarsScreen(
               if (BarsDocumentPolicy.isCurrent(url, BARS_SUMMARY_URL) &&
                 summaryFetchAttempted
               ) {
+                view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
+                val deadlineNavigationId = controller.requestId
                 // Starting the extraction script is not proof of success.
                 // If its bridge never returns, restore the native screen too.
                 view.postDelayed({
                   if (webView === view &&
                     BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL) &&
-                    summaryFetchAttempted && !state.browserVisible
+                    summaryFetchAttempted && state.isSummaryLoading &&
+                    controller.requestId == deadlineNavigationId && !state.browserVisible
                   ) {
+                    view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
                     summaryExtractionStarted = false
                     viewModel.summaryCaptureFailed(
                       "Таблицы Сводки не загрузились. Можно повторить.",
                     )
                     viewModel.logWebEvent("Summary AJAX deadline; restoring marks")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_MARKS_URL,
-                      reason = "restore marks after Summary AJAX timeout",
-                    )
+                    restoreOfficialMarks("restore marks after Summary AJAX timeout")
                   }
                 }, 20_000L)
               }
@@ -854,10 +894,7 @@ internal fun BarsScreen(
                       )
                       view.post {
                         if (webView === view) {
-                          loadBarsWithWatchdog(
-                            targetUrl = BARS_MARKS_URL,
-                            reason = "restore marks after Summary HTTP failure",
-                          )
+                          restoreOfficialMarks("restore marks after Summary HTTP failure")
                         }
                       }
                     } else {
@@ -930,10 +967,7 @@ internal fun BarsScreen(
                   )
                   view.post {
                     if (webView === view) {
-                      loadBarsWithWatchdog(
-                        targetUrl = BARS_MARKS_URL,
-                        reason = "restore marks after Summary network failure",
-                      )
+                      restoreOfficialMarks("restore marks after Summary network failure")
                     }
                   }
                 } else {

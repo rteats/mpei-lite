@@ -3,6 +3,7 @@ package com.rteats.mpeineo
 import android.content.Intent
 import android.os.Bundle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
@@ -12,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rteats.mpeineo.ui.MainViewModel
 import com.rteats.mpeineo.ui.MpeiNeoApp
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
+import com.rteats.mpeineo.data.InterfacePreferences
 
 data class MailNotificationTarget(val uid: Long, val validity: Long, val requestId: Int)
 
@@ -44,13 +46,23 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         readMailTarget(intent)
         setContent {
-            MpeiNeoTheme {
+            val interfacePrefs = remember { InterfacePreferences(applicationContext) }
+            var theme by remember { mutableStateOf(interfacePrefs.theme) }
+            MpeiNeoTheme(theme = theme) {
                 val application = application as MpeiNeoApplication
                 val viewModel: MainViewModel = viewModel(factory = MainViewModel.factory(application.container))
                 MpeiNeoApp(
                     viewModel,
                     initialMailTab = intent.getBooleanExtra(EXTRA_OPEN_MAIL, false),
                     mailNotificationTarget = mailNotificationTarget,
+                    interfaceTheme = theme,
+                    onInterfaceThemeChange = { next ->
+                        if (theme != next) {
+                            interfacePrefs.setTheme(next)
+                            theme = next
+                            application.container.diagnostics.log("UI_PREF", "theme=" + next.name)
+                        }
+                    },
                 )
             }
         }

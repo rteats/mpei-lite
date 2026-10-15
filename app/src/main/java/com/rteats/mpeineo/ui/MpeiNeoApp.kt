@@ -21,6 +21,8 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -73,6 +75,10 @@ import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.MpeiNeoApplication
+import com.rteats.mpeineo.data.InterfacePreferences
+import com.rteats.mpeineo.data.InterfaceTheme
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -121,10 +127,40 @@ fun MpeiNeoApp(
     viewModel: MainViewModel,
     initialMailTab: Boolean = false,
     mailNotificationTarget: MailNotificationTarget? = null,
+    interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
+    onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
 ) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
     val hostView = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
+    val homePrefs = remember(application) { HomeLayoutPreferences(application) }
+    var homeTiles by remember(homePrefs) { mutableStateOf(homePrefs.read()) }
+    LaunchedEffect(homePrefs) {
+        diagnostics.log("HOME_LAYOUT", "restored=" + HomeTileLayout.encode(homeTiles))
+    }
+    val interfacePrefs = remember(application) { InterfacePreferences(application) }
+    var navigationHaptics by remember(interfacePrefs) {
+        mutableStateOf(interfacePrefs.navigationHaptics)
+    }
+    fun changeHomeLayout(next: List<HomeTile>) {
+        val normalized = HomeTileLayout.normalize(next)
+        val before = homeTiles
+        if (before == normalized) return
+        homePrefs.write(normalized)
+        homeTiles = normalized
+        val oldIndex = before.map { it.tab }
+        val newIndex = normalized.map { it.tab }
+        if (oldIndex != newIndex) {
+            diagnostics.log("HOME_LAYOUT", "reorder=" + newIndex.joinToString(",") { it.name })
+        } else {
+            normalized.firstOrNull { tile ->
+                before.firstOrNull { it.tab == tile.tab }?.size != tile.size
+            }?.let { tile ->
+                diagnostics.log("HOME_LAYOUT", "resize=" + tile.tab.name + " size=" + tile.size.name)
+            }
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputMethodManager = remember(hostView) {
@@ -248,6 +284,9 @@ fun MpeiNeoApp(
 
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
         transitionJob?.cancel()
+        if (navigationHaptics && !viaClassroom) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
         if (currentService == AppTab.MAIL && mailWebVisible) {
             dismissIme("mail-leave-service")
             mailWebVisible = false
@@ -272,6 +311,9 @@ fun MpeiNeoApp(
 
     fun goBackOneService() {
         if (isTransitioning || routeNames.isEmpty()) return
+        if (navigationHaptics) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
         logNavigation("superapp pop " + (currentService?.name ?: "HOME") +
             " depth=" + routeNames.size)
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
@@ -436,6 +478,19 @@ fun MpeiNeoApp(
                                 barsAutoRefreshEnabled = enabled
                             },
                             active = active,
+                            interfaceTheme = interfaceTheme,
+                            onInterfaceThemeChange = onInterfaceThemeChange,
+                            navigationHaptics = navigationHaptics,
+                            onNavigationHapticsChange = { enabled ->
+                                interfacePrefs.setNavigationHaptics(enabled)
+                                navigationHaptics = enabled
+                                diagnostics.log("UI_PREF", "navigation_haptics=" + enabled)
+                            },
+                            onResetHomeLayout = {
+                                homePrefs.reset()
+                                homeTiles = HomeTileLayout.defaults
+                                diagnostics.log("HOME_LAYOUT", "reset=defaults")
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -444,7 +499,9 @@ fun MpeiNeoApp(
                             barsState.authStage == BarsAuthStage.AUTHENTICATED &&
                                 !barsState.browserVisible
                         }
-                        AppTab.MAIL -> AppTab.MAIL.takeIf { !mailWebVisible }
+                        AppTab.MAIL -> AppTab.MAIL.takeIf {
+                            !mailWebVisible && !mailState.composing
+                        }
                         else -> null
                     } else null
                     AnimatedVisibility(
@@ -454,19 +511,29 @@ fun MpeiNeoApp(
                         enter = fadeIn(tween(150)),
                         exit = fadeOut(tween(110)),
                     ) {
-                        PortalFloatingButton(
-                            label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
-                            onClick = {
-                                when (portalAction) {
-                                    AppTab.BARS -> {
-                                        barsBrowserJustClosed = false
-                                        barsViewModel.showBrowser()
-                                    }
-                                    AppTab.MAIL -> mailWebVisible = true
-                                    else -> Unit
+                        if (portalAction == AppTab.MAIL) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PortalFloatingButton(
+                                    label = "ОСЭП",
+                                    onClick = { mailWebVisible = true },
+                                )
+                                if (mailState.configured) {
+                                    PortalFloatingButton(
+                                        label = "Написать",
+                                        icon = AppIcons.Edit,
+                                        onClick = mailViewModel::startCompose,
+                                    )
                                 }
-                            },
-                        )
+                            }
+                        } else {
+                            PortalFloatingButton(
+                                label = "БАРС",
+                                onClick = {
+                                    barsBrowserJustClosed = false
+                                    barsViewModel.showBrowser()
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -537,6 +604,11 @@ fun MpeiNeoApp(
                         schedule = scheduleState,
                         bars = barsState,
                         mail = mailState,
+                        tiles = homeTiles,
+                        onChangeLayout = ::changeHomeLayout,
+                        onEditModeChange = { editing ->
+                            diagnostics.log("HOME_LAYOUT", "edit_mode=" + editing)
+                        },
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
@@ -689,6 +761,7 @@ private fun PortalFloatingButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: Int = AppIcons.OpenPortal,
 ) {
     val height = ButtonDefaults.MediumContainerHeight
     Button(
@@ -699,7 +772,7 @@ private fun PortalFloatingButton(
         shapes = ButtonDefaults.shapes(),
     ) {
         AppIcon(
-            icon = AppIcons.OpenPortal,
+            icon = icon,
             contentDescription = null,
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)),
         )

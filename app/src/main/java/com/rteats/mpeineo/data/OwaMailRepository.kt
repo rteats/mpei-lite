@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import java.io.ByteArrayOutputStream
 import android.os.SystemClock
 import android.os.Build
 import android.os.Environment
@@ -23,15 +24,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Read-only OWA service.svc client for the MPEI Exchange 2013-compatible server.
+ * OWA service.svc client for the MPEI Exchange 2013-compatible server.
  *
  * WebView owns interactive authentication. This client borrows only its current
  * cookies and anti-CSRF canary; nothing is stored or printed. Request shapes
  * are based on captured OWA FindConversation / GetConversationItems traffic.
  *
  * Do not use IMAP UIDs to address Exchange conversations or message bodies.
- * Sending, read flags, attachments and background polling are deliberately
- * outside this first implementation.
+ * Sending follows the separately captured CreateItem / CreateAttachment /
+ * UpdateItem exchange; credentials, cookies and message data are never logged.
  */
 class OwaMailRepository(
     private val context: Context,
@@ -42,6 +43,7 @@ class OwaMailRepository(
         IllegalStateException("Не удалось получить почту через ОСЭП (" + category + ").")
 
     private val mutex = Mutex()
+    private val sendMutex = Mutex()
     private val cache = MailCache(context)
     private val accountPrefs = context.getSharedPreferences("owa_mail_account_v1", Context.MODE_PRIVATE)
     @Volatile private var activeAccount: String? = null
@@ -382,11 +384,108 @@ class OwaMailRepository(
         return detail
     }
 
+    /**
+     * Send one new message using the live WebView-authenticated OWA session.
+     * A network failure during a send may have an unknown outcome: never retry
+     * requests automatically, or an email could be delivered twice.
+     */
+    internal suspend fun sendMail(
+        draft: OutgoingMail,
+        files: List<OutgoingFile>,
+        onStage: (String) -> Unit = {},
+    ) = sendMutex.withLock {
+        if (!OwaComposeProtocol.validRecipients(draft))
+            throw ServiceFailure("invalid_recipients")
+        if (draft.subject.length > 998 || draft.body.length > 1_000_000)
+            throw ServiceFailure("message_too_long")
+        if (files.size > 8 || files.any { it.size > MAX_OUTGOING_FILE } ||
+            files.sumOf { it.size.coerceAtLeast(0L) } > MAX_OUTGOING_TOTAL)
+            throw ServiceFailure("attachment_limit")
+
+        val started = SystemClock.elapsedRealtime()
+        try {
+            onStage(if (files.isEmpty()) "Отправка письма…" else "Создание черновика…")
+            val created = service(
+                "CreateItem",
+                if (files.isEmpty()) "CreateMessageForComposeSend" else "CreateMessageForCompose",
+                OwaComposeProtocol.create(draft, files.isNotEmpty()),
+                actionId = if (files.isEmpty()) "-37" else "-38",
+            )
+            val createResponse = OwaComposeProtocol.confirmedResponse(created)
+            if (files.isNotEmpty()) {
+                val item = createResponse.optJSONArray("Items")?.optJSONObject(0)
+                    ?.optJSONObject("ItemId") ?: throw ServiceFailure("missing_draft_id")
+                val id = item.optString("Id").takeIf { it.isNotBlank() }
+                    ?: throw ServiceFailure("missing_draft_id")
+                var changeKey = item.optString("ChangeKey").takeIf { it.isNotBlank() }
+                    ?: throw ServiceFailure("missing_draft_change_key")
+
+                var uploadedBytes = 0L
+                files.forEachIndexed { index, file ->
+                    onStage("Вложение ${index + 1} из ${files.size}…")
+                    val bytes = withContext(Dispatchers.IO) { readOutgoingFile(file) }
+                    uploadedBytes += bytes.size
+                    if (uploadedBytes > MAX_OUTGOING_TOTAL)
+                        throw ServiceFailure("attachment_limit")
+                    val response = service(
+                        "CreateAttachment", "CreateAttachmentAction",
+                        OwaComposeProtocol.attach(id, changeKey, file, bytes),
+                        actionId = "-39",
+                    )
+                    val attached = OwaComposeProtocol.confirmedResponse(response)
+                    changeKey = attached.optJSONArray("Attachments")?.optJSONObject(0)
+                        ?.optJSONObject("AttachmentId")?.optString("RootItemChangeKey")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: throw ServiceFailure("missing_attachment_change_key")
+                }
+
+                onStage("Отправка письма…")
+                val sent = service(
+                    "UpdateItem", "UpdateMessageForComposeSend",
+                    OwaComposeProtocol.sendDraft(id, changeKey, draft),
+                    actionId = "-40",
+                )
+                OwaComposeProtocol.confirmedResponse(sent)
+            }
+            diagnostics.log(
+                "OWA_MAIL",
+                "send_success attachments=${files.size} durationMs=" +
+                    (SystemClock.elapsedRealtime() - started),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            diagnostics.log("OWA_MAIL", "send_failure type=${failure.javaClass.simpleName} " +
+                "category=" + (failure as? ServiceFailure)?.category.orEmpty())
+            throw failure
+        }
+    }
+
+    private fun readOutgoingFile(file: OutgoingFile): ByteArray {
+        val stream = context.contentResolver.openInputStream(file.uri)
+            ?: throw ServiceFailure("attachment_unavailable")
+        return stream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(32 * 1024)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_OUTGOING_FILE)
+                    throw ServiceFailure("attachment_too_large")
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+    }
+
     private suspend fun service(
         action: String,
         actionName: String,
         body: JSONObject,
         refreshId: Long = 0L,
+        actionId: String = if (action == "FindConversation") "-5" else "-8",
     ): JSONObject = mutex.withLock {
         val session = withContext(Dispatchers.Main) {
             val cookies = CookieManager.getInstance().getCookie(OWA_URL).orEmpty()
@@ -409,7 +508,7 @@ class OwaMailRepository(
                         .put("Id", "Russian Standard Time"))))
             .put("Body", body)
         val reply = withContext(Dispatchers.IO) {
-            request(action, actionName, session, payload.toString())
+            request(action, actionName, actionId, session, payload.toString())
         }
         if (reply.setCookies.isNotEmpty()) {
             withContext(Dispatchers.Main) {
@@ -437,10 +536,10 @@ class OwaMailRepository(
     private fun request(
         action: String,
         actionName: String,
+        actionId: String,
         session: Session,
         payload: String,
     ): Reply {
-        val actionId = if (action == "FindConversation") "-5" else "-8"
         val path = OWA_URL + "service.svc?action=" + action +
             "&ID=" + actionId + "&AC=1"
         val connection = URL(path).openConnection() as HttpURLConnection
@@ -448,8 +547,12 @@ class OwaMailRepository(
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 8000
-            connection.readTimeout = 15000
+            connection.readTimeout =
+                if (action in setOf("CreateItem", "CreateAttachment", "UpdateItem"))
+                    90000 else 15000
             connection.doOutput = true
+            val payloadBytes = payload.toByteArray(Charsets.UTF_8)
+            connection.setFixedLengthStreamingMode(payloadBytes.size)
             connection.setRequestProperty("Cookie", session.cookieHeader)
             connection.setRequestProperty("X-OWA-CANARY", session.canary)
             connection.setRequestProperty("Action", action)
@@ -462,7 +565,7 @@ class OwaMailRepository(
             connection.setRequestProperty("Origin", "https://mail.mpei.ru")
             connection.setRequestProperty("Referer", OWA_URL)
             connection.setRequestProperty("User-Agent", session.userAgent)
-            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            connection.outputStream.use { it.write(payloadBytes) }
             val status = connection.responseCode
             val renewed = connection.headerFields
                 .filterKeys { it?.equals("Set-Cookie", ignoreCase = true) == true }
@@ -497,5 +600,7 @@ class OwaMailRepository(
     companion object {
         private const val OWA_URL = "https://mail.mpei.ru/owa/"
         private const val OWA_UID_VALIDITY = 0x4F5741L
+        private const val MAX_OUTGOING_FILE = 10L * 1024 * 1024
+        private const val MAX_OUTGOING_TOTAL = 18L * 1024 * 1024
     }
 }

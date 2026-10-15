@@ -76,6 +76,7 @@ import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.R
 import com.rteats.mpeineo.data.MailNotificationPreferences
 import com.rteats.mpeineo.data.MailNotificationScheduler
+import com.rteats.mpeineo.data.InterfaceTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -234,6 +235,11 @@ internal fun SettingsScreen(
     mailViewModel: MailViewModel,
     barsAutoRefreshEnabled: Boolean,
     onBarsAutoRefreshEnabledChange: (Boolean) -> Unit,
+    interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
+    onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
+    navigationHaptics: Boolean = false,
+    onNavigationHapticsChange: (Boolean) -> Unit = {},
+    onResetHomeLayout: () -> Unit = {},
     active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -253,6 +259,7 @@ internal fun SettingsScreen(
     val sectionPrefs = remember(context) {
         context.getSharedPreferences("settings_sections", Context.MODE_PRIVATE)
     }
+    var interfaceExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("interface", false)) }
     var barsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("bars", false)) }
     var mailExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("mail", true)) }
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
@@ -261,6 +268,7 @@ internal fun SettingsScreen(
     fun changeSection(key: String, next: Boolean) {
         sectionPrefs.edit().putBoolean(key, next).apply()
         when (key) {
+            "interface" -> interfaceExpanded = next
             "bars" -> barsExpanded = next
             "mail" -> mailExpanded = next
             "updates" -> updatesExpanded = next
@@ -332,6 +340,74 @@ internal fun SettingsScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        item {
+            SettingsExpansion(
+                "Интерфейс",
+                "Главная, оформление и отклик",
+                AppIcons.Appearance,
+                interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
+            ) {
+                Text(
+                    "Порядок и размер кнопок меняются значком редактирования на главной.",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Оформление",
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(
+                        ButtonGroupDefaults.ConnectedSpaceBetween,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    val themes = listOf(
+                        InterfaceTheme.SYSTEM to "Система",
+                        InterfaceTheme.LIGHT to "Светлая",
+                        InterfaceTheme.DARK to "Тёмная",
+                    )
+                    themes.forEachIndexed { index, (mode, label) ->
+                        ToggleButton(
+                            checked = interfaceTheme == mode,
+                            onCheckedChange = {
+                                if (interfaceTheme != mode) onInterfaceThemeChange(mode)
+                            },
+                            modifier = Modifier.semantics { role = Role.RadioButton },
+                            shapes = when (index) {
+                                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                themes.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                            },
+                            colors = ToggleButtonDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                        ) {
+                            Text(label, maxLines = 1, softWrap = false)
+                        }
+                    }
+                }
+                SettingsSwitchRow(
+                    title = "Тактильный отклик",
+                    description = "Лёгкий отклик при открытии и закрытии разделов",
+                    iconRes = AppIcons.Haptics,
+                    checked = navigationHaptics,
+                    enabled = true,
+                    onChange = onNavigationHapticsChange,
+                )
+                SettingsAction(
+                    title = "Сбросить кнопки главной",
+                    detail = "Исходный порядок и обычный размер всех четырёх кнопок",
+                    iconRes = AppIcons.Refresh,
+                    onClick = onResetHomeLayout,
+                )
+            }
+        }
         item {
             SettingsExpansion(
                 "БАРС",
