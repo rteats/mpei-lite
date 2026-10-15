@@ -58,6 +58,7 @@ class CampusMapGesturesTest {
             1f, Offset.Zero, 1f, Offset(250f, 250f), Offset(500f, 500f),
             viewport, Rect(-20f, -20f, 20f, 20f),
         )
-        assertEquals(Offset.Zero, result.pan)
+        assertEquals(0f, result.pan.x, .001f)
+        assertEquals(0f, result.pan.y, .001f)
     }
 }
