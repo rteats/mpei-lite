@@ -147,6 +147,7 @@ internal fun SuperAppHome(
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             IconButton(
+                                modifier = Modifier.testTag("home-move-up-" + tile.tab.name.lowercase()),
                                 enabled = entries.indexOf(tile) > 0,
                                 onClick = {
                                     onChangeLayout(HomeTileLayout.move(entries, tile.tab, -1))
@@ -155,6 +156,7 @@ internal fun SuperAppHome(
                                 AppIcon(AppIcons.ExpandLess, "Выше")
                             }
                             IconButton(
+                                modifier = Modifier.testTag("home-move-down-" + tile.tab.name.lowercase()),
                                 enabled = entries.indexOf(tile) < entries.lastIndex,
                                 onClick = {
                                     onChangeLayout(HomeTileLayout.move(entries, tile.tab, 1))
@@ -173,6 +175,9 @@ internal fun SuperAppHome(
                                 HomeTileSize.EXPANDED to "Широкая",
                             ).forEach { (size, title) ->
                                 FilterChip(
+                                    modifier = Modifier.testTag(
+                                        "home-size-" + tile.tab.name.lowercase() + "-" + size.name.lowercase(),
+                                    ),
                                     selected = tile.size == size,
                                     onClick = {
                                         onChangeLayout(HomeTileLayout.resize(entries, tile.tab, size))
