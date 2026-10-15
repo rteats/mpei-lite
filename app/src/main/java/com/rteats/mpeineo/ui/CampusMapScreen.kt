@@ -550,29 +550,29 @@ internal fun CampusMapScreen(
                             zoom = next.zoom
                             pan = next.pan
                         },
-                        onTap = { tap ->
-                        val scale = mapScale().takeIf { it > 0 } ?: return@detectTapGestures
-                        val point = Offset(
-                            (tap.x - viewport.width / 2f - pan.x) / scale,
-                            (tap.y - viewport.height / 2f - pan.y) / scale,
-                        )
-                        val polygonHit = places.asReversed().firstOrNull {
-                            insideFootprint(point, it.footprint.p)
-                        } ?: if (buildingVSouth != null &&
-                            insideFootprint(point, buildingVSouth.p)) {
-                            places.firstOrNull { it.symbol == "В" }
-                        } else null
-                        val nearest = places.minByOrNull {
-                            hypot((point.x - it.center.x).toDouble(),
-                                (point.y - it.center.y).toDouble())
-                        }
-                        val threshold = 23.dp.toPx() / scale
-                        val nearby = nearest?.takeIf {
-                            hypot((point.x - it.center.x).toDouble(),
-                                (point.y - it.center.y).toDouble()) <= threshold
-                        }
-                        selected = polygonHit ?: nearby
-                        selectedRoom = null
+                        onTap = mapTap@{ tap ->
+                            val scale = mapScale().takeIf { it > 0 } ?: return@mapTap
+                            val point = Offset(
+                                (tap.x - viewport.width / 2f - pan.x) / scale,
+                                (tap.y - viewport.height / 2f - pan.y) / scale,
+                            )
+                            val polygonHit = places.asReversed().firstOrNull {
+                                insideFootprint(point, it.footprint.p)
+                            } ?: if (buildingVSouth != null &&
+                                insideFootprint(point, buildingVSouth.p)) {
+                                places.firstOrNull { it.symbol == "В" }
+                            } else null
+                            val nearest = places.minByOrNull {
+                                hypot((point.x - it.center.x).toDouble(),
+                                    (point.y - it.center.y).toDouble())
+                            }
+                            val threshold = 23.dp.toPx() / scale
+                            val nearby = nearest?.takeIf {
+                                hypot((point.x - it.center.x).toDouble(),
+                                    (point.y - it.center.y).toDouble()) <= threshold
+                            }
+                            selected = polygonHit ?: nearby
+                            selectedRoom = null
                         },
                     )
                 }
