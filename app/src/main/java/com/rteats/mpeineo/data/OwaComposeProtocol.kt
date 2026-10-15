@@ -1,7 +1,8 @@
 package com.rteats.mpeineo.data
 
 import android.net.Uri
-import android.util.Base64
+import java.util.Base64
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -82,7 +83,7 @@ internal object OwaComposeProtocol {
             .put("ParentItemId", itemId(id, changeKey))
             .put("Attachments", JSONArray().put(JSONObject()
                 .put("__type", "FileAttachment:#Exchange")
-                .put("Content", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                .put("Content", Base64.getEncoder().encodeToString(bytes))
                 .put("IsContactPhoto", false)
                 .put("ContentType", file.mimeType.ifBlank { "application/octet-stream" })
                 .put("IsInline", false)
@@ -140,6 +141,7 @@ internal object OwaComposeProtocol {
             .put("OutboundCharset", "AutoDetect")
             .put("PromoteInlineAttachments", false)
             .put("SendOnNotFoundError", false)
+            .put("InternetMessageId", "<" + UUID.randomUUID() + "@mpei.ru>")
     }
 
     fun confirmedResponse(response: JSONObject): JSONObject {
