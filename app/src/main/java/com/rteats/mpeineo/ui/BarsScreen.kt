@@ -136,6 +136,7 @@ internal fun BarsScreen(
   var marksExtractionStarted by remember { mutableStateOf(false) }
   var summaryFetchAttempted by remember { mutableStateOf(false) }
   var summaryExtractionStarted by remember { mutableStateOf(false) }
+  var officialMainUrl by remember { mutableStateOf<String?>(null) }
   var needsFullViewport by remember { mutableStateOf(true) }
   var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
   var mainFrameFailed by remember { mutableStateOf(false) }
@@ -221,6 +222,53 @@ internal fun BarsScreen(
       view?.clearFocus()
       needsFullViewport = false
       viewModel.hideBrowser()
+    }
+  }
+
+  fun restoreOfficialMarks(reason: String) {
+    // A bare Main route can be rejected without BARS' selected student.
+    val target = officialMainUrl?.takeIf {
+      BarsAuthenticatedRoutePolicy.isStudentRoute(it, "Main")
+    } ?: BARS_LOGIN_URL
+    viewModel.logWebEvent(
+      "restore marks officialLink=" + (target != BARS_LOGIN_URL),
+    )
+    navigationController?.load(target, reason)
+  }
+
+  fun requestOfficialSummary(view: WebView, reason: String) {
+    val controller = navigationController ?: return
+    if (webView !== view || state.browserVisible ||
+      !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+    ) return
+    // Reserve the attempt before the asynchronous JavaScript callback.
+    summaryFetchAttempted = true
+    summaryExtractionStarted = false
+    view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
+      if (webView !== view || state.browserVisible ||
+        navigationController !== controller ||
+        !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+      ) return@evaluateJavascript
+
+      val routes = BarsAuthenticatedRoutePolicy.parseJsResult(result)
+      if (routes == null) {
+        viewModel.logWebEvent(
+          "Summary route unavailable: official student-scoped menu links missing",
+        )
+        needsFullViewport = false
+        viewModel.summaryCaptureFailed(
+          "БАРС не предоставил ссылку на Сводку для текущего студента. " +
+            "Откройте БАРС или повторите обновление.",
+        )
+        return@evaluateJavascript
+      }
+      officialMainUrl = routes.main
+      needsFullViewport = true
+      viewModel.summaryCaptureStarted()
+      viewModel.logWebEvent(
+        "Summary official navigation linkFound=true studentParam=true",
+      )
+      controller.load(routes.summary, reason)
     }
   }
 
