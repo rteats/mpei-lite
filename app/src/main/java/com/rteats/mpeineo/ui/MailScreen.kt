@@ -105,7 +105,7 @@ internal fun MailScreen(
         state.sentMoreError else state.moreError
     val visibleMessages = if (inboxQuery.isBlank()) folderItems else folderItems.filter {
         it.sender.contains(inboxQuery.trim(), ignoreCase = true) ||
-            it.recipients.any { recipient ->
+            it.recipients.orEmpty().any { recipient ->
                 recipient.contains(inboxQuery.trim(), ignoreCase = true)
             } ||
             it.subject.contains(inboxQuery.trim(), ignoreCase = true)
@@ -396,7 +396,7 @@ private fun MailInboxRow(
     modifier: Modifier = Modifier,
 ) {
     val correspondent = if (isSent) {
-        summary.recipients.joinToString(", ").ifBlank { "Получатель не определён" }
+        summary.recipients.orEmpty().joinToString(", ").ifBlank { "Получатель не определён" }
     } else summary.sender.ifBlank { "Неизвестный отправитель" }
     Surface(
         onClick = onClick,
