@@ -134,6 +134,9 @@ fun MpeiNeoApp(
     val hapticFeedback = LocalHapticFeedback.current
     val homePrefs = remember(application) { HomeLayoutPreferences(application) }
     var homeTiles by remember(homePrefs) { mutableStateOf(homePrefs.read()) }
+    LaunchedEffect(homePrefs) {
+        diagnostics.log("HOME_LAYOUT", "restored=" + HomeTileLayout.encode(homeTiles))
+    }
     val interfacePrefs = remember(application) { InterfacePreferences(application) }
     var navigationHaptics by remember(interfacePrefs) {
         mutableStateOf(interfacePrefs.navigationHaptics)
