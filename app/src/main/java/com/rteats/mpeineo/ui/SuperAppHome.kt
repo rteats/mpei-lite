@@ -35,14 +35,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
+import com.rteats.mpeineo.data.MailSummary
 
 /** Only navigation and local preferences. Never loads network data on Home. */
 @Composable
 internal fun SuperAppHome(
+    schedule: MainUiState,
+    bars: BarsUiState,
+    mail: MailUiState,
     tiles: List<HomeTile>,
     onChangeLayout: (List<HomeTile>) -> Unit,
     onOpen: (AppTab) -> Unit,
     onSearch: () -> Unit,
+    onOpenBarsDiscipline: (String) -> Unit,
+    onOpenMailMessage: (MailSummary) -> Unit,
     onEditModeChange: (Boolean) -> Unit = {},
 ) {
     var editing by rememberSaveable { mutableStateOf(false) }
@@ -235,6 +241,25 @@ internal fun SuperAppHome(
                         }
                     }
                 }
+            }
+        }
+        if (!editing) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                HomeNextLessonCard(schedule, onClick = { onOpen(AppTab.SCHEDULE) })
+            }
+            item {
+                HomeBarsPreview(
+                    state = bars,
+                    onOpen = { onOpen(AppTab.BARS) },
+                    onOpenDiscipline = onOpenBarsDiscipline,
+                )
+            }
+            item {
+                HomeMailPreview(
+                    state = mail,
+                    onOpen = { onOpen(AppTab.MAIL) },
+                    onOpenMessage = onOpenMailMessage,
+                )
             }
         }
     }
