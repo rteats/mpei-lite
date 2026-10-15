@@ -1,10 +1,10 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,34 +16,36 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
-/**
- * Root service launcher. Only cached state is read here; opening the home
- * screen must not fan out into several network requests.
- */
+/** Only navigation and local preferences. Never loads network data on Home. */
 @Composable
 internal fun SuperAppHome(
+    tiles: List<HomeTile>,
+    onChangeLayout: (List<HomeTile>) -> Unit,
     onOpen: (AppTab) -> Unit,
     onSearch: () -> Unit,
+    onEditModeChange: (Boolean) -> Unit = {},
 ) {
-    val entries = listOf(
-        HomeService(AppTab.SCHEDULE, "Пары", AppIcons.Schedule),
-        HomeService(AppTab.BARS, "БАРС", AppIcons.Bars),
-        HomeService(AppTab.MAIL, "Почта", AppIcons.Mail),
-        HomeService(AppTab.MAPS, "Корпуса", AppIcons.Location),
-    )
+    var editing by rememberSaveable { mutableStateOf(false) }
+    val entries = HomeTileLayout.normalize(tiles)
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -56,7 +58,7 @@ internal fun SuperAppHome(
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Surface(
                     modifier = Modifier.weight(1f).height(58.dp)
@@ -78,6 +80,18 @@ internal fun SuperAppHome(
                     }
                 }
                 IconButton(
+                    onClick = {
+                        editing = !editing
+                        onEditModeChange(editing)
+                    },
+                    modifier = Modifier.testTag("superapp-edit"),
+                ) {
+                    AppIcon(
+                        if (editing) AppIcons.Confirm else AppIcons.Edit,
+                        contentDescription = if (editing) "Готово" else "Настроить кнопки",
+                    )
+                }
+                IconButton(
                     onClick = { onOpen(AppTab.SETTINGS) },
                     modifier = Modifier.testTag("superapp-settings"),
                 ) {
@@ -85,47 +99,151 @@ internal fun SuperAppHome(
                 }
             }
         }
-        items(entries, key = { it.tab.name }) { entry ->
-            Surface(
-                onClick = { onOpen(entry.tab) },
-                modifier = Modifier.fillMaxWidth().height(148.dp)
-                    .testTag("service-" + entry.tab.name.lowercase()),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(18.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
+
+        items(
+            items = entries,
+            key = { it.tab.name },
+            span = { tile ->
+                GridItemSpan(if (editing || tile.size == HomeTileSize.EXPANDED) maxLineSpan else 1)
+            },
+        ) { tile ->
+            val label = when (tile.tab) {
+                AppTab.SCHEDULE -> "Пары"
+                AppTab.BARS -> "БАРС"
+                AppTab.MAIL -> "Почта"
+                AppTab.MAPS -> "Корпуса"
+                AppTab.SETTINGS -> "Настройки"
+            }
+            val icon = when (tile.tab) {
+                AppTab.SCHEDULE -> AppIcons.Schedule
+                AppTab.BARS -> AppIcons.Bars
+                AppTab.MAIL -> AppIcons.Mail
+                AppTab.MAPS -> AppIcons.Location
+                AppTab.SETTINGS -> AppIcons.Settings
+            }
+
+            if (editing) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth()
+                        .testTag("home-edit-" + tile.tab.name.lowercase()),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
-                    Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        contentColor = MaterialTheme.colorScheme.primary,
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            AppIcon(
-                                entry.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(26.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            HomeTileIcon(icon, 40)
+                            Text(
+                                label,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            IconButton(
+                                enabled = entries.indexOf(tile) > 0,
+                                onClick = {
+                                    onChangeLayout(HomeTileLayout.move(entries, tile.tab, -1))
+                                },
+                            ) {
+                                AppIcon(AppIcons.ExpandLess, "Выше")
+                            }
+                            IconButton(
+                                enabled = entries.indexOf(tile) < entries.lastIndex,
+                                onClick = {
+                                    onChangeLayout(HomeTileLayout.move(entries, tile.tab, 1))
+                                },
+                            ) {
+                                AppIcon(AppIcons.ExpandMore, "Ниже")
+                            }
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp),
+                        ) {
+                            listOf(
+                                HomeTileSize.COMPACT to "Компактная",
+                                HomeTileSize.REGULAR to "Обычная",
+                                HomeTileSize.EXPANDED to "Широкая",
+                            ).forEach { (size, title) ->
+                                FilterChip(
+                                    selected = tile.size == size,
+                                    onClick = {
+                                        onChangeLayout(HomeTileLayout.resize(entries, tile.tab, size))
+                                    },
+                                    label = { Text(title) },
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    onClick = { onOpen(tile.tab) },
+                    modifier = Modifier.fillMaxWidth()
+                        .height(when (tile.size) {
+                            HomeTileSize.COMPACT -> 84.dp
+                            HomeTileSize.REGULAR -> 148.dp
+                            HomeTileSize.EXPANDED -> 168.dp
+                        })
+                        .testTag("service-" + tile.tab.name.lowercase()),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    if (tile.size == HomeTileSize.COMPACT) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            HomeTileIcon(icon, 40)
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(18.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            HomeTileIcon(icon, if (tile.size == HomeTileSize.EXPANDED) 56 else 48)
+                            Text(
+                                label,
+                                style = if (tile.size == HomeTileSize.EXPANDED)
+                                    MaterialTheme.typography.headlineSmall
+                                else MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
                             )
                         }
                     }
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                    )
                 }
             }
         }
-
     }
 }
 
-private data class HomeService(
-    val tab: AppTab,
-    val title: String,
-    val icon: Int,
-)
+@Composable
+private fun HomeTileIcon(icon: Int, sizeDp: Int) {
+    Surface(
+        modifier = Modifier.size(sizeDp.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.primary,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            AppIcon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(if (sizeDp < 48) 22.dp else 26.dp),
+            )
+        }
+    }
+}
