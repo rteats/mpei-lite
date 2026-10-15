@@ -95,8 +95,12 @@ connections fail closed and require another explicit verification.
 ## Campus map
 
 The Campus service in `CampusMapScreen.kt` renders an offline OpenStreetMap
-campus footprint via Compose Canvas with Monet colors. Buildings remain
-tappable and zoom/recenter controls are available. Map drag/pinch transformations
-are temporarily disabled to prioritize the full-width swipe-back gesture.
+campus footprint via Compose Canvas with Monet colors. Drag with one finger
+to pan, pinch to zoom around the finger centroid, and double-tap to zoom toward
+a point. Buildings remain tappable; zoom/recenter controls are still available.
+The map reserves a 96dp-wide left-side strip (excluding the OS's first 24dp)
+between the top and bottom controls for interactive right-swipe navigation.
+Everywhere else, horizontal drags move the map rather than navigate. The
+Android system Back gesture and hardware Back continue to navigate normally.
 OSM attribution remains visible.
 See `docs/OFFLINE_CAMPUS_MAP.md`.
