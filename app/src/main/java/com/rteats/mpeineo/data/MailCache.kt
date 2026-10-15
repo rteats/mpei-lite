@@ -49,6 +49,20 @@ internal class MailCache(private val context: Context) {
         }
     }
 
+    /** Sent mail has its own encrypted pages so inbox notifications and cache never mix. */
+    @Synchronized fun sent(username: String): MailInboxSnapshot? =
+        read(file(username, "sent"), CachedInbox::class.java)
+            ?.let { MailInboxSnapshot(it.validity, it.items.take(MAX_OWA_HEADERS)) }
+
+    @Synchronized fun saveOwaSentPage(username: String, page: List<MailSummary>, offset: Int) {
+        synchronized(sharedOwaCacheLock) {
+            val old = sent(username)?.messages.orEmpty()
+            val merged = if (offset == 0) page + old else old + page
+            val unique = merged.distinctBy { it.uidValidity to it.uid }.take(MAX_OWA_HEADERS)
+            write(file(username, "sent"), CachedInbox(0x4F5741L, unique))
+        }
+    }
+
     /** Keep the offline inbox's unread state consistent with an acknowledged server update. */
     @Synchronized fun markRead(username: String, uid: Long, validity: Long) {
         synchronized(sharedOwaCacheLock) {
