@@ -28,6 +28,60 @@ class BarsReportParserTest {
         )
     }
 
+
+    @Test fun parsesProfileIndicatorsIntoSemanticFacts() {
+        val extras = BarsMainExtras(
+            indicators = listOf(
+                "Текущий курс: 3 курс",
+                "Рейтинг 9",
+                "Средний балл: 4,52",
+                "Форма обучения: Очная",
+                "3 курс",
+                "неразмеченный текст из DOM",
+            ),
+        )
+        val facts = barsProfileFacts(extras, emptyList())
+        assertEquals(BarsProfileKind.COURSE, facts[0].kind)
+        assertEquals("Курс", facts[0].label)
+        assertEquals("3", facts[0].value)
+        assertEquals(BarsProfileKind.RATING, facts[1].kind)
+        assertEquals("9", facts[1].value)
+        assertEquals(BarsProfileKind.SCORE, facts[2].kind)
+        assertEquals("Средний балл", facts[2].label)
+        assertEquals("4,52", facts[2].value)
+        assertEquals(BarsProfileKind.FORM, facts[3].kind)
+        assertEquals("Очная", facts[3].value)
+        assertEquals(4, facts.size) // Duplicate course and opaque DOM text are omitted.
+    }
+
+    @Test fun studentCardTakesPrecedenceOverRepeatedRawFields() {
+        val facts = barsProfileFacts(
+            BarsMainExtras(
+                indicators = listOf("Курс: 2", "Рейтинг: 5"),
+                studentFields = listOf("Факультет: другой", "Непонятная строка"),
+            ),
+            listOf(
+                BarsStudentDetail("Курс", "3"),
+                BarsStudentDetail("Факультет", "ИРЭ"),
+                BarsStudentDetail("Форма обучения", "Очная"),
+            ),
+        )
+        assertEquals("3", facts.first { it.kind == BarsProfileKind.COURSE }.value)
+        assertEquals("ИРЭ", facts.first { it.kind == BarsProfileKind.FACULTY }.value)
+        assertEquals(1, facts.count { it.kind == BarsProfileKind.COURSE })
+        assertEquals(1, facts.count { it.kind == BarsProfileKind.FACULTY })
+        assertTrue(facts.none { it.label == "Непонятная строка" })
+    }
+
+    @Test fun ignoresUnstructuredPrivateOrOversizedData() {
+        assertEquals(null, parseBarsProfileFact("Вход в систему"))
+        assertEquals(null, parseBarsProfileFact("Статус: "))
+        assertEquals(null, parseBarsProfileFact("Профиль: " + "x".repeat(250)))
+        assertEquals(BarsProfileKind.COURSE, parseBarsProfileFact("4 курс")?.kind)
+        assertEquals(BarsProfileKind.FORM,
+            parseBarsProfileFact("Очно-заочная форма обучения")?.kind)
+    }
+
     @Test fun readsActualSummaryRowsAndSourceMetadata() {
         val raw = """
             Источник: /ST_Study/Main/Summary
