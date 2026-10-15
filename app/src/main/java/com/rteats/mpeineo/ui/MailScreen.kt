@@ -148,7 +148,7 @@ internal fun MailScreen(
                             state.loginRequired -> onOpenPortal
                             state.selected == null -> viewModel::refresh
                             canRetryMessage -> {
-                                { state.selected?.let(viewModel::open) }
+                                { state.selected?.let(viewModel::open); Unit }
                             }
                             else -> null
                         },
