@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
+import com.rteats.mpeineo.data.MailSummary
 
 /**
  * Root service launcher. Only cached state is read here; opening the home
@@ -35,8 +36,13 @@ import com.rteats.mpeineo.AppIcons
  */
 @Composable
 internal fun SuperAppHome(
+    schedule: MainUiState,
+    bars: BarsUiState,
+    mail: MailUiState,
     onOpen: (AppTab) -> Unit,
     onSearch: () -> Unit,
+    onOpenBarsDiscipline: (String) -> Unit,
+    onOpenMailMessage: (MailSummary) -> Unit,
 ) {
     val entries = listOf(
         HomeService(AppTab.SCHEDULE, "Пары", AppIcons.Schedule),
@@ -120,7 +126,23 @@ internal fun SuperAppHome(
                 }
             }
         }
-
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            HomeNextLessonCard(schedule, onClick = { onOpen(AppTab.SCHEDULE) })
+        }
+        item {
+            HomeBarsPreview(
+                state = bars,
+                onOpen = { onOpen(AppTab.BARS) },
+                onOpenDiscipline = onOpenBarsDiscipline,
+            )
+        }
+        item {
+            HomeMailPreview(
+                state = mail,
+                onOpen = { onOpen(AppTab.MAIL) },
+                onOpenMessage = onOpenMailMessage,
+            )
+        }
     }
 }
 
