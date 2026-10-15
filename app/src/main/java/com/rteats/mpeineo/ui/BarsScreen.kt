@@ -938,6 +938,11 @@ private fun BarsNativeDashboard(
   onAcknowledgeGrades: (String) -> Unit,
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
+  var selectedSection by rememberSaveable { mutableStateOf("subjects") }
+  val report = remember(state.rawSummary) { BarsReportParser.parseSummary(state.rawSummary) }
+  val controls = remember(state.disciplines) { state.controlSchedule }
+  val gradeReportScroll = rememberScrollState()
+  val attendanceReportScroll = rememberScrollState()
   val dashboardListState = rememberLazyListState()
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
@@ -1093,7 +1098,23 @@ private fun BarsNativeDashboard(
             }
           }
 
-          if (state.disciplines.isEmpty() && !state.isLoading) {
+          item(key = "sections") {
+            BarsReportChooser(
+              selected = selectedSection,
+              onSelected = { selectedSection = it },
+            )
+          }
+
+          if (selectedSection != "subjects") {
+            barsReportEntries(
+              section = selectedSection,
+              report = report,
+              controls = controls,
+              gradeScroll = gradeReportScroll,
+              attendanceScroll = attendanceReportScroll,
+              onOpenDiscipline = { selectedDisciplineName = it },
+            )
+          } else if (state.disciplines.isEmpty() && !state.isLoading) {
             item(key = "empty") {
               EmptyBarsCard("В текущем семестре дисциплины не найдены.")
             }
@@ -1129,6 +1150,7 @@ private fun BarsUserHeader(
   state: BarsUiState,
 ) {
   var showStudentDetails by rememberSaveable { mutableStateOf(false) }
+  val extras = remember(state.rawMain) { BarsReportParser.parseMain(state.rawMain) }
   Column(
     modifier = Modifier.fillMaxWidth()
       .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
@@ -1173,7 +1195,28 @@ private fun BarsUserHeader(
         )
       }
     }
-    if (state.studentDetails.isNotEmpty()) {
+    if (extras.indicators.isNotEmpty()) {
+      FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+      ) {
+        extras.indicators.forEach { indicator ->
+          Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+          ) {
+            Text(
+              indicator,
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+              style = MaterialTheme.typography.labelMedium,
+              color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+          }
+        }
+      }
+    }
+    if (state.studentDetails.isNotEmpty() || extras.studentFields.isNotEmpty()) {
       TextButton(
         onClick = { showStudentDetails = !showStudentDetails },
         modifier = Modifier.padding(top = 5.dp),
@@ -1208,6 +1251,19 @@ private fun BarsUserHeader(
               style = MaterialTheme.typography.bodySmall,
             )
           }
+        }
+        extras.studentFields.filterNot { raw ->
+          state.studentDetails.any { detail ->
+            raw.contains(detail.label, ignoreCase = true) &&
+              raw.contains(detail.value, ignoreCase = true)
+          }
+        }.forEach { extra ->
+          Text(
+            extra,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
         }
       }
     }

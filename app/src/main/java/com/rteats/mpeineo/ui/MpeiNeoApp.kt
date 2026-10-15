@@ -420,8 +420,7 @@ fun MpeiNeoApp(
                         AppTab.SETTINGS -> SettingsScreen(
                             updateViewModel = updateViewModel,
                             mailViewModel = mailViewModel,
-                            barsAutoRefreshEnabled = barsAutoRefreshEnabled,
-                            onBarsAutoRefreshEnabledChange = { enabled ->
+                                onBarsAutoRefreshEnabledChange = { enabled ->
                                 barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
                                 barsAutoRefreshEnabled = enabled
                             },
