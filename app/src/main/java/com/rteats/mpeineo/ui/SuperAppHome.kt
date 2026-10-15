@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -33,7 +33,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
@@ -43,42 +42,19 @@ import com.rteats.mpeineo.AppIcons
  */
 @Composable
 internal fun SuperAppHome(
-    schedule: MainUiState,
     bars: BarsUiState,
-    mail: MailUiState,
     onOpen: (AppTab) -> Unit,
     onSearch: () -> Unit,
     barsAutoRefreshEnabled: Boolean = true,
 ) {
-    val unread = mail.items.count { it.unread }
     val clipboard = LocalClipboardManager.current
     val mainLines = remember(bars.rawMain) { bars.rawMain.lines().filter { it.isNotBlank() } }
     val summaryLines = remember(bars.rawSummary) { bars.rawSummary.lines().filter { it.isNotBlank() } }
     val entries = listOf(
-        HomeService(
-            AppTab.SCHEDULE, "Расписание",
-            schedule.selected?.name?.takeIf { it.isNotBlank() } ?: "Пары и поиск",
-            AppIcons.Schedule,
-        ),
-        HomeService(
-            AppTab.BARS, "БАРС",
-            if (bars.disciplines.isNotEmpty())
-                bars.disciplines.size.toString() + " дисциплин"
-            else "Оценки и посещаемость",
-            AppIcons.Bars,
-        ),
-        HomeService(
-            AppTab.MAIL, "Почта",
-            when {
-                !mail.configured -> "Подключить ОСЭП"
-                unread > 0 -> "Есть непрочитанные письма"
-                else -> "Входящие ОСЭП"
-            },
-            AppIcons.Mail,
-        ),
-        HomeService(
-            AppTab.MAPS, "Кампус", "Корпуса и аудитории", AppIcons.Location,
-        ),
+        HomeService(AppTab.SCHEDULE, "Пары", AppIcons.Schedule),
+        HomeService(AppTab.BARS, "БАРС", AppIcons.Bars),
+        HomeService(AppTab.MAIL, "Почта", AppIcons.Mail),
+        HomeService(AppTab.MAPS, "Корпуса", AppIcons.Location),
     )
 
     LazyVerticalGrid(
@@ -124,7 +100,7 @@ internal fun SuperAppHome(
         items(entries, key = { it.tab.name }) { entry ->
             Surface(
                 onClick = { onOpen(entry.tab) },
-                modifier = Modifier.fillMaxWidth().height(172.dp)
+                modifier = Modifier.fillMaxWidth().height(148.dp)
                     .testTag("service-" + entry.tab.name.lowercase()),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -133,32 +109,26 @@ internal fun SuperAppHome(
                     modifier = Modifier.fillMaxSize().padding(18.dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Box(
+                    Surface(
                         modifier = Modifier.size(48.dp),
-                        contentAlignment = Alignment.Center,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        contentColor = MaterialTheme.colorScheme.primary,
                     ) {
-                        AppIcon(
-                            entry.icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            AppIcon(
+                                entry.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            entry.title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                        )
-                        Text(
-                            entry.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        entry.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
                 }
             }
         }
@@ -270,6 +240,5 @@ internal fun SuperAppHome(
 private data class HomeService(
     val tab: AppTab,
     val title: String,
-    val subtitle: String,
     val icon: Int,
 )
