@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
@@ -125,6 +126,7 @@ internal fun SuperAppHome(
             if (editing) {
                 Surface(
                     modifier = Modifier.fillMaxWidth()
+                        .animateItem()
                         .testTag("home-edit-" + tile.tab.name.lowercase()),
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainer,
@@ -185,6 +187,7 @@ internal fun SuperAppHome(
                 Surface(
                     onClick = { onOpen(tile.tab) },
                     modifier = Modifier.fillMaxWidth()
+                        .animateItem()
                         .height(when (tile.size) {
                             HomeTileSize.COMPACT -> 84.dp
                             HomeTileSize.REGULAR -> 148.dp
@@ -203,9 +206,11 @@ internal fun SuperAppHome(
                             HomeTileIcon(icon, 40)
                             Text(
                                 label,
+                                modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     } else {
