@@ -105,6 +105,7 @@ internal fun BarsScreen(
   autoRefreshEnabled: Boolean = true,
   active: Boolean = true,
   onBrowserExit: () -> Unit = {},
+  onDetailOpenChange: (Boolean) -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val state by viewModel.state.collectAsState()
@@ -224,6 +225,7 @@ internal fun BarsScreen(
       BarsAuthStage.AUTHENTICATED -> BarsNativeDashboard(
         state = state,
         active = active,
+        onDetailOpenChange = onDetailOpenChange,
         showCachedRefreshErrors = autoRefreshEnabled || manuallyRequestedConnection,
         onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
         onRefresh = {
@@ -856,6 +858,7 @@ private fun BarsCheckingState(
 private fun BarsNativeDashboard(
   state: BarsUiState,
   active: Boolean,
+  onDetailOpenChange: (Boolean) -> Unit,
   showCachedRefreshErrors: Boolean,
   onRefresh: () -> Unit,
   onOpenBrowser: () -> Unit,
@@ -867,6 +870,10 @@ private fun BarsNativeDashboard(
     it.disciplineName == selectedDisciplineName
   }
   val motion = MaterialTheme.motionScheme
+
+  androidx.compose.runtime.SideEffect {
+    onDetailOpenChange(selectedDiscipline != null)
+  }
 
   // Android Back returns to the overview before leaving the tab.
   // The official WebView keeps priority when the browser is visible.
