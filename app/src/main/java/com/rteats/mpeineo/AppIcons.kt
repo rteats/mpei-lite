@@ -39,6 +39,14 @@ object AppIcons {
     @get:DrawableRes val Location: Int get() = R.drawable.ms_location_on
     @get:DrawableRes val Person: Int get() = R.drawable.ms_person
     @get:DrawableRes val GroupList: Int get() = R.drawable.ms_list
+    // Google Material Symbols for semantic BARS profile facts.
+    @get:DrawableRes val Education: Int get() = R.drawable.ms_school
+    @get:DrawableRes val Ranking: Int get() = R.drawable.ms_leaderboard
+    @get:DrawableRes val Analytics: Int get() = R.drawable.ms_analytics
+    @get:DrawableRes val StudyForm: Int get() = R.drawable.ms_menu_book
+    @get:DrawableRes val Verified: Int get() = R.drawable.ms_verified
+    @get:DrawableRes val Faculty: Int get() = R.drawable.ms_apartment
+    @get:DrawableRes val StudentId: Int get() = R.drawable.ms_badge
     @get:DrawableRes val Attachment: Int get() = R.drawable.ms_attach_file
     @get:DrawableRes val Download: Int get() = R.drawable.ms_download
     @get:DrawableRes val Logout: Int get() = R.drawable.ms_logout
