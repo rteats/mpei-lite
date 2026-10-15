@@ -179,6 +179,8 @@ internal fun BarsScreen(
       ) {
         viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
         redirectingToMarks = false
+        summaryFetchAttempted = false
+        summaryExtractionStarted = false
         mainFrameFailed = false
         needsFullViewport = true
         marksReadiness?.reset()
@@ -249,6 +251,8 @@ internal fun BarsScreen(
         onRefresh = {
           manuallyRequestedConnection = true
           redirectingToMarks = false
+          summaryFetchAttempted = false
+          summaryExtractionStarted = false
           mainFrameFailed = false
           if (state.loginRequired) {
             viewModel.showBrowser()
@@ -262,6 +266,33 @@ internal fun BarsScreen(
         onOpenBrowser = {
           marksReadiness?.navigationStarted()
           viewModel.showBrowser()
+        },
+        onRefreshSummary = {
+          manuallyRequestedConnection = true
+          if (state.loginRequired) {
+            viewModel.showBrowser()
+          } else if (!state.isSummaryLoading) {
+            val view = webView
+            summaryFetchAttempted = false
+            summaryExtractionStarted = false
+            mainFrameFailed = false
+            if (view != null &&
+              BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
+              !state.isLoading && navigationController != null
+            ) {
+              summaryFetchAttempted = true
+              viewModel.summaryCaptureStarted()
+              needsFullViewport = true
+              navigationController?.load(BARS_SUMMARY_URL, "manual Summary refresh")
+            } else {
+              // The live document is not Main yet. Revalidate marks first;
+              // their extraction callback will chain into Summary.
+              needsFullViewport = true
+              marksReadiness?.reset()
+              viewModel.startRefresh()
+              retryNavigation?.invoke()
+            }
+          }
         },
       )
     }
@@ -936,6 +967,7 @@ private fun BarsNativeDashboard(
   onRefresh: () -> Unit,
   onOpenBrowser: () -> Unit,
   onAcknowledgeGrades: (String) -> Unit,
+  onRefreshSummary: () -> Unit,
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
@@ -1113,6 +1145,9 @@ private fun BarsNativeDashboard(
               gradeScroll = gradeReportScroll,
               attendanceScroll = attendanceReportScroll,
               onOpenDiscipline = { selectedDisciplineName = it },
+              isSummaryLoading = state.isSummaryLoading,
+              summaryError = state.summaryError,
+              onRetrySummary = onRefreshSummary,
             )
           } else if (state.disciplines.isEmpty() && !state.isLoading) {
             item(key = "empty") {
