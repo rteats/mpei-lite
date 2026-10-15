@@ -336,10 +336,7 @@ internal fun BarsScreen(
               BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
               !state.isLoading && navigationController != null
             ) {
-              summaryFetchAttempted = true
-              viewModel.summaryCaptureStarted()
-              needsFullViewport = true
-              navigationController?.load(BARS_SUMMARY_URL, "manual Summary refresh")
+              requestOfficialSummary(view, "manual Summary refresh")
             } else {
               // The live document is not Main yet. Revalidate marks first;
               // their extraction callback will chain into Summary.
@@ -472,7 +469,7 @@ internal fun BarsScreen(
                   "Не удалось загрузить Сводку: сервер БАРС не ответил.",
                 )
                 // A Summary failure should not erase successfully cached marks.
-                navigationController?.load(BARS_MARKS_URL, "restore marks after Summary timeout")
+                restoreOfficialMarks("restore marks after Summary timeout")
               } else if (!state.browserVisible) {
                 needsFullViewport = false
                 viewModel.extractionFailed(
@@ -705,22 +702,12 @@ internal fun BarsScreen(
                   if (source == "MAIN" && !summaryFetchAttempted &&
                     !state.browserVisible
                   ) {
-                    summaryFetchAttempted = true
-                    summaryExtractionStarted = false
-                    needsFullViewport = true
-                    viewModel.summaryCaptureStarted()
-                    viewModel.logWebEvent("automatic Summary capture starting")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_SUMMARY_URL,
-                      reason = "automatic Summary capture",
-                    )
+                    viewModel.logWebEvent("automatic Summary capture: resolving official link")
+                    requestOfficialSummary(view, "automatic Summary capture")
                   }
                   if (source == "SUMMARY" && summaryFetchAttempted) {
                     viewModel.logWebEvent("summary captured; restoring marks")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_MARKS_URL,
-                      reason = "restore marks after Summary",
-                    )
+                    restoreOfficialMarks("restore marks after Summary")
                   }
                 }
               },
@@ -849,10 +836,7 @@ internal fun BarsScreen(
                       "Таблицы Сводки не загрузились. Можно повторить.",
                     )
                     viewModel.logWebEvent("Summary AJAX deadline; restoring marks")
-                    loadBarsWithWatchdog(
-                      targetUrl = BARS_MARKS_URL,
-                      reason = "restore marks after Summary AJAX timeout",
-                    )
+                    restoreOfficialMarks("restore marks after Summary AJAX timeout")
                   }
                 }, 20_000L)
               }
@@ -902,10 +886,7 @@ internal fun BarsScreen(
                       )
                       view.post {
                         if (webView === view) {
-                          loadBarsWithWatchdog(
-                            targetUrl = BARS_MARKS_URL,
-                            reason = "restore marks after Summary HTTP failure",
-                          )
+                          restoreOfficialMarks("restore marks after Summary HTTP failure")
                         }
                       }
                     } else {
@@ -978,10 +959,7 @@ internal fun BarsScreen(
                   )
                   view.post {
                     if (webView === view) {
-                      loadBarsWithWatchdog(
-                        targetUrl = BARS_MARKS_URL,
-                        reason = "restore marks after Summary network failure",
-                      )
+                      restoreOfficialMarks("restore marks after Summary network failure")
                     }
                   }
                 } else {
