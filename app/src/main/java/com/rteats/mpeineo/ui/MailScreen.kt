@@ -85,6 +85,7 @@ import java.util.Date
 internal fun MailScreen(
     viewModel: MailViewModel,
     active: Boolean,
+    onOpenPortal: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -122,45 +123,80 @@ internal fun MailScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
-            if (state.error != null) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        state.error.orEmpty(),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(12.dp),
+            if (state.configured) {
+                if (state.error != null) {
+                    val hasCachedContent = state.items.isNotEmpty() || state.message != null
+                    val canRetryMessage = state.selected != null && state.message == null
+                    ServiceStatus(
+                        title = when {
+                            state.loginRequired -> "Сессия ОСЭП истекла"
+                            state.selected != null -> "Не удалось выполнить действие"
+                            else -> "Не удалось обновить почту"
+                        },
+                        detail = if (hasCachedContent && state.selected == null) {
+                            "Показаны сохранённые письма."
+                        } else state.error,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        tone = if (hasCachedContent) ServiceStatusTone.RECOVERY
+                            else ServiceStatusTone.ERROR,
+                        actionLabel = when {
+                            state.loginRequired -> "Войти"
+                            state.selected == null || canRetryMessage -> "Повторить"
+                            else -> null // Re-tap an attachment to retry its download.
+                        },
+                        onAction = when {
+                            state.loginRequired -> onOpenPortal
+                            state.selected == null -> viewModel::refresh
+                            canRetryMessage -> {
+                                { state.selected?.let(viewModel::open) }
+                            }
+                            else -> null
+                        },
                     )
+                } else {
+                    state.notice?.let { note ->
+                        ServiceStatus(
+                            title = note,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
                 }
-            }
-            state.notice?.let { note ->
-                Text(
-                    note,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
             }
 
             if (!state.configured) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
                 ) {
-                    Text("Почта ОСЭП", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.size(12.dp))
-                    Text(
-                        "Откройте ОСЭП кнопкой внизу, войдите и вернитесь к входящим.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.size(16.dp))
-                    Button(onClick = viewModel::refresh, enabled = !state.loading) {
-                        Text("Проверить подключение")
+                    if (state.loading) {
+                        ContainedLoadingIndicator()
+                        Text(
+                            "Проверяем подключение к ОСЭП…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        ServiceStatus(
+                            title = when {
+                                state.loginRequired -> "Войдите в ОСЭП"
+                                state.error != null -> "Не удалось получить почту"
+                                else -> "Почта ОСЭП не подключена"
+                            },
+                            detail = when {
+                                state.loginRequired -> "Откройте ОСЭП, войдите и вернитесь к почте."
+                                state.error != null -> state.error
+                                else -> "Войдите через кнопку ОСЭП и вернитесь к входящим."
+                            },
+                            tone = if (state.error != null) ServiceStatusTone.ERROR
+                                else ServiceStatusTone.INFO,
+                            actionLabel = if (state.error != null && !state.loginRequired) {
+                                "Повторить"
+                            } else "Открыть ОСЭП",
+                            onAction = if (state.error != null && !state.loginRequired) {
+                                viewModel::refresh
+                            } else onOpenPortal,
+                        )
                     }
                 }
             } else {
@@ -392,7 +428,9 @@ private fun MailMessage(
             ContainedLoadingIndicator()
         }
         detail == null -> Box(modifier, contentAlignment = Alignment.Center) {
-            Text("Письмо не загружено")
+            if (state.error == null) {
+                Text("Письмо не загружено")
+            }
         }
         else -> Column(
             modifier = modifier.verticalScroll(rememberScrollState())
