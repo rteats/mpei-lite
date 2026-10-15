@@ -34,7 +34,7 @@ import org.json.JSONObject
  * Sending follows the separately captured CreateItem / CreateAttachment /
  * UpdateItem exchange; credentials, cookies and message data are never logged.
  */
-internal enum class OwaMailFolder(val distinguishedId: String) {
+enum class OwaMailFolder(val distinguishedId: String) {
     INBOX("inbox"), SENT("sentitems"),
 }
 
