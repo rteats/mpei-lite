@@ -34,6 +34,10 @@ import org.json.JSONObject
  * Sending follows the separately captured CreateItem / CreateAttachment /
  * UpdateItem exchange; credentials, cookies and message data are never logged.
  */
+internal enum class OwaMailFolder(val distinguishedId: String) {
+    INBOX("inbox"), SENT("sentitems"),
+}
+
 class OwaMailRepository(
     private val context: Context,
     private val diagnostics: DiagnosticLog,
@@ -50,6 +54,10 @@ class OwaMailRepository(
 
     fun cachedInbox(): List<MailSummary> =
         accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
+            .orEmpty().filter { it.owaConversationId != null }
+
+    fun cachedSent(): List<MailSummary> =
+        accountPrefs.getString("last_account", null)?.let { cache.sent(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
 
     fun cachedMessage(summary: MailSummary): MailDetail? =
@@ -140,7 +148,12 @@ class OwaMailRepository(
     private data class Session(val cookieHeader: String, val canary: String, val userAgent: String)
     private data class Reply(val status: Int, val body: String, val setCookies: List<String>)
 
-    suspend fun inbox(maxConversations: Int = 60, refreshId: Long = 0L, offset: Int = 0): List<MailSummary> {
+    suspend fun inbox(
+        maxConversations: Int = 60,
+        refreshId: Long = 0L,
+        offset: Int = 0,
+        folder: OwaMailFolder = OwaMailFolder.INBOX,
+    ): List<MailSummary> {
         val started = SystemClock.elapsedRealtime()
         return try {
             val account = authenticatedAccount()
@@ -150,7 +163,7 @@ class OwaMailRepository(
                     .put("__type", "TargetFolderId:#Exchange")
                     .put("BaseFolderId", JSONObject()
                         .put("__type", "DistinguishedFolderId:#Exchange")
-                        .put("Id", "inbox")))
+                        .put("Id", folder.distinguishedId)))
                 .put("ConversationShape", JSONObject()
                     .put("__type", "ConversationResponseShape:#Exchange")
                     .put("BaseShape", "IdOnly"))
@@ -178,13 +191,17 @@ class OwaMailRepository(
                 val id = item.optJSONObject("ConversationId")?.optString("Id").orEmpty()
                 if (id.isEmpty()) return@mapNotNull null
                 val senders = item.optJSONArray("UniqueSenders")
+                val recipients = item.optJSONArray("UniqueRecipients")
                 MailSummary(
                     uid = stableId(id),
                     uidValidity = OWA_UID_VALIDITY,
-                    sender = senders?.optString(0).orEmpty(),
+                    sender = (if (folder == OwaMailFolder.SENT) {
+                        recipients?.optString(0)?.takeIf { it.isNotBlank() }
+                    } else null) ?: senders?.optString(0).orEmpty(),
                     subject = item.optString("ConversationTopic"),
                     sentAt = parseDate(item.optString("LastDeliveryTime")),
-                    unread = item.optInt("UnreadCount", 0) > 0,
+                    unread = folder == OwaMailFolder.INBOX &&
+                        item.optInt("UnreadCount", 0) > 0,
                     hasAttachment = item.optBoolean("HasAttachments"),
                     owaConversationId = id,
                 )
@@ -194,10 +211,14 @@ class OwaMailRepository(
             // A background poll refreshes the first 60 but never truncates the
             // previously downloaded older pages. Older pages extend the encrypted cache.
             withContext(Dispatchers.IO) {
-                cache.saveOwaPage(account, items, offset)
+                if (folder == OwaMailFolder.SENT) {
+                    cache.saveOwaSentPage(account, items, offset)
+                } else {
+                    cache.saveOwaPage(account, items, offset)
+                }
             }
             diagnostics.log("OWA_MAIL",
-                "inbox_success refreshId=" + refreshId +
+                "folder_success folder=" + folder.name + " refreshId=" + refreshId +
                     " offset=" + offset +
                     " conversations=" + items.size +
                     " durationMs=" + (SystemClock.elapsedRealtime() - started))
@@ -205,7 +226,7 @@ class OwaMailRepository(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             diagnostics.log("OWA_MAIL",
-                "inbox_failure refreshId=" + refreshId +
+                "folder_failure folder=" + folder.name + " refreshId=" + refreshId +
                     " offset=" + offset +
                     " category=" + when (e) {
                         is LoginRequired -> "LOGIN_REQUIRED"
@@ -217,6 +238,18 @@ class OwaMailRepository(
         }
     }
 
+
+    /** Search Exchange's Global Address List through the existing OWA cookie session. */
+    internal suspend fun findRecipients(query: String): List<OwaRecipientSuggestion> {
+        if (query.trim().length < 2) return emptyList()
+        val response = service(
+            "FindPeople", "FindPeople", OwaRecipientDirectory.searchRequest(query),
+            actionId = "-11",
+        )
+        val body = response.optJSONObject("Body") ?: throw ServiceFailure("people_missing_body")
+        verifyResponse(body)
+        return OwaRecipientDirectory.parse(response)
+    }
 
     /** Mark a conversation read only when the Exchange service confirms NoError.
      *  This action format is based on EWS; the OWA JSON transport still needs device testing. */
