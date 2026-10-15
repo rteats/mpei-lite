@@ -375,7 +375,17 @@ internal fun BarsScreen(
             log = viewModel::logWebEvent,
             probe = viewModel::probeNetwork,
             onTimeout = {
-              if (!state.browserVisible) {
+              if (!state.browserVisible &&
+                summaryFetchAttempted &&
+                BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL)
+              ) {
+                summaryExtractionStarted = false
+                viewModel.summaryCaptureFailed(
+                  "Не удалось загрузить Сводку: сервер БАРС не ответил.",
+                )
+                // A Summary failure should not erase successfully cached marks.
+                navigationController?.load(BARS_MARKS_URL, "restore marks after Summary timeout")
+              } else if (!state.browserVisible) {
                 needsFullViewport = false
                 viewModel.extractionFailed(
                   "Тайм-аут подключения к БАРС. Сессия не сброшена. " +
@@ -598,12 +608,20 @@ internal fun BarsScreen(
                   ) {
                     summaryFetchAttempted = true
                     summaryExtractionStarted = false
-                    viewModel.logWebEvent("raw summary capture starting")
-                    view.loadUrl(BARS_SUMMARY_URL)
+                    needsFullViewport = true
+                    viewModel.summaryCaptureStarted()
+                    viewModel.logWebEvent("automatic Summary capture starting")
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_SUMMARY_URL,
+                      reason = "automatic Summary capture",
+                    )
                   }
                   if (source == "SUMMARY" && summaryFetchAttempted) {
                     viewModel.logWebEvent("summary captured; restoring marks")
-                    view.loadUrl(BARS_MARKS_URL)
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_MARKS_URL,
+                      reason = "restore marks after Summary",
+                    )
                   }
                 }
               },
@@ -717,19 +735,27 @@ internal fun BarsScreen(
                 return
               }
               view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
-              if (url.contains("/Main/Summary", ignoreCase = true) &&
+              if (BarsDocumentPolicy.isCurrent(url, BARS_SUMMARY_URL) &&
                 summaryFetchAttempted
               ) {
+                // Starting the extraction script is not proof of success.
+                // If its bridge never returns, restore the native screen too.
                 view.postDelayed({
-                  if (webView === view && !summaryExtractionStarted &&
-                    view.url.orEmpty().contains("/Main/Summary", ignoreCase = true) &&
-                    !state.browserVisible
+                  if (webView === view &&
+                    BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL) &&
+                    summaryFetchAttempted && !state.browserVisible
                   ) {
-                    viewModel.rawCaptureStatus("Таблицы Summary не загрузились за 12 секунд")
-                    viewModel.logWebEvent("summary timeout; restoring marks")
-                    view.loadUrl(BARS_MARKS_URL)
+                    summaryExtractionStarted = false
+                    viewModel.summaryCaptureFailed(
+                      "Таблицы Сводки не загрузились. Можно повторить.",
+                    )
+                    viewModel.logWebEvent("Summary AJAX deadline; restoring marks")
+                    loadBarsWithWatchdog(
+                      targetUrl = BARS_MARKS_URL,
+                      reason = "restore marks after Summary AJAX timeout",
+                    )
                   }
-                }, 12_000L)
+                }, 20_000L)
               }
             }
 
