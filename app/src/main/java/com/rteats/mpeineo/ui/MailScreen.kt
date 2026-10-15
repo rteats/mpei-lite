@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.data.MailSummary
+import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.data.MailServerCertificate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.DateFormat
@@ -90,22 +92,32 @@ internal fun MailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val inboxScrollState = rememberLazyListState()
+    val sentScrollState = rememberLazyListState()
+    val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
     var inboxQuery by rememberSaveable { mutableStateOf("") }
-    val visibleMessages = if (inboxQuery.isBlank()) state.items else state.items.filter {
+    val folderItems = if (state.mailbox == OwaMailFolder.SENT) state.sentItems else state.items
+    val folderLoading = if (state.mailbox == OwaMailFolder.SENT) state.sentLoading else state.loading
+    val folderLoadingMore = if (state.mailbox == OwaMailFolder.SENT)
+        state.sentLoadingMore else state.loadingMore
+    val folderHasMore = if (state.mailbox == OwaMailFolder.SENT)
+        state.sentHasMore else state.hasMore
+    val folderMoreError = if (state.mailbox == OwaMailFolder.SENT)
+        state.sentMoreError else state.moreError
+    val visibleMessages = if (inboxQuery.isBlank()) folderItems else folderItems.filter {
         it.sender.contains(inboxQuery.trim(), ignoreCase = true) ||
             it.subject.contains(inboxQuery.trim(), ignoreCase = true)
     }
     // Search is explicitly local to downloaded pages, not a server-wide search.
-    LaunchedEffect(inboxScrollState, state.items.size, state.hasMore,
-        state.loadingMore, state.loading, state.moreError, inboxQuery,
-        state.selected, active) {
+    LaunchedEffect(scrollState, folderItems.size, folderHasMore,
+        folderLoadingMore, folderLoading, folderMoreError, inboxQuery,
+        state.selected, active, state.mailbox) {
         if (active && state.selected == null && inboxQuery.isBlank() &&
-            state.hasMore && !state.loadingMore &&
-            !state.loading && !state.moreError) {
+            folderHasMore && !folderLoadingMore &&
+            !folderLoading && !folderMoreError) {
             snapshotFlow {
-                inboxScrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                scrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             }.distinctUntilChanged().collect { last ->
-                if (last >= state.items.size - 4) viewModel.loadMore()
+                if (last >= folderItems.size - 4) viewModel.loadMore()
             }
         }
     }
@@ -132,7 +144,7 @@ internal fun MailScreen(
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
             if (state.configured) {
                 if (state.error != null) {
-                    val hasCachedContent = state.items.isNotEmpty() || state.message != null
+                    val hasCachedContent = folderItems.isNotEmpty() || state.message != null
                     val canRetryMessage = state.selected != null && state.message == null
                     ServiceStatus(
                         title = when {
@@ -234,20 +246,20 @@ internal fun MailScreen(
                     } else {
                         val refreshState = rememberPullToRefreshState()
                         PullToRefreshBox(
-                            isRefreshing = state.loading,
+                            isRefreshing = folderLoading,
                             onRefresh = viewModel::refresh,
                             state = refreshState,
                             modifier = Modifier.fillMaxSize(),
                             indicator = {
                                 PullToRefreshDefaults.LoadingIndicator(
                                     state = refreshState,
-                                    isRefreshing = state.loading,
+                                    isRefreshing = folderLoading,
                                     modifier = Modifier.align(Alignment.TopCenter),
                                 )
                             },
                         ) {
                             LazyColumn(
-                                state = inboxScrollState,
+                                state = scrollState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
                                     start = 12.dp, end = 12.dp,
@@ -257,6 +269,24 @@ internal fun MailScreen(
                             ) {
                                 stickyHeader(key = "inbox-search") {
                                     Surface(color = MaterialTheme.colorScheme.background) {
+                                    Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        FilterChip(
+                                            selected = state.mailbox == OwaMailFolder.INBOX,
+                                            onClick = { inboxQuery = ""; viewModel.switchMailbox(OwaMailFolder.INBOX) },
+                                            label = { Text("Входящие") },
+                                            modifier = Modifier.testTag("mail-folder-inbox"),
+                                        )
+                                        FilterChip(
+                                            selected = state.mailbox == OwaMailFolder.SENT,
+                                            onClick = { inboxQuery = ""; viewModel.switchMailbox(OwaMailFolder.SENT) },
+                                            label = { Text("Отправленные") },
+                                            modifier = Modifier.testTag("mail-folder-sent"),
+                                        )
+                                    }
                                     OutlinedTextField(
                                         value = inboxQuery,
                                         onValueChange = { inboxQuery = it },
@@ -276,6 +306,7 @@ internal fun MailScreen(
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                                     )
                                     }
+                                    }
                                 }
                                 if (visibleMessages.isEmpty()) {
                                     item(key = "empty-inbox") {
@@ -283,9 +314,11 @@ internal fun MailScreen(
                                             modifier = Modifier.fillMaxWidth().padding(32.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            if (state.loading) ContainedLoadingIndicator()
+                                            if (folderLoading) ContainedLoadingIndicator()
                                             else Text(
                                                 if (inboxQuery.isNotBlank()) "Среди загруженных писем совпадений нет"
+                                                else if (state.mailbox == OwaMailFolder.SENT)
+                                                    "Отправленных писем нет."
                                                 else "Писем нет. Потяните вниз для обновления.",
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
@@ -294,7 +327,7 @@ internal fun MailScreen(
                                 }
                                 items(
                                     items = visibleMessages,
-                                    key = { "${it.uidValidity}-${it.uid}" },
+                                    key = { "${state.mailbox.name}-${it.uidValidity}-${it.uid}" },
                                 ) { item ->
                                     MailInboxRow(
                                         summary = item,
@@ -302,18 +335,18 @@ internal fun MailScreen(
                                         modifier = Modifier,
                                     )
                                 }
-                                if (state.hasMore || state.loadingMore || state.moreError) {
+                                if (folderHasMore || folderLoadingMore || folderMoreError) {
                                     item(key = "inbox-older") {
                                         Box(Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                             contentAlignment = Alignment.Center) {
-                                            if (state.loadingMore) {
+                                            if (folderLoadingMore) {
                                                 ContainedLoadingIndicator()
                                             } else {
                                                 TextButton(
                                                     onClick = viewModel::loadMore,
-                                                    enabled = !state.loading,
+                                                    enabled = !folderLoading,
                                                 ) {
-                                                    Text(if (state.moreError) "Повторить загрузку старых писем"
+                                                    Text(if (folderMoreError) "Повторить загрузку старых писем"
                                                         else "Загрузить предыдущие письма")
                                                 }
                                             }

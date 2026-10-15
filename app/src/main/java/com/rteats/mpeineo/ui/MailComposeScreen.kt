@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.OwaComposeProtocol
+import com.rteats.mpeineo.data.OwaRecipientSuggestion
 
 /** Native message composer; all values remain in MailViewModel while navigating. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -85,16 +87,10 @@ internal fun MailComposeScreen(
         }
 
         item(key = "compose-to") {
-            OutlinedTextField(
-                value = draft.to,
-                onValueChange = { value -> viewModel.editDraft { it.copy(to = value) } },
-                label = { Text("Кому") },
-                placeholder = { Text("address@example.com") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.sending,
-                singleLine = false,
-                maxLines = 3,
-                supportingText = { Text("Несколько адресов — через запятую или точку с запятой") },
+            RecipientEntry(
+                value = draft.to, label = "Кому", field = RecipientField.TO,
+                state = state, viewModel = viewModel,
+                placeholder = "Адрес или имя получателя",
             )
         }
         item(key = "compose-copies-toggle") {
@@ -107,21 +103,15 @@ internal fun MailComposeScreen(
         }
         if (showCopies) {
             item(key = "compose-cc") {
-                OutlinedTextField(
-                    value = draft.cc,
-                    onValueChange = { value -> viewModel.editDraft { it.copy(cc = value) } },
-                    label = { Text("Копия") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.sending,
+                RecipientEntry(
+                    value = draft.cc, label = "Копия", field = RecipientField.CC,
+                    state = state, viewModel = viewModel,
                 )
             }
             item(key = "compose-bcc") {
-                OutlinedTextField(
-                    value = draft.bcc,
-                    onValueChange = { value -> viewModel.editDraft { it.copy(bcc = value) } },
-                    label = { Text("Скрытая копия") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.sending,
+                RecipientEntry(
+                    value = draft.bcc, label = "Скрытая копия", field = RecipientField.BCC,
+                    state = state, viewModel = viewModel,
                 )
             }
         }
@@ -229,6 +219,73 @@ internal fun MailComposeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** Suggestions live under the edited field and never cover the send action. */
+@Composable
+private fun RecipientEntry(
+    value: String,
+    label: String,
+    field: RecipientField,
+    state: MailUiState,
+    viewModel: MailViewModel,
+    placeholder: String = "",
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { viewModel.editRecipient(field, it) },
+            label = { Text(label) },
+            placeholder = if (placeholder.isNotBlank()) {
+                { Text(placeholder) }
+            } else null,
+            modifier = Modifier.fillMaxWidth().testTag("recipient-" + field.name.lowercase()),
+            enabled = !state.sending,
+            maxLines = 3,
+        )
+        if (state.activeRecipientField == field && state.recipientSearching) {
+            Text(
+                "Поиск получателей…",
+                modifier = Modifier.padding(start = 12.dp, top = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.activeRecipientField == field && state.recipientSuggestions.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth().testTag("recipient-suggestions"),
+            ) {
+                Column {
+                    state.recipientSuggestions.forEach { candidate ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { viewModel.acceptRecipient(field, candidate) }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            AppIcon(AppIcons.Person, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(candidate.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (candidate.name != candidate.email) {
+                                    Text(candidate.email,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

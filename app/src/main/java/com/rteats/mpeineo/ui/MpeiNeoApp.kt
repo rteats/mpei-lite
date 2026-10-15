@@ -368,7 +368,7 @@ fun MpeiNeoApp(
         rememberGlobalQuery()
         closeGlobalSearch()
         openService(AppTab.MAIL)
-        mailViewModel.open(summary)
+        mailViewModel.openInboxMessage(summary)
     }
 
     fun openBarsResult(discipline: String) {
@@ -627,7 +627,7 @@ fun MpeiNeoApp(
                         onOpenMailMessage = { summary ->
                             if (currentService == null && !isTransitioning) {
                                 openService(AppTab.MAIL)
-                                mailViewModel.open(summary)
+                                mailViewModel.openInboxMessage(summary)
                             }
                         },
                     )
