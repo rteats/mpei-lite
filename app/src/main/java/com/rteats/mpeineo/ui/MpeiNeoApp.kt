@@ -533,7 +533,6 @@ fun MpeiNeoApp(
             ) {
                 if (beneathService == null) {
                     SuperAppHome(
-                        bars = barsState,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
@@ -542,7 +541,6 @@ fun MpeiNeoApp(
                         onSearch = {
                             if (currentService == null && !isTransitioning) openGlobalSearch()
                         },
-                        barsAutoRefreshEnabled = barsAutoRefreshEnabled,
                     )
                 } else serviceContent(beneathService, false)
             }
