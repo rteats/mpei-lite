@@ -228,6 +228,8 @@ internal fun BarsScreen(
         error = state.error,
         onRetry = {
           mainFrameFailed = false
+          summaryFetchAttempted = false
+          summaryExtractionStarted = false
           needsFullViewport = true
           marksReadiness?.reset()
           viewModel.checking()
@@ -493,11 +495,11 @@ internal fun BarsScreen(
                   val currentLocation = safeBarsLocation(page.url)
                   val marksLocation = safeBarsLocation(BARS_MARKS_URL)
                   val signature =
-                    "$currentLocation|${page.isLoginPage}|${page.isAuthFlow}|${page.isStudentList}|${page.isMarksPage}"
+                    "$currentLocation|${page.isLoginPage}|${page.isAuthFlow}|${page.isStudentList}|${page.isMarksPage}|${page.isSummaryReady}"
                   if (signature != lastPageStateSignature) {
                     lastPageStateSignature = signature
                     viewModel.logWebEvent(
-                      "pageState path=$currentLocation login=${page.isLoginPage} authFlow=${page.isAuthFlow} studentList=${page.isStudentList} marks=${page.isMarksPage}",
+                      "pageState path=$currentLocation login=${page.isLoginPage} authFlow=${page.isAuthFlow} studentList=${page.isStudentList} marks=${page.isMarksPage} summary=${page.isSummaryPage} ready=${page.isSummaryReady}",
                     )
                   }
 
@@ -523,6 +525,12 @@ internal fun BarsScreen(
                     BarsPageKind.MARKS_READY -> {
                       redirectingToMarks = false
                       readiness.reset()
+                      if (summaryFetchAttempted && state.isSummaryLoading) {
+                        // Redirected back to Main without a Summary payload.
+                        viewModel.summaryCaptureFailed(
+                          "Сводка не вернула данные. Нажмите «Обновить», чтобы повторить.",
+                        )
+                      }
                       if (!marksExtractionStarted) {
                         marksExtractionStarted = true
                         viewModel.authenticatedPage(page.url)
@@ -539,6 +547,11 @@ internal fun BarsScreen(
                     BarsPageKind.AUTH_FLOW -> {
                       redirectingToMarks = false
                       readiness.reset()
+                      if (summaryFetchAttempted && state.isSummaryLoading) {
+                        viewModel.summaryCaptureFailed(
+                          "Для загрузки Сводки требуется повторный вход в БАРС.",
+                        )
+                      }
                       viewModel.webAuth(page.url)
                     }
                     BarsPageKind.MARKS_LOADING -> {
@@ -795,10 +808,26 @@ internal fun BarsScreen(
                     retryable = code in 500..599,
                   )
                   if (!retryScheduled && !state.browserVisible) {
-                    needsFullViewport = false
-                    viewModel.extractionFailed(
-                      "Сервер БАРС вернул ошибку HTTP $code. Повторите позже.",
-                    )
+                    if (summaryFetchAttempted &&
+                      BarsDocumentPolicy.isCurrent(request.url.toString(), BARS_SUMMARY_URL)
+                    ) {
+                      viewModel.summaryCaptureFailed(
+                        "Сводка БАРС вернула ошибку HTTP $code.",
+                      )
+                      view.post {
+                        if (webView === view) {
+                          loadBarsWithWatchdog(
+                            targetUrl = BARS_MARKS_URL,
+                            reason = "restore marks after Summary HTTP failure",
+                          )
+                        }
+                      }
+                    } else {
+                      needsFullViewport = false
+                      viewModel.extractionFailed(
+                        "Сервер БАРС вернул ошибку HTTP $code. Повторите позже.",
+                      )
+                    }
                   }
                 }
               }
@@ -855,15 +884,31 @@ internal fun BarsScreen(
               if (canRetry) return
 
               if (!state.browserVisible) {
-                needsFullViewport = false
-                viewModel.extractionFailed(
-                  if (error.errorCode == WebViewClient.ERROR_TIMEOUT) {
-                    "Сервер БАРС не ответил (тайм-аут сети). " +
-                      "Сессия сохранена. Попробуйте Wi-Fi или откройте сайт в браузере."
-                  } else {
-                    "Не удалось открыть БАРС: ${error.description}. Нажмите «Повторить»."
-                  },
-                )
+                if (summaryFetchAttempted &&
+                  BarsDocumentPolicy.isCurrent(failedUrl, BARS_SUMMARY_URL)
+                ) {
+                  viewModel.summaryCaptureFailed(
+                    "Не удалось загрузить Сводку (ошибка сети ${error.errorCode}).",
+                  )
+                  view.post {
+                    if (webView === view) {
+                      loadBarsWithWatchdog(
+                        targetUrl = BARS_MARKS_URL,
+                        reason = "restore marks after Summary network failure",
+                      )
+                    }
+                  }
+                } else {
+                  needsFullViewport = false
+                  viewModel.extractionFailed(
+                    if (error.errorCode == WebViewClient.ERROR_TIMEOUT) {
+                      "Сервер БАРС не ответил (тайм-аут сети). " +
+                        "Сессия сохранена. Попробуйте Wi-Fi или откройте сайт в браузере."
+                    } else {
+                      "Не удалось открыть БАРС: ${error.description}. Нажмите «Повторить»."
+                    },
+                  )
+                }
               }
             }
 
