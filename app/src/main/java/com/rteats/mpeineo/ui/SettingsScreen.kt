@@ -344,7 +344,7 @@ internal fun SettingsScreen(
             SettingsExpansion(
                 "Интерфейс",
                 "Главная, оформление и отклик",
-                AppIcons.Settings,
+                AppIcons.Appearance,
                 interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
             ) {
                 Text(
@@ -395,7 +395,7 @@ internal fun SettingsScreen(
                 SettingsSwitchRow(
                     title = "Тактильный отклик",
                     description = "Лёгкий отклик при открытии и закрытии разделов",
-                    iconRes = AppIcons.Confirm,
+                    iconRes = AppIcons.Haptics,
                     checked = navigationHaptics,
                     enabled = true,
                     onChange = onNavigationHapticsChange,
