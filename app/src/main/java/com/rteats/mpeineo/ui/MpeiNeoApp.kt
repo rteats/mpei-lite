@@ -406,6 +406,7 @@ fun MpeiNeoApp(
                             MailScreen(
                                 viewModel = mailViewModel,
                                 active = active && !mailWebVisible,
+                                onOpenPortal = { mailWebVisible = true },
                                 modifier = Modifier.fillMaxSize(),
                             )
                             if (mailWebVisible && active) {
