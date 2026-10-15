@@ -5,6 +5,8 @@ plugins {
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
 val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.4.0-dev"
+// PR artifacts use a separate package so test builds cannot replace the rolling dev app.
+val prNumber = providers.gradleProperty("PR_NUMBER").orNull?.toIntOrNull()?.takeIf { it > 0 }
 
 val devStoreFile = providers.environmentVariable("ANDROID_DEV_KEYSTORE_FILE").orNull
 val devStorePassword = providers.environmentVariable("ANDROID_DEV_KEYSTORE_PASSWORD").orNull
@@ -69,8 +71,9 @@ android {
     productFlavors {
         create("dev") {
             dimension = "channel"
-            applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "MPEI Neo Dev"
+            applicationIdSuffix = ".dev" + (prNumber?.let { ".pr$it" } ?: "")
+            manifestPlaceholders["appLabel"] =
+                prNumber?.let { "MPEI Neo PR #$it" } ?: "MPEI Neo Dev"
             buildConfigField("String", "UPDATE_CHANNEL", "\"dev\"")
             if (devSigningReady) {
                 signingConfig = signingConfigs.getByName("ciDev")

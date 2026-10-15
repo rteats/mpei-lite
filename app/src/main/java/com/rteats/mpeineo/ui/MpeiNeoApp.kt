@@ -519,9 +519,7 @@ fun MpeiNeoApp(
             ) {
                 if (beneathService == null) {
                     SuperAppHome(
-                        schedule = scheduleState,
                         bars = barsState,
-                        mail = mailState,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
