@@ -21,6 +21,8 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -444,7 +446,9 @@ fun MpeiNeoApp(
                             barsState.authStage == BarsAuthStage.AUTHENTICATED &&
                                 !barsState.browserVisible
                         }
-                        AppTab.MAIL -> AppTab.MAIL.takeIf { !mailWebVisible }
+                        AppTab.MAIL -> AppTab.MAIL.takeIf {
+                            !mailWebVisible && !mailState.composing
+                        }
                         else -> null
                     } else null
                     AnimatedVisibility(
@@ -454,19 +458,29 @@ fun MpeiNeoApp(
                         enter = fadeIn(tween(150)),
                         exit = fadeOut(tween(110)),
                     ) {
-                        PortalFloatingButton(
-                            label = if (portalAction == AppTab.MAIL) "ОСЭП" else "БАРС",
-                            onClick = {
-                                when (portalAction) {
-                                    AppTab.BARS -> {
-                                        barsBrowserJustClosed = false
-                                        barsViewModel.showBrowser()
-                                    }
-                                    AppTab.MAIL -> mailWebVisible = true
-                                    else -> Unit
+                        if (portalAction == AppTab.MAIL) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PortalFloatingButton(
+                                    label = "ОСЭП",
+                                    onClick = { mailWebVisible = true },
+                                )
+                                if (mailState.configured) {
+                                    PortalFloatingButton(
+                                        label = "Написать",
+                                        icon = AppIcons.Edit,
+                                        onClick = mailViewModel::startCompose,
+                                    )
                                 }
-                            },
-                        )
+                            }
+                        } else {
+                            PortalFloatingButton(
+                                label = "БАРС",
+                                onClick = {
+                                    barsBrowserJustClosed = false
+                                    barsViewModel.showBrowser()
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -673,6 +687,7 @@ private fun PortalFloatingButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: Int = AppIcons.OpenPortal,
 ) {
     val height = ButtonDefaults.MediumContainerHeight
     Button(
@@ -683,7 +698,7 @@ private fun PortalFloatingButton(
         shapes = ButtonDefaults.shapes(),
     ) {
         AppIcon(
-            icon = AppIcons.OpenPortal,
+            icon = icon,
             contentDescription = null,
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)),
         )
