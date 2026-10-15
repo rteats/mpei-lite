@@ -388,12 +388,14 @@ internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
 
     const origin = page.origin;
     const studentIds = new Set();
+    const profileIds = new Set();
     const mainLinks = new Map();
     const summaryLinks = new Map();
 
     function observedId(url) {
         if (url.origin !== origin ||
-            !url.pathname.startsWith('/bars_web/ST_Study/')) return null;
+            (!url.pathname.startsWith('/bars_web/ST_Study/') &&
+             url.pathname !== '/bars_web/ST/Student/StudentLifeCycle')) return null;
         const ids = url.searchParams.getAll('studentID');
         if (ids.length !== 1 || !/^[a-z0-9-]{1,128}$/i.test(ids[0])) return null;
         return ids[0];
@@ -406,6 +408,10 @@ internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
             const url = new URL(anchor.getAttribute('href'), page.href);
             const id = observedId(url);
             if (!id) return;
+            if (url.pathname === '/bars_web/ST/Student/StudentLifeCycle') {
+                profileIds.add(id);
+                return;
+            }
             found.scopedLinks++;
             studentIds.add(id);
             url.hash = '';
@@ -418,17 +424,19 @@ internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
             }
         } catch (_) {}
     });
-    found.distinctIds = studentIds.size;
+    const allIds = new Set([...studentIds, ...profileIds]);
+    found.distinctIds = allIds.size;
 
     let selected = null;
     if (currentId) {
         selected = currentId;
         found.source = 'current-url';
-    } else if (studentIds.size === 1) {
-        selected = studentIds.values().next().value;
+    } else if (allIds.size === 1) {
+        selected = allIds.values().next().value;
         found.source = mainLinks.has(selected) ? 'menu-main' :
-            summaryLinks.has(selected) ? 'menu-summary' : 'scoped-link';
-    } else if (studentIds.size > 1) {
+            summaryLinks.has(selected) ? 'menu-summary' :
+            profileIds.has(selected) ? 'profile-link' : 'scoped-link';
+    } else if (allIds.size > 1) {
         // A page may list several students; never guess which is active.
         found.source = 'ambiguous';
     }
