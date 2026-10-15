@@ -19,6 +19,7 @@ internal data class BarsRouteDiscovery(
     val source: String = "missing",
     val currentParam: Boolean = false,
     val scopedLinks: Int = 0,
+    val profileLinks: Int = 0,
     val distinctIds: Int = 0,
     val mainLinks: Int = 0,
     val summaryLinks: Int = 0,
@@ -31,6 +32,7 @@ internal data class BarsRouteDiscovery(
         }
         return "source=$safeSource currentParam=$currentParam " +
             "studyLinks=${scopedLinks.coerceIn(0, 999)} " +
+            "profileLinks=${profileLinks.coerceIn(0, 999)} " +
             "distinctIds=${distinctIds.coerceIn(0, 999)} " +
             "mainLinks=${mainLinks.coerceIn(0, 999)} " +
             "summaryLinks=${summaryLinks.coerceIn(0, 999)}"
