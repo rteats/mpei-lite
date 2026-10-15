@@ -29,6 +29,7 @@ internal class BarsJavascriptBridge(
     private val onExtractionError: (Int, String) -> Unit,
     private val onError: (String) -> Unit,
     private val onRawSnapshot: (String, String) -> Unit = { _, _ -> },
+    private val onSummaryDiagnostic: (String) -> Unit = {},
 ) {
     @JavascriptInterface
     fun onPageState(json: String) = onPageState.invoke(json)
@@ -44,6 +45,9 @@ internal class BarsJavascriptBridge(
 
     @JavascriptInterface
     fun onRawSnapshot(page: String, rawText: String) = onRawSnapshot.invoke(page, rawText)
+
+    @JavascriptInterface
+    fun onSummaryDiagnostic(message: String) = onSummaryDiagnostic.invoke(message)
 }
 
 internal val BARS_PAGE_STATE_SCRIPT = """
