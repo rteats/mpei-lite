@@ -534,6 +534,9 @@ fun MpeiNeoApp(
             ) {
                 if (beneathService == null) {
                     SuperAppHome(
+                        schedule = scheduleState,
+                        bars = barsState,
+                        mail = mailState,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
@@ -541,6 +544,19 @@ fun MpeiNeoApp(
                         },
                         onSearch = {
                             if (currentService == null && !isTransitioning) openGlobalSearch()
+                        },
+                        onOpenBarsDiscipline = { discipline ->
+                            if (currentService == null && !isTransitioning) {
+                                barsSearchRequest++
+                                barsRequestedDiscipline = discipline
+                                openService(AppTab.BARS)
+                            }
+                        },
+                        onOpenMailMessage = { summary ->
+                            if (currentService == null && !isTransitioning) {
+                                openService(AppTab.MAIL)
+                                mailViewModel.open(summary)
+                            }
                         },
                     )
                 } else serviceContent(beneathService, false)
