@@ -23,6 +23,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
@@ -98,6 +99,14 @@ internal fun scheduleDockRevealProgress(
 /** Complete an intentional rightward swipe, otherwise spring the page back. */
 internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
     widthPx > 0f && distancePx >= widthPx * 0.20f
+
+/** Map-only back target is narrow; regular service pages retain full-width swipes. */
+internal fun acceptsServiceBackStart(
+    x: Float,
+    width: Float,
+    systemEdge: Float,
+    mapEdgeZone: Boolean,
+): Boolean = x >= systemEdge && (mapEdgeZone || x <= width - systemEdge)
 
 /**
  * A single composited foreground page over a permanently mounted background.
@@ -420,7 +429,8 @@ fun MpeiNeoApp(
                         AppTab.SETTINGS -> SettingsScreen(
                             updateViewModel = updateViewModel,
                             mailViewModel = mailViewModel,
-                                onBarsAutoRefreshEnabledChange = { enabled ->
+                            barsAutoRefreshEnabled = barsAutoRefreshEnabled,
+                            onBarsAutoRefreshEnabledChange = { enabled ->
                                 barsPrefs.edit().putBoolean("auto_refresh", enabled).apply()
                                 barsAutoRefreshEnabled = enabled
                             },
@@ -465,16 +475,21 @@ fun MpeiNeoApp(
 
     // Shared swipe-back handler. BARS uses the same gesture even when its
     // single WebView was initialized from the Home screen.
-    fun Modifier.serviceBackGesture(eligible: Boolean, interactive: Boolean): Modifier =
-        pointerInput(currentService, eligible, interactive) {
+    fun Modifier.serviceBackGesture(
+        eligible: Boolean,
+        interactive: Boolean,
+        mapEdgeZone: Boolean = false,
+    ): Modifier =
+        pointerInput(currentService, eligible, interactive, mapEdgeZone) {
             if (!eligible) return@pointerInput
             var acceptedGesture = false
             var gestureDistance = 0f
             val systemBackEdge = 24.dp.toPx()
             detectHorizontalDragGestures(
                 onDragStart = { start ->
-                    acceptedGesture = start.x >= systemBackEdge &&
-                        start.x <= size.width - systemBackEdge
+                    acceptedGesture = acceptsServiceBackStart(
+                        start.x, size.width.toFloat(), systemBackEdge, mapEdgeZone,
+                    )
                     gestureDistance = 0f
                 },
                 onHorizontalDrag = { change, amount ->
@@ -482,7 +497,7 @@ fun MpeiNeoApp(
                         gestureDistance = (gestureDistance + amount).coerceAtLeast(0f)
                         if (interactive) {
                             reveal = (1f - gestureDistance /
-                                size.width.toFloat()).coerceIn(0f, 1f)
+                                widthPx).coerceIn(0f, 1f)
                         }
                         if (amount > 0f) change.consume()
                     }
@@ -493,7 +508,7 @@ fun MpeiNeoApp(
                 },
                 onDragEnd = {
                     if (acceptedGesture && shouldCommitServiceBackSwipe(
-                            gestureDistance, size.width.toFloat(),
+                            gestureDistance, widthPx,
                         )
                     ) {
                         if (interactive) goBackOneService()
@@ -518,9 +533,6 @@ fun MpeiNeoApp(
             ) {
                 if (beneathService == null) {
                     SuperAppHome(
-                        schedule = scheduleState,
-                        bars = barsState,
-                        mail = mailState,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
@@ -529,7 +541,6 @@ fun MpeiNeoApp(
                         onSearch = {
                             if (currentService == null && !isTransitioning) openGlobalSearch()
                         },
-                        barsAutoRefreshEnabled = barsAutoRefreshEnabled,
                     )
                 } else serviceContent(beneathService, false)
             }
@@ -546,9 +557,28 @@ fun MpeiNeoApp(
                 Box(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationX = widthPx * (1f - reveal) }
-                        .serviceBackGesture(canHandleGesture, canInteractivelyPop),
+                        .serviceBackGesture(
+                            canHandleGesture && currentService != AppTab.MAPS,
+                            canInteractivelyPop,
+                        ),
                 ) {
                     serviceContent(currentService, true)
+                    if (currentService == AppTab.MAPS && canHandleGesture) {
+                        // Reserve a slim left strip for the interactive pop.
+                        // Everywhere else is exclusively for map panning/pinching.
+                        // Keep the top building-list and bottom attribution clear.
+                        Box(
+                            modifier = Modifier.align(Alignment.CenterStart)
+                                .width(96.dp).fillMaxHeight()
+                                .padding(top = 88.dp, bottom = 200.dp)
+                                .testTag("campus-map-swipe-back-zone")
+                                .serviceBackGesture(
+                                    eligible = true,
+                                    interactive = canInteractivelyPop,
+                                    mapEdgeZone = true,
+                                ),
+                        )
+                    }
                 }
             }
             // The BARS composition is mounted exactly once, including on Home.
