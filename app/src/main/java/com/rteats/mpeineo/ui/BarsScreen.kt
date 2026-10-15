@@ -97,6 +97,14 @@ import java.util.Date
 * Once authenticated, the same WebView session is used to extract the current marks into the
 * native Compose UI. The WebView is kept alive so "Открыть БАРС" exposes that exact session.
 */
+/** Pure guard: a disabled automatic update must not create a Home WebView. */
+internal fun shouldInitializeBarsWebView(
+  connectionRequired: Boolean,
+  hasWebView: Boolean,
+  active: Boolean,
+  backgroundAllowed: Boolean,
+): Boolean = connectionRequired && (hasWebView || active || backgroundAllowed)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -104,6 +112,8 @@ internal fun BarsScreen(
   viewModel: BarsViewModel,
   autoRefreshEnabled: Boolean = true,
   active: Boolean = true,
+  /** Keep the single WebView alive for automatic Home data refresh. */
+  allowBackgroundSync: Boolean = false,
   onBrowserExit: () -> Unit = {},
   onDetailOpenChange: (Boolean) -> Unit = {},
   openDisciplineName: String? = null,
@@ -136,24 +146,24 @@ internal fun BarsScreen(
   }
 
   val cacheFresh = state.hasFreshCache()
-  // A pager may precompose and immediately discard an off-screen BARS page.
-  // Only establish a connection while its tab is settled/visible. Once loaded,
-  // retain the same WebView for the entire visible BARS session, even when the
-  // extracted grades are cached, instead of destroying it after extraction.
-  // Keep the cached dashboard visible while first-session validation
-  // happens in a full-size, background WebView. Validation starts only once
-  // the BARS page is actually selected, not while the pager precomposes it.
-  // Cached-only mode stays offline until a manual refresh or portal open.
+  // The super-app keeps one BARS composition mounted even at Home. Auto-refresh
+  // may establish its authenticated WebView without entering the BARS service.
+  // Explicitly disabling automatic updates still suppresses that background work.
   val connectionRequired = autoRefreshEnabled || state.disciplines.isEmpty() ||
     manuallyRequestedConnection || state.browserVisible
-  val shouldHaveWebView = connectionRequired && (webView != null || active)
+  val shouldHaveWebView = shouldInitializeBarsWebView(
+    connectionRequired = connectionRequired,
+    hasWebView = webView != null,
+    active = active,
+    backgroundAllowed = allowBackgroundSync,
+  )
 
-  // The WebView remains mounted when switching to Mail/Settings. Suspend
-  // page activity while hidden, but do not destroy its session or JS bridge.
-  androidx.compose.runtime.LaunchedEffect(active, webView, autoRefreshEnabled) {
+  // A background Home sync must not pause JS while Main/Summary are loading.
+  // The same WebView survives entering/leaving BARS and retains its cookies.
+  androidx.compose.runtime.LaunchedEffect(active, allowBackgroundSync, webView, autoRefreshEnabled) {
     webView?.let { view ->
-      if (active) view.onResume() else view.onPause()
-      if (active && state.authStage == BarsAuthStage.AUTHENTICATED &&
+      if (active || allowBackgroundSync) view.onResume() else view.onPause()
+      if ((active || allowBackgroundSync) && state.authStage == BarsAuthStage.AUTHENTICATED &&
         !state.loginRequired &&
         autoRefreshGate.shouldRefresh(
           enabled = autoRefreshEnabled,
@@ -839,8 +849,8 @@ internal fun BarsScreen(
         // A background validation WebView must not consume taps or
         // horizontal pager swipes. Keep JS/network running; only
         // interactive login and the explicit browser accept input.
-        view.isEnabled = state.browserVisible ||
-          state.authStage == BarsAuthStage.WEB_AUTH
+        view.isEnabled = active && (state.browserVisible ||
+          state.authStage == BarsAuthStage.WEB_AUTH)
       },
         onRelease = { view ->
           viewModel.logWebEvent(

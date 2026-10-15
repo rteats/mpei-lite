@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -73,6 +75,7 @@ import com.rteats.mpeineo.MpeiNeoApplication
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
@@ -387,20 +390,9 @@ fun MpeiNeoApp(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        AppTab.BARS -> BarsScreen(
-                            viewModel = barsViewModel,
-                            autoRefreshEnabled = barsAutoRefreshEnabled,
-                            active = active,
-                            onDetailOpenChange = { if (active) barsDetailOpen = it },
-                            openDisciplineName = barsRequestedDiscipline,
-                            openDisciplineRequest = barsSearchRequest,
-                            onOpenDisciplineConsumed = { barsRequestedDiscipline = null },
-                            onBrowserExit = {
-                                barsBrowserJustClosed = true
-                                dismissIme("bars-browser-back")
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        // BARS lives in a permanent sibling composition below.
+                        // Its WebView must not be destroyed by Home/service routing.
+                        AppTab.BARS -> Unit
                         AppTab.MAIL -> {
                             MailScreen(
                                 viewModel = mailViewModel,
@@ -471,6 +463,48 @@ fun MpeiNeoApp(
         }
     }
 
+
+    // Shared swipe-back handler. BARS uses the same gesture even when its
+    // single WebView was initialized from the Home screen.
+    fun Modifier.serviceBackGesture(eligible: Boolean, interactive: Boolean): Modifier =
+        pointerInput(currentService, eligible, interactive) {
+            if (!eligible) return@pointerInput
+            var acceptedGesture = false
+            var gestureDistance = 0f
+            val systemBackEdge = 24.dp.toPx()
+            detectHorizontalDragGestures(
+                onDragStart = { start ->
+                    acceptedGesture = start.x >= systemBackEdge &&
+                        start.x <= size.width - systemBackEdge
+                    gestureDistance = 0f
+                },
+                onHorizontalDrag = { change, amount ->
+                    if (acceptedGesture) {
+                        gestureDistance = (gestureDistance + amount).coerceAtLeast(0f)
+                        if (interactive) {
+                            reveal = (1f - gestureDistance /
+                                size.width.toFloat()).coerceIn(0f, 1f)
+                        }
+                        if (amount > 0f) change.consume()
+                    }
+                },
+                onDragCancel = {
+                    if (acceptedGesture && interactive) animateReveal(1f)
+                    acceptedGesture = false
+                },
+                onDragEnd = {
+                    if (acceptedGesture && shouldCommitServiceBackSwipe(
+                            gestureDistance, size.width.toFloat(),
+                        )
+                    ) {
+                        if (interactive) goBackOneService()
+                        else backDispatcher?.onBackPressed()
+                    } else if (interactive) animateReveal(1f)
+                    acceptedGesture = false
+                },
+            )
+        }
+
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -496,11 +530,12 @@ fun MpeiNeoApp(
                         onSearch = {
                             if (currentService == null && !isTransitioning) openGlobalSearch()
                         },
+                        barsAutoRefreshEnabled = barsAutoRefreshEnabled,
                     )
                 } else serviceContent(beneathService, false)
             }
 
-            if (currentService != null) {
+            if (currentService != null && currentService != AppTab.BARS) {
                 val isNativeContent = currentService != AppTab.BARS ||
                     (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
                         !barsState.browserVisible)
@@ -509,58 +544,65 @@ fun MpeiNeoApp(
                 val canInteractivelyPop = canHandleGesture &&
                     !barsDetailOpen &&
                     !(currentService == AppTab.MAIL && mailState.selected != null)
-                var acceptedGesture = false
-                var gestureDistance = 0f
                 Box(
                     modifier = Modifier.fillMaxSize()
-                        .graphicsLayer {
-                            translationX = widthPx * (1f - reveal)
-                        }
-                        .pointerInput(currentService, canHandleGesture, canInteractivelyPop) {
-                            if (!canHandleGesture) return@pointerInput
-                            val systemBackEdge = 24.dp.toPx()
-                            detectHorizontalDragGestures(
-                                onDragStart = { start ->
-                                    acceptedGesture = start.x >= systemBackEdge &&
-                                        start.x <= size.width - systemBackEdge
-                                    gestureDistance = 0f
-                                },
-                                onHorizontalDrag = { change, amount ->
-                                    if (acceptedGesture) {
-                                        gestureDistance = (gestureDistance + amount)
-                                            .coerceAtLeast(0f)
-                                        if (canInteractivelyPop) {
-                                            reveal = (1f - gestureDistance /
-                                                size.width.toFloat()).coerceIn(0f, 1f)
-                                        }
-                                        if (amount > 0f) change.consume()
-                                    }
-                                },
-                                onDragCancel = {
-                                    if (acceptedGesture && canInteractivelyPop) animateReveal(1f)
-                                    acceptedGesture = false
-                                },
-                                onDragEnd = {
-                                    if (acceptedGesture && shouldCommitServiceBackSwipe(
-                                            gestureDistance, size.width.toFloat(),
-                                        )
-                                    ) {
-                                        if (canInteractivelyPop) {
-                                            goBackOneService()
-                                        } else {
-                                            // Inner Mail/BARS BackHandler remains responsible
-                                            // for the message/discipline detail transition.
-                                            backDispatcher?.onBackPressed()
-                                        }
-                                    } else if (canInteractivelyPop) animateReveal(1f)
-                                    acceptedGesture = false
-                                },
-                            )
-                        },
+                        .graphicsLayer { translationX = widthPx * (1f - reveal) }
+                        .serviceBackGesture(canHandleGesture, canInteractivelyPop),
                 ) {
                     serviceContent(currentService, true)
                 }
             }
+            // The BARS composition is mounted exactly once, including on Home.
+            // Place it offscreen while inactive rather than recreating WebViews.
+            // Compose layout still grants the full viewport to BARS DOM extraction.
+            val barsForeground = currentService == AppTab.BARS
+            val barsCanSwipe = barsForeground && !isTransitioning && !imeVisible &&
+                !barsState.browserVisible && !barsDetailOpen &&
+                barsState.authStage == BarsAuthStage.AUTHENTICATED
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .offset {
+                        IntOffset(
+                            x = (widthPx *
+                                (if (barsForeground) 1f - reveal else 1f)).roundToInt(),
+                            y = 0,
+                        )
+                    }
+                    .serviceBackGesture(barsCanSwipe, barsCanSwipe),
+            ) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    BarsScreen(
+                        viewModel = barsViewModel,
+                        autoRefreshEnabled = barsAutoRefreshEnabled,
+                        active = barsForeground,
+                        allowBackgroundSync = barsAutoRefreshEnabled,
+                        onDetailOpenChange = { if (barsForeground) barsDetailOpen = it },
+                        openDisciplineName = barsRequestedDiscipline,
+                        openDisciplineRequest = barsSearchRequest,
+                        onOpenDisciplineConsumed = { barsRequestedDiscipline = null },
+                        onBrowserExit = {
+                            barsBrowserJustClosed = true
+                            dismissIme("bars-browser-back")
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                AnimatedVisibility(
+                    visible = barsForeground && !imeVisible &&
+                        barsState.authStage == BarsAuthStage.AUTHENTICATED &&
+                        !barsState.browserVisible,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 16.dp),
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(110)),
+                ) {
+                    PortalFloatingButton(label = "БАРС", onClick = {
+                        barsBrowserJustClosed = false
+                        barsViewModel.showBrowser()
+                    })
+                }
+            }
+
             AnimatedVisibility(
                 visible = globalSearchOpen,
                 modifier = Modifier.align(Alignment.TopCenter).fillMaxSize(),

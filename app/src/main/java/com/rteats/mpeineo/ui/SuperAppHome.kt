@@ -48,6 +48,7 @@ internal fun SuperAppHome(
     mail: MailUiState,
     onOpen: (AppTab) -> Unit,
     onSearch: () -> Unit,
+    barsAutoRefreshEnabled: Boolean = true,
 ) {
     val unread = mail.items.count { it.unread }
     val clipboard = LocalClipboardManager.current
@@ -199,7 +200,13 @@ internal fun SuperAppHome(
         }
         if (mainLines.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Нет снимка Main. Откройте БАРС для извлечения.",
+                Text(
+                    when {
+                        bars.loginRequired -> "Сессия БАРС истекла. Для входа и 2FA откройте БАРС."
+                        !barsAutoRefreshEnabled -> "Автообновление БАРС выключено в настройках."
+                        bars.isLoading -> "Получаем данные Main автоматически…"
+                        else -> "Данные Main пока недоступны. Проверьте подключение к БАРС."
+                    },
                     style = MaterialTheme.typography.bodyMedium)
             }
         } else {
@@ -233,7 +240,13 @@ internal fun SuperAppHome(
         }
         if (summaryLines.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Нет снимка Summary. Откройте БАРС и дождитесь получения таблиц.",
+                Text(
+                    when {
+                        bars.loginRequired -> "Требуется вход в БАРС для получения Summary."
+                        !barsAutoRefreshEnabled -> "Автообновление БАРС выключено в настройках."
+                        bars.isLoading -> "Получаем таблицы Summary автоматически…"
+                        else -> "Summary пока недоступен. Повторная проверка — при следующем обновлении БАРС."
+                    },
                     style = MaterialTheme.typography.bodyMedium)
             }
         } else {
