@@ -347,13 +347,11 @@ internal fun SettingsScreen(
                 AppIcons.Settings,
                 interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
             ) {
-                SettingsAction(
-                    title = "Кнопки главной",
-                    detail = "Порядок и размер меняются кнопкой редактирования на главной",
-                    iconRes = AppIcons.Home,
-                    onClick = { onResetHomeLayout() },
-                    // The reset is explicit below; the descriptor above is informational.
-                    enabled = false,
+                Text(
+                    "Порядок и размер кнопок меняются значком редактирования на главной.",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     "Оформление",
