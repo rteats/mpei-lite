@@ -24,6 +24,8 @@ object AppIcons {
     @get:DrawableRes val Bars: Int get() = R.drawable.ms_account_balance
     @get:DrawableRes val Mail: Int get() = R.drawable.ms_mail
     @get:DrawableRes val Settings: Int get() = R.drawable.ms_settings
+    @get:DrawableRes val Appearance: Int get() = R.drawable.ms_palette
+    @get:DrawableRes val Haptics: Int get() = R.drawable.ms_vibration
     @get:DrawableRes val Home: Int get() = R.drawable.ms_home
     @get:DrawableRes val Back: Int get() = R.drawable.ms_arrow_back
     @get:DrawableRes val Forward: Int get() = R.drawable.ms_arrow_forward
