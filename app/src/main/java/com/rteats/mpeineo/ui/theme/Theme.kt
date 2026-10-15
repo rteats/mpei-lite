@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui.theme
 
 import android.os.Build
+import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -34,8 +35,15 @@ private val NeoTypography = Typography().let { default ->
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun MpeiNeoTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun MpeiNeoTheme(
+    theme: InterfaceTheme = InterfaceTheme.SYSTEM,
+    content: @Composable () -> Unit,
+) {
+    val dark = when (theme) {
+        InterfaceTheme.SYSTEM -> isSystemInDarkTheme()
+        InterfaceTheme.LIGHT -> false
+        InterfaceTheme.DARK -> true
+    }
     val context = LocalContext.current
     val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
