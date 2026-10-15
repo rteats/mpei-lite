@@ -1144,138 +1144,229 @@ private fun BarsNativeDashboard(
 * Expressive BARS dashboard: dominant profile surface + factual semester
 * summary + approachable, interactive discipline cards.
 */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+/** A quiet data-first profile summary, rather than unparsed BARS text chips. */
 @Composable
 private fun BarsUserHeader(
   state: BarsUiState,
 ) {
-  var showStudentDetails by rememberSaveable { mutableStateOf(false) }
-  var showAllIndicators by rememberSaveable { mutableStateOf(false) }
+  var showMore by rememberSaveable { mutableStateOf(false) }
   val extras = remember(state.rawMain) { BarsReportParser.parseMain(state.rawMain) }
+  val facts = remember(extras, state.studentDetails) {
+    barsProfileFacts(extras, state.studentDetails)
+  }
+  val filtered = facts.filterNot {
+    (it.kind == BarsProfileKind.GROUP && state.profileGroup.isNotBlank()) ||
+      (it.kind == BarsProfileKind.SEMESTER && state.semester.isNotBlank())
+  }
+  val primary = filtered.filter { it.kind.featurePriority() < 100 }
+    .sortedBy { it.kind.featurePriority() }.take(4)
+  val secondary = filtered.filterNot { it in primary }
+  val colors = MaterialTheme.colorScheme
+
   Column(
     modifier = Modifier.fillMaxWidth()
-      .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
-    verticalArrangement = Arrangement.spacedBy(7.dp),
+      .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    Text(
-      state.profileName.ifBlank { "Студент МЭИ" },
-      style = MaterialTheme.typography.titleLarge,
-      maxLines = 3,
-      overflow = TextOverflow.Ellipsis,
-    )
-    val identity = listOf(state.profileGroup, state.semester)
-      .filter { it.isNotBlank() }.joinToString(" · ")
-    if (identity.isNotBlank()) {
+    Column(
+      modifier = Modifier.padding(horizontal = 4.dp),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
       Text(
-        identity,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        state.profileName.ifBlank { "Студент МЭИ" },
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
       )
+      val identity = listOf(state.profileGroup, state.semester)
+        .filter { it.isNotBlank() }.joinToString(" · ")
+      if (identity.isNotBlank()) {
+        Text(
+          identity,
+          style = MaterialTheme.typography.bodyMedium,
+          color = colors.onSurfaceVariant,
+        )
+      }
+    }
+
+    if (primary.isNotEmpty()) {
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        primary.chunked(2).forEach { rowFacts ->
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            rowFacts.forEach { fact ->
+              BarsProfileFactCard(
+                fact = fact,
+                modifier = Modifier.weight(1f),
+              )
+            }
+            if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
+          }
+        }
+      }
+    }
+
+    val graded = state.disciplines.count {
+      it.finalMarkValue != null || it.markValues.isNotEmpty()
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      val graded = state.disciplines.count {
-        it.finalMarkValue != null || it.markValues.isNotEmpty()
-      }
       Text(
         state.disciplines.size.toString() + " дисциплин · " +
           graded + " с оценками",
         modifier = Modifier.weight(1f),
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = colors.onSurfaceVariant,
       )
       if (state.lastUpdatedAtMillis > 0) {
         Text(
-          "Обновлено " + DateFormat.getTimeInstance(DateFormat.SHORT)
+          DateFormat.getTimeInstance(DateFormat.SHORT)
             .format(Date(state.lastUpdatedAtMillis)),
           style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          color = colors.onSurfaceVariant,
         )
       }
     }
-    if (extras.indicators.isNotEmpty()) {
-      FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+
+    if (secondary.isNotEmpty()) {
+      TextButton(
+        onClick = { showMore = !showMore },
+        modifier = Modifier.padding(start = 0.dp),
       ) {
-        (if (showAllIndicators) extras.indicators else extras.indicators.take(3))
-          .forEach { indicator ->
-            Surface(
-              shape = MaterialTheme.shapes.large,
-              color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-              Text(
-                indicator,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+        AppIcon(
+          AppIcons.Person,
+          contentDescription = null,
+          modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("Сведения об обучении")
+        Spacer(Modifier.width(4.dp))
+        AppIcon(
+          if (showMore) AppIcons.ExpandLess else AppIcons.ExpandMore,
+          contentDescription = null,
+          modifier = Modifier.size(20.dp),
+        )
+      }
+      AnimatedVisibility(visible = showMore) {
+        Surface(
+          modifier = Modifier.fillMaxWidth(),
+          shape = MaterialTheme.shapes.extraLarge,
+          color = colors.surfaceContainerLow,
+        ) {
+          Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            secondary.forEachIndexed { index, fact ->
+              if (index != 0) HorizontalDivider(
+                color = colors.outlineVariant.copy(alpha = 0.45f),
               )
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                AppIcon(
+                  barsProfileFactIcon(fact.kind),
+                  contentDescription = null,
+                  tint = colors.onSurfaceVariant,
+                  modifier = Modifier.size(20.dp),
+                )
+                Column(
+                  modifier = Modifier.weight(1f),
+                  verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                  Text(
+                    fact.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                  )
+                  Text(
+                    fact.value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                  )
+                }
+              }
             }
           }
-        if (extras.indicators.size > 3) {
-          TextButton(onClick = { showAllIndicators = !showAllIndicators }) {
-            Text(if (showAllIndicators) "Свернуть"
-              else "Ещё " + (extras.indicators.size - 3))
-          }
-        }
-      }
-    }
-    if (state.studentDetails.isNotEmpty() || extras.studentFields.isNotEmpty()) {
-      TextButton(
-        onClick = { showStudentDetails = !showStudentDetails },
-        modifier = Modifier.padding(top = 5.dp),
-      ) {
-        Text("Данные студента")
-        AppIcon(
-          if (showStudentDetails) AppIcons.ExpandLess
-          else AppIcons.ExpandMore,
-          contentDescription = null,
-        )
-      }
-    }
-    AnimatedVisibility(visible = showStudentDetails) {
-      Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        state.studentDetails.forEach { detail ->
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-          ) {
-            Text(
-              detail.label,
-              modifier = Modifier.weight(1f),
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-              detail.value,
-              modifier = Modifier.weight(1.4f),
-              style = MaterialTheme.typography.bodySmall,
-            )
-          }
-        }
-        extras.studentFields.filterNot { raw ->
-          state.studentDetails.any { detail ->
-            raw.contains(detail.label, ignoreCase = true) &&
-              raw.contains(detail.value, ignoreCase = true)
-          }
-        }.forEach { extra ->
-          Text(
-            extra,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
         }
       }
     }
   }
+}
+
+@Composable
+private fun BarsProfileFactCard(
+  fact: BarsProfileFact,
+  modifier: Modifier = Modifier,
+) {
+  val colors = MaterialTheme.colorScheme
+  Surface(
+    modifier = modifier.heightIn(min = 105.dp),
+    shape = MaterialTheme.shapes.extraLarge,
+    color = colors.surfaceContainerLow,
+  ) {
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(14.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = colors.primaryContainer,
+          contentColor = colors.onPrimaryContainer,
+        ) {
+          Box(
+            modifier = Modifier.size(34.dp),
+            contentAlignment = Alignment.Center,
+          ) {
+            AppIcon(
+              barsProfileFactIcon(fact.kind),
+              contentDescription = null,
+              modifier = Modifier.size(20.dp),
+            )
+          }
+        }
+        Text(
+          fact.label,
+          modifier = Modifier.weight(1f),
+          style = MaterialTheme.typography.labelMedium,
+          color = colors.onSurfaceVariant,
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      Text(
+        fact.value,
+        style = MaterialTheme.typography.titleMedium,
+        color = colors.onSurface,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+private fun barsProfileFactIcon(kind: BarsProfileKind): Int = when (kind) {
+  BarsProfileKind.COURSE -> AppIcons.Education
+  BarsProfileKind.RATING -> AppIcons.Ranking
+  BarsProfileKind.SCORE -> AppIcons.Analytics
+  BarsProfileKind.FORM -> AppIcons.StudyForm
+  BarsProfileKind.STATUS -> AppIcons.Verified
+  BarsProfileKind.FACULTY, BarsProfileKind.INSTITUTE -> AppIcons.Faculty
+  BarsProfileKind.PROGRAM -> AppIcons.Education
+  BarsProfileKind.GROUP -> AppIcons.GroupList
+  BarsProfileKind.SEMESTER -> AppIcons.Schedule
+  BarsProfileKind.STUDENT_ID -> AppIcons.StudentId
+  BarsProfileKind.OTHER -> AppIcons.Person
 }
 
 /**
