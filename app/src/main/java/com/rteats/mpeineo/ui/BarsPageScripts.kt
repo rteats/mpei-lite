@@ -372,20 +372,89 @@ internal val BARS_EXTRACT_SCRIPT = """
  */
 internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
 (function() {
-    const routes = {main: '', summary: ''};
+    const mainPath = '/bars_web/ST_Study/Main/Main';
+    const summaryPath = '/bars_web/ST_Study/Main/Summary';
+    const page = new URL(window.location.href);
+    const found = {
+        main: '', summary: '', source: 'missing', currentParam: false,
+        scopedLinks: 0, profileLinks: 0, distinctIds: 0, mainLinks: 0, summaryLinks: 0
+    };
+
+    // Only data from the trusted, authenticated BARS study document counts.
+    if (page.protocol !== 'https:' || page.hostname.toLowerCase() !== 'bars.mpei.ru' ||
+        page.port || page.username || page.password || page.pathname !== mainPath) {
+        return JSON.stringify(found);
+    }
+
+    const origin = page.origin;
+    const studentIds = new Set();
+    const profileIds = new Set();
+    const mainLinks = new Map();
+    const summaryLinks = new Map();
+
+    function observedId(url) {
+        if (url.origin !== origin ||
+            (!url.pathname.startsWith('/bars_web/ST_Study/') &&
+             url.pathname !== '/bars_web/ST/Student/StudentLifeCycle')) return null;
+        const ids = url.searchParams.getAll('studentID');
+        if (ids.length !== 1 || !/^[a-z0-9-]{1,128}$/i.test(ids[0])) return null;
+        return ids[0];
+    }
+
+    const currentId = observedId(page);
+    found.currentParam = !!currentId;
     document.querySelectorAll('a[href]').forEach(function(anchor) {
         try {
-            const link = new URL(anchor.getAttribute('href'), window.location.href);
-            if (link.origin !== window.location.origin ||
-                !link.searchParams.get('studentID')) return;
-            if (link.pathname === '/bars_web/ST_Study/Main/Main') {
-                routes.main = link.href;
-            } else if (link.pathname === '/bars_web/ST_Study/Main/Summary') {
-                routes.summary = link.href;
+            const url = new URL(anchor.getAttribute('href'), page.href);
+            const id = observedId(url);
+            if (!id) return;
+            if (url.pathname === '/bars_web/ST/Student/StudentLifeCycle') {
+                profileIds.add(id);
+                found.profileLinks++;
+                return;
+            }
+            found.scopedLinks++;
+            studentIds.add(id);
+            url.hash = '';
+            if (url.pathname === mainPath) {
+                found.mainLinks++;
+                mainLinks.set(id, url.href);
+            } else if (url.pathname === summaryPath) {
+                found.summaryLinks++;
+                summaryLinks.set(id, url.href);
             }
         } catch (_) {}
     });
-    return JSON.stringify(routes);
+    const allIds = new Set([...studentIds, ...profileIds]);
+    found.distinctIds = allIds.size;
+
+    let selected = null;
+    if (currentId) {
+        selected = currentId;
+        found.source = 'current-url';
+    } else if (allIds.size === 1) {
+        selected = allIds.values().next().value;
+        found.source = mainLinks.has(selected) ? 'menu-main' :
+            summaryLinks.has(selected) ? 'menu-summary' :
+            profileIds.has(selected) ? 'profile-link' : 'scoped-link';
+    } else if (allIds.size > 1) {
+        // A page may list several students; never guess which is active.
+        found.source = 'ambiguous';
+    }
+    if (!selected) return JSON.stringify(found);
+
+    function route(path) {
+        const url = new URL(path, origin);
+        url.searchParams.set('studentID', selected);
+        return url.href;
+    }
+    // Prefer the server's official links when present. Only synthesize the
+    // matching route from a student ID actually observed on this document.
+    found.main = mainLinks.get(selected) || (currentId ? (() => {
+        const url = new URL(page.href); url.hash = ''; return url.href;
+    })() : route(mainPath));
+    found.summary = summaryLinks.get(selected) || route(summaryPath);
+    return JSON.stringify(found);
 })()
 """.trimIndent()
 

@@ -137,6 +137,7 @@ internal fun BarsScreen(
   var summaryFetchAttempted by remember { mutableStateOf(false) }
   var summaryExtractionStarted by remember { mutableStateOf(false) }
   var officialMainUrl by remember { mutableStateOf<String?>(null) }
+  var summaryRouteDiscoveryGeneration by remember { mutableStateOf(0) }
   var needsFullViewport by remember { mutableStateOf(true) }
   var lastPageStateSignature by remember { mutableStateOf<String?>(null) }
   var mainFrameFailed by remember { mutableStateOf(false) }
@@ -241,35 +242,66 @@ internal fun BarsScreen(
     if (webView !== view || state.browserVisible ||
       !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
     ) return
-    // Reserve the attempt before the asynchronous JavaScript callback.
+
+    // Route discovery is asynchronous. Keep the authenticated document laid
+    // out at its normal size until discovery/navigation is finished: reducing
+    // Chromium to 1dp can remove or postpone responsive menu markup.
     summaryFetchAttempted = true
     summaryExtractionStarted = false
-    view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
+    needsFullViewport = true
+    val generation = ++summaryRouteDiscoveryGeneration
+
+    fun discover(attempt: Int) {
       if (webView !== view || state.browserVisible ||
         navigationController !== controller ||
+        !summaryFetchAttempted || generation != summaryRouteDiscoveryGeneration ||
         !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
-      ) return@evaluateJavascript
+      ) return
 
-      val routes = BarsAuthenticatedRoutePolicy.parseJsResult(result)
-      if (routes == null) {
+      view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
+        if (webView !== view || state.browserVisible ||
+          navigationController !== controller ||
+          !summaryFetchAttempted || generation != summaryRouteDiscoveryGeneration ||
+          !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+        ) return@evaluateJavascript
+
+        val discovery = BarsAuthenticatedRoutePolicy.parseJsResult(result)
+        val routes = BarsAuthenticatedRoutePolicy.validatedRoutes(discovery)
         viewModel.logWebEvent(
-          "Summary route unavailable: official student-scoped menu links missing",
+          "Summary route discovery attempt=${attempt + 1} " +
+            (discovery?.safeDiagnostics() ?: "result=unreadable") +
+            " valid=${routes != null}",
         )
-        needsFullViewport = false
-        viewModel.summaryCaptureFailed(
-          "БАРС не предоставил ссылку на Сводку для текущего студента. " +
-            "Откройте БАРС или повторите обновление.",
+        if (routes == null) {
+          if (attempt < 3) {
+            // BARS renders parts of its navigation asynchronously on some
+            // devices. Probe again without reloading or disturbing marks.
+            val delayMs = when (attempt) {
+              0 -> 450L
+              1 -> 1_200L
+              else -> 2_400L
+            }
+            view.postDelayed({ discover(attempt + 1) }, delayMs)
+          } else {
+            viewModel.logWebEvent("Summary route unavailable after DOM retries")
+            needsFullViewport = false
+            viewModel.summaryCaptureFailed(
+              "БАРС не предоставил ссылку на Сводку для текущего студента. " +
+                "Откройте БАРС или повторите обновление.",
+            )
+          }
+          return@evaluateJavascript
+        }
+
+        officialMainUrl = routes.main
+        viewModel.summaryCaptureStarted()
+        viewModel.logWebEvent(
+          "Summary official navigation resolved=true; opening student-scoped page",
         )
-        return@evaluateJavascript
+        controller.load(routes.summary, reason)
       }
-      officialMainUrl = routes.main
-      needsFullViewport = true
-      viewModel.summaryCaptureStarted()
-      viewModel.logWebEvent(
-        "Summary official navigation linkFound=true studentParam=true",
-      )
-      controller.load(routes.summary, reason)
     }
+    discover(0)
   }
 
   Box(
@@ -682,7 +714,12 @@ internal fun BarsScreen(
                     viewModel.logWebEvent("ignored stale extraction result")
                     return@post
                   }
-                  needsFullViewport = false
+                  // Keep the offscreen WebView at full layout size until the
+                  // Main -> Summary route has been resolved. On the return
+                  // trip, marks are already cached and it can shrink again.
+                  if (summaryFetchAttempted && !state.isSummaryLoading) {
+                    needsFullViewport = false
+                  }
                   readiness.reset()
                   viewModel.logWebEvent("extraction bridge returned data")
                   CookieManager.getInstance().flush()
