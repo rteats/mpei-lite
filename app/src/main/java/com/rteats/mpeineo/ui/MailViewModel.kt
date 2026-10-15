@@ -574,6 +574,9 @@ internal class MailViewModel(
                         notice = "Письмо отправлено",
                     )
                 }
+                // If the user composed from Sent, show the new saved copy
+                // without requiring another manual folder switch.
+                if (_state.value.mailbox == OwaMailFolder.SENT) refreshSent()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
