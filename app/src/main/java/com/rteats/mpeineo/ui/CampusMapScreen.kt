@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -276,6 +277,32 @@ internal fun clampCampusPan(
     )
 }
 
+/**
+ * Keeps the world point below the fingers stationary when changing scale.
+ * The pan delta is measured in screen pixels; constraints still apply at the edges.
+ */
+internal data class CampusViewportGesture(val zoom: Float, val pan: Offset)
+
+internal fun applyCampusGesture(
+    zoom: Float,
+    pan: Offset,
+    zoomChange: Float,
+    panChange: Offset,
+    centroid: Offset,
+    viewport: IntSize,
+    world: Rect,
+): CampusViewportGesture {
+    if (viewport.width <= 0 || viewport.height <= 0 || zoom <= 0f) {
+        return CampusViewportGesture(zoom, pan)
+    }
+    val nextZoom = (zoom * zoomChange).coerceIn(.65f, 5f)
+    val factor = nextZoom / zoom
+    val screenCenter = Offset(viewport.width / 2f, viewport.height / 2f)
+    val nextPan = pan + panChange + (centroid - screenCenter - pan) * (1f - factor)
+    val scale = max(viewport.width / 600f, viewport.height / 850f) * nextZoom
+    return CampusViewportGesture(nextZoom, clampCampusPan(nextPan, scale, viewport, world))
+}
+
 private fun roadMeters(kind: String): Float = when (kind) {
     "primary", "secondary" -> 13f
     "tertiary", "residential", "unclassified" -> 9f
@@ -512,11 +539,18 @@ internal fun CampusMapScreen(
                     viewport = it
                     pan = fitPan(pan, zoom)
                 }
-                // Full-screen right-swipe now belongs to the service back gesture.
-                // Map drag/pinch transformation is temporarily disabled; zoom controls,
-                // building selection and recenter remain available.
+                // Taps select buildings; a double-tap zooms toward the touched point.
+                // Drag and pinch are handled separately, so taps still cancel on movement.
                 .pointerInput(prepared, places) {
-                    detectTapGestures { tap ->
+                    detectTapGestures(
+                        onDoubleTap = { tap ->
+                            val next = applyCampusGesture(
+                                zoom, pan, 1.6f, Offset.Zero, tap, viewport, prepared.bounds,
+                            )
+                            zoom = next.zoom
+                            pan = next.pan
+                        },
+                        onTap = { tap ->
                         val scale = mapScale().takeIf { it > 0 } ?: return@detectTapGestures
                         val point = Offset(
                             (tap.x - viewport.width / 2f - pan.x) / scale,
@@ -539,6 +573,18 @@ internal fun CampusMapScreen(
                         }
                         selected = polygonHit ?: nearby
                         selectedRoom = null
+                        },
+                    )
+                }
+                // One-finger pan and two-finger pinch, with zoom anchored to the
+                // gesture centroid instead of snapping toward the map's center.
+                .pointerInput(prepared.bounds, viewport) {
+                    detectTransformGestures { centroid, panDelta, zoomDelta, _ ->
+                        val next = applyCampusGesture(
+                            zoom, pan, zoomDelta, panDelta, centroid, viewport, prepared.bounds,
+                        )
+                        zoom = next.zoom
+                        pan = next.pan
                     }
                 },
         ) {
