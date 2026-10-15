@@ -72,6 +72,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+          cache-read-only: true
 
       - name: Validate stable signing secrets
         env:
@@ -149,6 +150,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+          cache-read-only: true
 
       - name: Download exact stable APK
         uses: actions/download-artifact@v5
