@@ -73,6 +73,10 @@ import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.MpeiNeoApplication
+import com.rteats.mpeineo.data.InterfacePreferences
+import com.rteats.mpeineo.data.InterfaceTheme
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -121,10 +125,37 @@ fun MpeiNeoApp(
     viewModel: MainViewModel,
     initialMailTab: Boolean = false,
     mailNotificationTarget: MailNotificationTarget? = null,
+    interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
+    onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
 ) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
     val hostView = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
+    val homePrefs = remember(application) { HomeLayoutPreferences(application) }
+    var homeTiles by remember(homePrefs) { mutableStateOf(homePrefs.read()) }
+    val interfacePrefs = remember(application) { InterfacePreferences(application) }
+    var navigationHaptics by remember(interfacePrefs) {
+        mutableStateOf(interfacePrefs.navigationHaptics)
+    }
+    fun changeHomeLayout(next: List<HomeTile>) {
+        val normalized = HomeTileLayout.normalize(next)
+        val before = homeTiles
+        if (before == normalized) return
+        homePrefs.write(normalized)
+        homeTiles = normalized
+        val oldIndex = before.map { it.tab }
+        val newIndex = normalized.map { it.tab }
+        if (oldIndex != newIndex) {
+            diagnostics.log("HOME_LAYOUT", "reorder=" + newIndex.joinToString(",") { it.name })
+        } else {
+            normalized.firstOrNull { tile ->
+                before.firstOrNull { it.tab == tile.tab }?.size != tile.size
+            }?.let { tile ->
+                diagnostics.log("HOME_LAYOUT", "resize=" + tile.tab.name + " size=" + tile.size.name)
+            }
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputMethodManager = remember(hostView) {
@@ -248,6 +279,9 @@ fun MpeiNeoApp(
 
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
         transitionJob?.cancel()
+        if (navigationHaptics && !viaClassroom) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
         if (currentService == AppTab.MAIL && mailWebVisible) {
             dismissIme("mail-leave-service")
             mailWebVisible = false
@@ -272,6 +306,9 @@ fun MpeiNeoApp(
 
     fun goBackOneService() {
         if (isTransitioning || routeNames.isEmpty()) return
+        if (navigationHaptics) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
         logNavigation("superapp pop " + (currentService?.name ?: "HOME") +
             " depth=" + routeNames.size)
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
@@ -436,6 +473,19 @@ fun MpeiNeoApp(
                                 barsAutoRefreshEnabled = enabled
                             },
                             active = active,
+                            interfaceTheme = interfaceTheme,
+                            onInterfaceThemeChange = onInterfaceThemeChange,
+                            navigationHaptics = navigationHaptics,
+                            onNavigationHapticsChange = { enabled ->
+                                interfacePrefs.setNavigationHaptics(enabled)
+                                navigationHaptics = enabled
+                                diagnostics.log("UI_PREF", "navigation_haptics=" + enabled)
+                            },
+                            onResetHomeLayout = {
+                                homePrefs.reset()
+                                homeTiles = HomeTileLayout.defaults
+                                diagnostics.log("HOME_LAYOUT", "reset=defaults")
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -534,6 +584,11 @@ fun MpeiNeoApp(
             ) {
                 if (beneathService == null) {
                     SuperAppHome(
+                        tiles = homeTiles,
+                        onChangeLayout = ::changeHomeLayout,
+                        onEditModeChange = { editing ->
+                            diagnostics.log("HOME_LAYOUT", "edit_mode=" + editing)
+                        },
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
