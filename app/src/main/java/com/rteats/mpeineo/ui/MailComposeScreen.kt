@@ -1,6 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +40,7 @@ import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.OwaComposeProtocol
 
 /** Native message composer; all values remain in MailViewModel while navigating. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailComposeScreen(
     state: MailUiState,
@@ -86,7 +87,7 @@ internal fun MailComposeScreen(
         item(key = "compose-to") {
             OutlinedTextField(
                 value = draft.to,
-                onValueChange = { value -> viewModel.editDraft { copy(to = value) } },
+                onValueChange = { value -> viewModel.editDraft { it.copy(to = value) } },
                 label = { Text("Кому") },
                 placeholder = { Text("address@example.com") },
                 modifier = Modifier.fillMaxWidth(),
@@ -108,7 +109,7 @@ internal fun MailComposeScreen(
             item(key = "compose-cc") {
                 OutlinedTextField(
                     value = draft.cc,
-                    onValueChange = { value -> viewModel.editDraft { copy(cc = value) } },
+                    onValueChange = { value -> viewModel.editDraft { it.copy(cc = value) } },
                     label = { Text("Копия") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.sending,
@@ -117,7 +118,7 @@ internal fun MailComposeScreen(
             item(key = "compose-bcc") {
                 OutlinedTextField(
                     value = draft.bcc,
-                    onValueChange = { value -> viewModel.editDraft { copy(bcc = value) } },
+                    onValueChange = { value -> viewModel.editDraft { it.copy(bcc = value) } },
                     label = { Text("Скрытая копия") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.sending,
@@ -127,7 +128,7 @@ internal fun MailComposeScreen(
         item(key = "compose-subject") {
             OutlinedTextField(
                 value = draft.subject,
-                onValueChange = { value -> viewModel.editDraft { copy(subject = value) } },
+                onValueChange = { value -> viewModel.editDraft { it.copy(subject = value) } },
                 label = { Text("Тема") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -137,7 +138,7 @@ internal fun MailComposeScreen(
         item(key = "compose-body") {
             OutlinedTextField(
                 value = draft.body,
-                onValueChange = { value -> viewModel.editDraft { copy(body = value) } },
+                onValueChange = { value -> viewModel.editDraft { it.copy(body = value) } },
                 label = { Text("Сообщение") },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 230.dp),
                 minLines = 8,
