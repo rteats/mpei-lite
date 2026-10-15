@@ -377,7 +377,7 @@ internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
     const page = new URL(window.location.href);
     const found = {
         main: '', summary: '', source: 'missing', currentParam: false,
-        scopedLinks: 0, distinctIds: 0, mainLinks: 0, summaryLinks: 0
+        scopedLinks: 0, profileLinks: 0, distinctIds: 0, mainLinks: 0, summaryLinks: 0
     };
 
     // Only data from the trusted, authenticated BARS study document counts.
@@ -410,6 +410,7 @@ internal val BARS_AUTHENTICATED_ROUTES_SCRIPT = """
             if (!id) return;
             if (url.pathname === '/bars_web/ST/Student/StudentLifeCycle') {
                 profileIds.add(id);
+                found.profileLinks++;
                 return;
             }
             found.scopedLinks++;
