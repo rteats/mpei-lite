@@ -420,9 +420,13 @@ class OwaMailRepository(
                 var changeKey = item.optString("ChangeKey").takeIf { it.isNotBlank() }
                     ?: throw ServiceFailure("missing_draft_change_key")
 
+                var uploadedBytes = 0L
                 files.forEachIndexed { index, file ->
                     onStage("Вложение ${index + 1} из ${files.size}…")
                     val bytes = withContext(Dispatchers.IO) { readOutgoingFile(file) }
+                    uploadedBytes += bytes.size
+                    if (uploadedBytes > MAX_OUTGOING_TOTAL)
+                        throw ServiceFailure("attachment_limit")
                     val response = service(
                         "CreateAttachment", "CreateAttachmentAction",
                         OwaComposeProtocol.attach(id, changeKey, file, bytes),
@@ -543,8 +547,12 @@ class OwaMailRepository(
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 8000
-            connection.readTimeout = 15000
+            connection.readTimeout =
+                if (action in setOf("CreateItem", "CreateAttachment", "UpdateItem"))
+                    90000 else 15000
             connection.doOutput = true
+            val payloadBytes = payload.toByteArray(Charsets.UTF_8)
+            connection.setFixedLengthStreamingMode(payloadBytes.size)
             connection.setRequestProperty("Cookie", session.cookieHeader)
             connection.setRequestProperty("X-OWA-CANARY", session.canary)
             connection.setRequestProperty("Action", action)
@@ -557,7 +565,7 @@ class OwaMailRepository(
             connection.setRequestProperty("Origin", "https://mail.mpei.ru")
             connection.setRequestProperty("Referer", OWA_URL)
             connection.setRequestProperty("User-Agent", session.userAgent)
-            connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            connection.outputStream.use { it.write(payloadBytes) }
             val status = connection.responseCode
             val renewed = connection.headerFields
                 .filterKeys { it?.equals("Set-Cookie", ignoreCase = true) == true }
