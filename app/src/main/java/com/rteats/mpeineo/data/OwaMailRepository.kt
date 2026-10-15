@@ -257,7 +257,7 @@ class OwaMailRepository(
      * No email addresses or subjects are written to diagnostics.
      */
     suspend fun sentRecipientNames(summaries: List<MailSummary>): Map<Long, List<String>> {
-        val pending = summaries.filter { it.recipients.isEmpty() &&
+        val pending = summaries.filter { it.recipients.isNullOrEmpty() &&
             !it.owaConversationId.isNullOrBlank() }.take(10)
         if (pending.isEmpty()) return emptyMap()
         val ids = pending.mapNotNull { it.owaConversationId }
