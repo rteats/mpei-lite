@@ -1,8 +1,8 @@
 package com.rteats.mpeineo.ui
 
 /*
- * Temporary exploratory capture for the super-app Home raw BARS dump.
- * Capture only visible student profile/ratings and the two educational tables.
+ * Cache visible student profile indicators and educational tables for native BARS views.
+ * Keep these captures independent from the official login flow.
  * No scripts, passwords, cookies, hidden inputs, credentials or page HTML.
  * The saved user-provided HTML defines these stable selectors.
  */
