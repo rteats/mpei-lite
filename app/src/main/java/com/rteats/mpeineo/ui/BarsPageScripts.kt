@@ -70,9 +70,19 @@ internal val BARS_PAGE_STATE_SCRIPT = """
                 const summaryRoute = path.indexOf("/main/summary") >= 0;
                 const markMatrix = document.getElementById("tableMarkSummary");
                 const attendance = document.getElementById("tableSkipSummary");
-                const summaryReady = summaryRoute && !!markMatrix && !!attendance &&
-                    markMatrix.querySelectorAll("tr").length >= 4 &&
-                    attendance.querySelectorAll("tr").length >= 4;
+                // Small cohorts can have fewer than four table rows. A real
+                // rendered data row (header + at least one populated row) is
+                // sufficient; the AJAX observer keeps waiting otherwise.
+                function hasReportData(table) {
+                    if (!table) return false;
+                    const rows = Array.from(table.querySelectorAll("tr"));
+                    return rows.length >= 2 && rows.some(function(row, index) {
+                        return index > 0 && Array.from(row.querySelectorAll("td, th"))
+                            .some(function(cell) { return !!(cell.textContent || "").trim(); });
+                    });
+                }
+                const summaryReady = summaryRoute &&
+                    hasReportData(markMatrix) && hasReportData(attendance);
                 const studentList = path.indexOf("/student/liststudent") >= 0;
                 const hasOneTimeCodeInput = !!document.querySelector(
                     'input[autocomplete="one-time-code"], ' +
