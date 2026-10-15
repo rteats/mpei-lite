@@ -87,7 +87,7 @@ internal fun mergeOwaSentPages(
 ): List<MailSummary> {
     val byId = cached.associateBy { it.uidValidity to it.uid }
     return (incoming + cached).distinctBy { it.uidValidity to it.uid }.map { message ->
-        if (message.recipients.isNotEmpty()) message
+        if (!message.recipients.isNullOrEmpty()) message
         else byId[message.uidValidity to message.uid]?.recipients
             ?.takeIf { it.isNotEmpty() }?.let { message.copy(recipients = it) } ?: message
     }
@@ -113,7 +113,7 @@ internal class MailViewModel(
         sentRecipientJob?.cancel()
         val version = sessionVersion
         sentRecipientJob = viewModelScope.launch {
-            for (batch in items.filter { it.recipients.isEmpty() }.chunked(10)) {
+            for (batch in items.filter { it.recipients.isNullOrEmpty() }.chunked(10)) {
                 val resolved = try {
                     owaMailRepository.sentRecipientNames(batch)
                 } catch (cancelled: CancellationException) {
@@ -388,7 +388,7 @@ internal class MailViewModel(
                         current.selected?.uidValidity != summary.uidValidity) current
                     else current.copy(message = detail, loadingMessage = false,
                         sentItems = if (current.mailbox == OwaMailFolder.SENT &&
-                            detail.recipients.isNotEmpty()) current.sentItems.map { row ->
+                            !detail.recipients.isNullOrEmpty()) current.sentItems.map { row ->
                                 if (row.uid == summary.uid) row.copy(recipients = detail.recipients)
                                 else row
                             } else current.sentItems,
