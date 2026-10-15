@@ -526,6 +526,9 @@ internal fun BarsScreen(
 
           view.addJavascriptInterface(
             BarsJavascriptBridge(
+              onSummaryDiagnostic = { safeMessage ->
+                viewModel.logWebEvent("Summary DOM " + safeMessage.take(180))
+              },
               onPageState = { json ->
                 view.post {
                   if (webView !== view) return@post
@@ -635,6 +638,7 @@ internal fun BarsScreen(
                           "Для загрузки Сводки требуется повторный вход в БАРС.",
                         )
                       }
+                      officialMainUrl = null
                       viewModel.webAuth(page.url)
                     }
                     BarsPageKind.MARKS_LOADING -> {
@@ -824,13 +828,17 @@ internal fun BarsScreen(
               if (BarsDocumentPolicy.isCurrent(url, BARS_SUMMARY_URL) &&
                 summaryFetchAttempted
               ) {
+                view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
+                val deadlineNavigationId = controller.requestId
                 // Starting the extraction script is not proof of success.
                 // If its bridge never returns, restore the native screen too.
                 view.postDelayed({
                   if (webView === view &&
                     BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL) &&
-                    summaryFetchAttempted && !state.browserVisible
+                    summaryFetchAttempted && state.isSummaryLoading &&
+                    controller.requestId == deadlineNavigationId && !state.browserVisible
                   ) {
+                    view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
                     summaryExtractionStarted = false
                     viewModel.summaryCaptureFailed(
                       "Таблицы Сводки не загрузились. Можно повторить.",
