@@ -25,7 +25,7 @@ internal data class BarsRouteDiscovery(
 ) {
     fun safeDiagnostics(): String {
         val safeSource = when (source) {
-            "current-url", "menu-main", "menu-summary", "scoped-link",
+            "current-url", "menu-main", "menu-summary", "scoped-link", "profile-link",
             "ambiguous", "missing" -> source
             else -> "unknown"
         }
