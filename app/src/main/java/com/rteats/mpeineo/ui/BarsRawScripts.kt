@@ -1,3 +1,5 @@
+package com.rteats.mpeineo.ui
+
 /*
  * Temporary exploratory capture for the super-app Home raw BARS dump.
  * Capture only visible student profile/ratings and the two educational tables.
