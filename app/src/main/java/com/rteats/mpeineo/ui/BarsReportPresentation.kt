@@ -31,6 +31,116 @@ internal data class BarsMainExtras(
     val studentFields: List<String> = emptyList(),
 )
 
+/**
+ * Semantic profile facts derived from the existing Main snapshot and the
+ * already-structured student card. Rendering never depends on raw prose.
+ */
+internal enum class BarsProfileKind {
+    COURSE, RATING, SCORE, FORM, STATUS, FACULTY, INSTITUTE,
+    PROGRAM, GROUP, SEMESTER, STUDENT_ID, OTHER,
+}
+
+internal data class BarsProfileFact(
+    val label: String,
+    val value: String,
+    val kind: BarsProfileKind,
+)
+
+private fun profileFact(label: String, value: String): BarsProfileFact? {
+    val cleanLabel = label.trim().removeSuffix(":").trim()
+    val cleanValue = value.trim().replace(Regex("""\s+"""), " ")
+    if (cleanLabel.isBlank() || cleanValue.isBlank() ||
+        cleanLabel.length > 70 || cleanValue.length > 200
+    ) return null
+    val key = cleanLabel.lowercase().replace('ё', 'е')
+        .replace(Regex("""\s+"""), " ")
+    val kind = when {
+        key == "курс" || key == "текущий курс" || key == "курс обучения" ->
+            BarsProfileKind.COURSE
+        key == "рейтинг" || key.contains("в рейтинге") ->
+            BarsProfileKind.RATING
+        key == "балл" || key.contains("средний балл") ||
+            key.contains("текущий балл") -> BarsProfileKind.SCORE
+        key.contains("форма обучения") -> BarsProfileKind.FORM
+        key.startsWith("статус") -> BarsProfileKind.STATUS
+        key.startsWith("факультет") -> BarsProfileKind.FACULTY
+        key.startsWith("институт") -> BarsProfileKind.INSTITUTE
+        key.startsWith("направление") || key.startsWith("специальность") ||
+            key.startsWith("профиль") || key.startsWith("уровень образования") ||
+            key.startsWith("кафедра") -> BarsProfileKind.PROGRAM
+        key == "группа" || key == "учебная группа" -> BarsProfileKind.GROUP
+        key == "семестр" || key == "текущий семестр" -> BarsProfileKind.SEMESTER
+        key.contains("зачетн") || key.contains("зачётн") ||
+            key.contains("студенческий билет") -> BarsProfileKind.STUDENT_ID
+        else -> BarsProfileKind.OTHER
+    }
+    val displayLabel = when (kind) {
+        BarsProfileKind.COURSE -> "Курс"
+        BarsProfileKind.RATING -> "Рейтинг"
+        BarsProfileKind.FORM -> "Форма обучения"
+        BarsProfileKind.STATUS -> "Статус"
+        BarsProfileKind.GROUP -> "Группа"
+        BarsProfileKind.SEMESTER -> "Семестр"
+        else -> cleanLabel
+    }
+    // Avoid repeating a unit in the label and value on the overview.
+    val displayValue = if (kind == BarsProfileKind.COURSE) {
+        cleanValue.replace(Regex("""\s*(?:-?(?:й|ый))?\s*курс(?:а)?$""",
+            RegexOption.IGNORE_CASE), "").ifBlank { cleanValue }
+    } else cleanValue
+    return BarsProfileFact(displayLabel, displayValue, kind)
+}
+
+internal fun parseBarsProfileFact(raw: String): BarsProfileFact? {
+    val text = raw.trim().replace(Regex("""\s+"""), " ")
+    if (text.isBlank()) return null
+    val numberedCourse = Regex("""^(\d+)(?:-?(?:й|ый))?\s+курс(?:а)?$""",
+        RegexOption.IGNORE_CASE).matchEntire(text)
+    if (numberedCourse != null) {
+        return profileFact("Курс", numberedCourse.groupValues[1])
+    }
+    val formOnly = Regex("""^(очная|заочная|очно-заочная)(?:\s+форма\s+обучения)?$""",
+        RegexOption.IGNORE_CASE).matchEntire(text)
+    if (formOnly != null) return profileFact("Форма обучения", formOnly.groupValues[1])
+    val separated = Regex("""^([^:：]{2,70})[:：]\s*(.+)$""").matchEntire(text)
+    if (separated != null) {
+        return profileFact(separated.groupValues[1], separated.groupValues[2])
+    }
+    // Some BARS inline indicators have no colon (e.g. "Текущий курс 3").
+    val unseparated = Regex(
+        """^(текущий курс|курс обучения|курс|место в рейтинге|рейтинг|средний балл|балл|форма обучения|статус студента|статус|факультет|институт|группа|семестр)\s+(.+)$""",
+        RegexOption.IGNORE_CASE,
+    ).matchEntire(text)
+    return unseparated?.let { profileFact(it.groupValues[1], it.groupValues[2]) }
+}
+
+/** The official parsed student card takes precedence over snapshot fallbacks. */
+internal fun barsProfileFacts(
+    extras: BarsMainExtras,
+    studentDetails: List<BarsStudentDetail>,
+): List<BarsProfileFact> = (
+    studentDetails.mapNotNull { profileFact(it.label, it.value) } +
+        extras.indicators.mapNotNull(::parseBarsProfileFact) +
+        extras.studentFields.mapNotNull(::parseBarsProfileFact)
+).filterNot { it.label.equals("Студент", ignoreCase = true) }
+    .distinctBy { fact ->
+        if (fact.kind == BarsProfileKind.OTHER ||
+            fact.kind == BarsProfileKind.PROGRAM
+        ) fact.label.lowercase() else fact.kind.name
+    }
+
+internal fun BarsProfileKind.featurePriority(): Int = when (this) {
+    BarsProfileKind.COURSE -> 0
+    BarsProfileKind.RATING -> 1
+    BarsProfileKind.SCORE -> 2
+    BarsProfileKind.FORM -> 3
+    BarsProfileKind.STATUS -> 4
+    BarsProfileKind.FACULTY -> 5
+    BarsProfileKind.INSTITUTE -> 6
+    BarsProfileKind.PROGRAM -> 7
+    else -> 100
+}
+
 internal data class BarsReportCell(
     val value: String,
     val columnSpan: Int = 1,
