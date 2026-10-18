@@ -373,6 +373,7 @@ class MailRepository(
         }
     }
 
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.Q)
     suspend fun saveAttachment(
         auth: MailCredentials,
         uid: Long,
