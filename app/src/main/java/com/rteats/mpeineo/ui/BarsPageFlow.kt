@@ -20,6 +20,18 @@ internal fun classifyBarsPage(page: BarsPageState): BarsPageKind {
 }
 
 /**
+ * Reading grades is safe in an interactive WebView: it does not navigate or
+ * alter BARS, unlike the separate automated Summary capture.
+ *
+ * A completed extraction is scoped to the current document. The WebView
+ * lifecycle resets [alreadyStarted] when a new page starts.
+ */
+internal fun shouldExtractBarsMarks(
+    page: BarsPageState,
+    alreadyStarted: Boolean,
+): Boolean = !alreadyStarted && classifyBarsPage(page) == BarsPageKind.MARKS_READY
+
+/**
  * One readiness timeout per document, not repeated JS polling counters.
  * The first missing-table deadline retries via the official BARS root; if
  * the next marks document still has no table, the second deadline reports an
