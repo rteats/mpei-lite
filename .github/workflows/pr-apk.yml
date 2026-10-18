@@ -49,9 +49,11 @@ jobs:
           echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
           echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
 
+      # test/r8-* branches build a shrunk PR APK for safe side-by-side testing.
       - name: Run unit tests, UI test compilation, lint, and build signed PR APK
         run: |
           gradle --no-daemon testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
+            -POPTIMIZE_RELEASE=${{ startsWith(github.head_ref, 'test/r8-') }} \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=0.4.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}
