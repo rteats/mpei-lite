@@ -25,9 +25,13 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.model.ScheduleTarget
+import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.displayName
 import com.rteats.mpeineo.model.favoriteKey
 import org.json.JSONArray
+
+/** The actual lesson and its week/day, rather than only its parent schedule. */
+internal data class ScheduleLessonHit(val weekOffset: Int, val date: String, val lesson: Lesson)
 
 /** Results are computed from cached mail and grades and existing Schedule target search. */
 internal object GlobalSearchIndex {
@@ -38,6 +42,16 @@ internal object GlobalSearchIndex {
         items.filter {
             it.disciplineName.contains(query, true) || it.personName.contains(query, true)
         }.take(20)
+
+    fun lessons(query: String, state: MainUiState): List<ScheduleLessonHit> =
+        state.agendaWeeks.entries.asSequence().flatMap { (week, agenda) ->
+            agenda.days.asSequence().flatMap { day ->
+                day.lessons.asSequence().filter { lesson ->
+                    lesson.name.contains(query, true) || lesson.place.contains(query, true) ||
+                        lesson.lecturer.contains(query, true)
+                }.map { ScheduleLessonHit(week, day.date, it) }
+            }
+        }.distinctBy { Triple(it.date, it.lesson.name, it.lesson.startTime) }.take(8).toList()
 
     fun targets(query: String, state: MainUiState): List<ScheduleTarget> =
         (state.favorites + state.searchResults + listOfNotNull(state.selected))
@@ -87,6 +101,7 @@ internal fun GlobalSearchScreen(
     mail: MailUiState,
     bars: BarsUiState,
     onSchedule: (ScheduleTarget) -> Unit,
+    onLesson: (ScheduleLessonHit) -> Unit,
     onMail: (MailSummary) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
@@ -107,13 +122,8 @@ internal fun GlobalSearchScreen(
         else bars.disciplines.take(4)
     val messages = if (searching) GlobalSearchIndex.mail(trimmed, mail.items)
         else mail.items.take(4)
-    val lessons = if (searching && schedule.selected != null) {
-        schedule.agendaWeeks.values.flatMap { it.days }.flatMap { it.lessons }
-            .filter {
-                it.name.contains(trimmed, true) || it.place.contains(trimmed, true) ||
-                    it.lecturer.contains(trimmed, true)
-            }.distinctBy { it.name to it.startTime }.take(6)
-    } else emptyList()
+    val lessons = if (searching && schedule.selected != null)
+        GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
 
     Surface(
         modifier = Modifier.fillMaxSize().testTag("global-search-screen"),
@@ -182,10 +192,10 @@ internal fun GlobalSearchScreen(
                 }
                 if (lessons.isNotEmpty()) {
                     item { SearchSection("Пары в загруженном расписании") }
-                    items(lessons, key = { "lesson-" + it.name + it.startTime }) { lesson ->
-                        SearchEntry(AppIcons.Schedule, lesson.name,
-                            lesson.startTime + " · " + lesson.place) {
-                            schedule.selected?.let(onSchedule)
+                    items(lessons, key = { "lesson-" + it.date + it.lesson.name + it.lesson.startTime }) { hit ->
+                        SearchEntry(AppIcons.Schedule, hit.lesson.name,
+                            hit.date + " · " + hit.lesson.startTime + " · " + hit.lesson.place) {
+                            onLesson(hit)
                         }
                     }
                 }

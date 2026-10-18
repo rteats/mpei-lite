@@ -54,6 +54,7 @@ internal fun ScheduleScreen(
     onAgendaScrollingChanged: (Boolean) -> Unit,
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
+    focusLesson: ScheduleLessonFocus? = null,
     modifier: Modifier = Modifier,
 ) {
     if (state.selected == null) {
@@ -87,6 +88,7 @@ internal fun ScheduleScreen(
             onScrollInProgressChanged = onAgendaScrollingChanged,
             onLocateRoom = onLocateRoom,
             todayJumpRequest = todayJumpRequest,
+            focusLesson = focusLesson,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         )
     }
@@ -107,7 +109,7 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}) {
+internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, focused: Boolean = false) {
     var expanded by rememberSaveable(
         lesson.startTime, lesson.name, lesson.place, lesson.lecturer, lesson.groups,
     ) { mutableStateOf(false) }
@@ -122,7 +124,7 @@ internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}) {
         targetValue = lerp(
             lessonContainerColor(lesson.kind),
             MaterialTheme.colorScheme.primaryContainer,
-            if (expanded) 0.12f else 0f,
+            if (focused) 0.40f else if (expanded) 0.12f else 0f,
         ),
         animationSpec = motion.defaultEffectsSpec(),
         label = "lesson-container",

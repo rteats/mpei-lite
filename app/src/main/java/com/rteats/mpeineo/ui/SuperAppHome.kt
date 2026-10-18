@@ -247,19 +247,24 @@ internal fun SuperAppHome(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 HomeNextLessonCard(schedule, onClick = { onOpen(AppTab.SCHEDULE) })
             }
-            item {
-                HomeBarsPreview(
-                    state = bars,
-                    onOpen = { onOpen(AppTab.BARS) },
-                    onOpenDiscipline = onOpenBarsDiscipline,
-                )
+            // Previews are actionable events, not duplicate service launchers.
+            if (bars.gradeChanges.values.any { it.isNotEmpty() } || bars.loginRequired) {
+                item {
+                    HomeBarsPreview(
+                        state = bars,
+                        onOpen = { onOpen(AppTab.BARS) },
+                        onOpenDiscipline = onOpenBarsDiscipline,
+                    )
+                }
             }
-            item {
-                HomeMailPreview(
-                    state = mail,
-                    onOpen = { onOpen(AppTab.MAIL) },
-                    onOpenMessage = onOpenMailMessage,
-                )
+            if (mail.items.any { it.unread } || mail.loginRequired) {
+                item {
+                    HomeMailPreview(
+                        state = mail,
+                        onOpen = { onOpen(AppTab.MAIL) },
+                        onOpenMessage = onOpenMailMessage,
+                    )
+                }
             }
         }
     }

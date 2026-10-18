@@ -244,6 +244,7 @@ internal fun MailScreen(
                             state = state,
                             isSent = state.mailbox == OwaMailFolder.SENT,
                             onDownload = viewModel::download,
+                            onBack = viewModel::closeMessage,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -485,6 +486,7 @@ private fun MailMessage(
     state: MailUiState,
     isSent: Boolean,
     onDownload: (com.rteats.mpeineo.data.MailAttachment) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val detail = state.message
@@ -507,6 +509,9 @@ private fun MailMessage(
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            IconButton(onClick = onBack) {
+                AppIcon(AppIcons.Back, contentDescription = "К списку писем")
+            }
             Text(
                 detail.subject.ifBlank { "<Без темы>" },
                 style = MaterialTheme.typography.titleLarge,

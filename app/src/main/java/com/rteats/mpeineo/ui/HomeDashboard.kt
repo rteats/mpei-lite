@@ -234,7 +234,7 @@ internal fun HomeMailPreview(
     val unread = state.items.filter { it.unread }
     val newestUnread = unread.maxByOrNull { it.sentAt }
     val title = when {
-        unread.isNotEmpty() -> "Непрочитанных: " + unread.size
+        unread.isNotEmpty() -> "Загружено непрочитанных: " + unread.size
         state.loginRequired -> "Требуется вход"
         state.configured -> "Всё прочитано"
         else -> "Почта"

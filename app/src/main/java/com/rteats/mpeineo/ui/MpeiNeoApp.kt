@@ -226,6 +226,8 @@ fun MpeiNeoApp(
     var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
     var recentQueries by remember { mutableStateOf(searchHistory.load()) }
+    var nextLessonFocusId by remember { mutableIntStateOf(0) }
+    var scheduleLessonFocus by remember { mutableStateOf<ScheduleLessonFocus?>(null) }
     var barsSearchRequest by remember { mutableIntStateOf(0) }
     var barsRequestedDiscipline by remember { mutableStateOf<String?>(null) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
@@ -361,6 +363,19 @@ fun MpeiNeoApp(
         openService(AppTab.SCHEDULE)
     }
 
+    fun openLessonResult(hit: ScheduleLessonHit) {
+        rememberGlobalQuery()
+        closeGlobalSearch()
+        nextLessonFocusId++
+        scheduleLessonFocus = ScheduleLessonFocus(
+            requestId = nextLessonFocusId, weekOffset = hit.weekOffset,
+            date = hit.date, name = hit.lesson.name, startTime = hit.lesson.startTime,
+        )
+        // The hit belongs to the selected timetable. Do not re-select that
+        // timetable: doing so clears its loaded weeks and loses the result.
+        openService(AppTab.SCHEDULE)
+    }
+
     fun openMailResult(summary: MailSummary) {
         rememberGlobalQuery()
         closeGlobalSearch()
@@ -420,6 +435,7 @@ fun MpeiNeoApp(
                                     }
                                 },
                                 todayJumpRequest = todayJumpRequest,
+                                focusLesson = scheduleLessonFocus,
                                 modifier = Modifier.fillMaxSize(),
                             )
                             ScheduleDockedSearch(
@@ -711,6 +727,7 @@ fun MpeiNeoApp(
                     mail = mailState,
                     bars = barsState,
                     onSchedule = ::openScheduleResult,
+                    onLesson = ::openLessonResult,
                     onMail = ::openMailResult,
                     onDiscipline = ::openBarsResult,
                     onClose = ::closeGlobalSearch,
