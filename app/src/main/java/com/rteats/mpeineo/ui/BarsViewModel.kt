@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.os.SystemClock
 import com.google.gson.Gson
+import org.json.JSONObject
 import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
@@ -180,8 +181,24 @@ internal object BarsPayloadParser {
     fun parseExtraction(json: String): BarsExtractionPayload =
         gson.fromJson(json, BarsExtractionPayload::class.java)
 
-    fun parsePageState(json: String): BarsPageState =
-        gson.fromJson(json, BarsPageState::class.java)
+    /**
+     * BARS page state comes from a JavaScript bridge and contains only
+     * scalar fields. Parse explicitly instead of relying on Gson reflection:
+     * R8 can abstract/rename an unreferenced DTO and break cold-start refresh.
+     */
+    fun parsePageState(json: String): BarsPageState {
+        val data = JSONObject(json)
+        return BarsPageState(
+            url = data.optString("url"),
+            path = data.optString("path"),
+            isLoginPage = data.optBoolean("isLoginPage"),
+            isAuthFlow = data.optBoolean("isAuthFlow"),
+            isStudentList = data.optBoolean("isStudentList"),
+            isMarksPage = data.optBoolean("isMarksPage"),
+            isSummaryPage = data.optBoolean("isSummaryPage"),
+            isSummaryReady = data.optBoolean("isSummaryReady"),
+        )
+    }
 }
 
 internal class BarsViewModel(
