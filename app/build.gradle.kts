@@ -47,11 +47,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // A debuggable R8 build enables instrumentation against actually shrunken
-    // app classes without modifying the normal published release build.
-    testBuildType = if (providers.gradleProperty("R8_RUNTIME_TEST").orNull == "true")
-        "r8Test" else "debug"
-
     signingConfigs {
         if (devSigningReady) {
             create("ciDev") {
@@ -105,15 +100,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-        }
-        if (providers.gradleProperty("R8_RUNTIME_TEST").orNull == "true") {
-            create("r8Test") {
-                initWith(getByName("release"))
-                isDebuggable = true
-                isMinifyEnabled = true
-                isShrinkResources = true
-                signingConfig = signingConfigs.getByName("debug")
-            }
         }
     }
 
