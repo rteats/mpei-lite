@@ -4,6 +4,8 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import android.Manifest
+import android.app.Activity
+import android.content.ContextWrapper
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -251,6 +253,11 @@ internal fun SettingsScreen(
     val context = LocalContext.current
     val application = context.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
+    val uiProfiler = application.container.uiFrameProfiler
+    val hostActivity = remember(context) {
+        generateSequence<Context>(context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>().firstOrNull()
+    }
     val owaAuthScope = rememberCoroutineScope()
     val exportScope = rememberCoroutineScope()
     var owaAuthBusy by remember { mutableStateOf(false) }
@@ -612,6 +619,21 @@ internal fun SettingsScreen(
                 AppIcons.Diagnostics,
                 logsExpanded, { changeSection("logs", !logsExpanded) },
             ) {
+                SettingsAction(
+                    title = if (uiProfiler.active) "Завершить замер плавности"
+                        else "Замерить плавность интерфейса",
+                    detail = if (uiProfiler.active) {
+                        "Сбор кадров идёт. Перейдите в нужный раздел; автостоп через 60 секунд."
+                    } else {
+                        "60 секунд · задержки кадров по разделам · результат в журнале"
+                    },
+                    iconRes = AppIcons.Analytics,
+                    enabled = uiProfiler.active || hostActivity != null,
+                    onClick = {
+                        if (uiProfiler.active) uiProfiler.stop()
+                        else hostActivity?.let { uiProfiler.start(it.window) }
+                    },
+                )
                 SettingsAction(
                     title = "Проверить сессию ОСЭП",
                     detail = owaAuthSummary

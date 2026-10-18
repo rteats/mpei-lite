@@ -42,6 +42,13 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         readMailTarget(intent)
     }
+    override fun onStop() {
+        // Cancel a capture if Android backgrounds the Activity; otherwise
+        // unrelated background frames could skew the measurement.
+        (application as MpeiNeoApplication).container.uiFrameProfiler.stop("activity_background")
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Native system launch animation; installs the regular Activity theme before Compose.
         installSplashScreen()

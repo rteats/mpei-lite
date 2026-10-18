@@ -238,6 +238,13 @@ fun MpeiNeoApp(
     var barsBrowserJustClosed by remember { mutableStateOf(false) }
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
+    // Route names are intentionally coarse; never record student or message data.
+    val performanceScreen = if (globalSearchOpen) "SEARCH"
+        else currentService?.name ?: "HOME"
+    LaunchedEffect(performanceScreen) {
+        application.container.uiFrameProfiler.markScreen(performanceScreen)
+    }
+
     LaunchedEffect(agendaScrolling) {
         if (agendaScrolling) weekInfoVisible = true
         else {

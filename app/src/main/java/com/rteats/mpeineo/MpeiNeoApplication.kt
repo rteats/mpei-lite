@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.DiagnosticLog
+import com.rteats.mpeineo.data.UiFrameProfiler
 import com.rteats.mpeineo.data.FileScheduleCache
 import com.rteats.mpeineo.data.GithubUpdateRepository
 import com.rteats.mpeineo.data.MailRepository
@@ -86,6 +87,7 @@ class AppContainer(application: Application) {
         .build()
 
     val diagnostics = DiagnosticLog(application)
+    val uiFrameProfiler = UiFrameProfiler(diagnostics)
     val mailRepository = MailRepository(application, diagnostics)
     val owaAuthProbe = OwaAuthProbe(application, diagnostics)
     val owaMailRepository = OwaMailRepository(application, diagnostics)
