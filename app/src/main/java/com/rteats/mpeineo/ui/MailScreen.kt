@@ -77,7 +77,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.OwaMailFolder
-import com.rteats.mpeineo.data.MailServerCertificate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.DateFormat
 import java.util.Date
