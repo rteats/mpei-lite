@@ -49,7 +49,7 @@ internal object DiagnosticsZipExporter {
     /** Android 8–9: the Storage Access Framework chooses a user-visible folder. */
     suspend fun saveToPickedDocument(context: Context, uri: Uri, bytes: ByteArray) =
         withContext(Dispatchers.IO) {
-            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+            context.contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) }
                 ?: throw IllegalStateException("Не удалось записать диагностический ZIP")
         }
 
