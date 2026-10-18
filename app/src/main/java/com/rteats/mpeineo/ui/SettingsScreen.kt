@@ -77,7 +77,12 @@ import com.rteats.mpeineo.R
 import com.rteats.mpeineo.data.MailNotificationPreferences
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.InterfaceTheme
+import com.rteats.mpeineo.data.DiagnosticsArchive
+import com.rteats.mpeineo.data.DiagnosticsZipExporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.Instant
 
 /**
  * EasyNotes-inspired surface rows, circular accent badges and trailing
@@ -247,6 +252,7 @@ internal fun SettingsScreen(
     val application = context.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
     val owaAuthScope = rememberCoroutineScope()
+    val exportScope = rememberCoroutineScope()
     var owaAuthBusy by remember { mutableStateOf(false) }
     var owaAuthSummary by remember { mutableStateOf<String?>(null) }
     var owaInboxBusy by remember { mutableStateOf(false) }
@@ -277,6 +283,81 @@ internal fun SettingsScreen(
         }
     }
     var copied by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var exportStatus by remember { mutableStateOf<String?>(null) }
+    var lastExportedUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingArchive by remember { mutableStateOf<ByteArray?>(null) }
+
+    fun offerShare(uri: Uri) {
+        runCatching { DiagnosticsZipExporter.share(context, uri) }.onFailure {
+            exportStatus = "Архив сохранён, но окно отправки не открылось."
+            diagnostics.log("DIAGNOSTICS", "archive_share_error type=${it.javaClass.simpleName}")
+        }
+    }
+
+    val saveLegacyZip = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(DiagnosticsZipExporter.MIME_TYPE),
+    ) { uri ->
+        val archive = pendingArchive
+        pendingArchive = null
+        if (uri == null || archive == null) {
+            exporting = false
+            exportStatus = "Сохранение отменено"
+        } else {
+            exportScope.launch {
+                try {
+                    DiagnosticsZipExporter.saveToPickedDocument(context, uri, archive)
+                    lastExportedUri = uri
+                    exportStatus = "ZIP сохранён в выбранной папке"
+                    diagnostics.log("DIAGNOSTICS", "archive exported via document picker")
+                    offerShare(uri)
+                } catch (failure: Exception) {
+                    exportStatus = "Не удалось сохранить ZIP: ${failure.javaClass.simpleName}"
+                    diagnostics.log("DIAGNOSTICS",
+                        "archive_export_error type=${failure.javaClass.simpleName}")
+                } finally {
+                    exporting = false
+                }
+            }
+        }
+    }
+
+    fun exportArchive() {
+        if (exporting) return
+        exporting = true
+        exportStatus = null
+        exportScope.launch {
+            try {
+                val now = Instant.now()
+                val archive = withContext(Dispatchers.IO) {
+                    DiagnosticsArchive.create(
+                        journal = diagnostics.readText(),
+                        versionName = BuildConfig.VERSION_NAME,
+                        versionCode = BuildConfig.VERSION_CODE,
+                        androidSdk = Build.VERSION.SDK_INT,
+                        createdAt = now,
+                    )
+                }
+                val name = DiagnosticsArchive.fileName(now)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val uri = DiagnosticsZipExporter.saveToDownloads(context, name, archive)
+                    lastExportedUri = uri
+                    exportStatus = "Сохранено: Загрузки/${DiagnosticsZipExporter.DOWNLOAD_FOLDER}/$name"
+                    diagnostics.log("DIAGNOSTICS", "archive exported bytes=${archive.size}")
+                    exporting = false
+                    offerShare(uri)
+                } else {
+                    pendingArchive = archive
+                    saveLegacyZip.launch(name)
+                }
+            } catch (failure: Exception) {
+                exportStatus = "Не удалось создать ZIP: ${failure.javaClass.simpleName}"
+                diagnostics.log("DIAGNOSTICS",
+                    "archive_export_error type=${failure.javaClass.simpleName}")
+                exporting = false
+            }
+        }
+    }
     var notificationError by remember { mutableStateOf<String?>(null) }
     val notificationPrefs = remember(context) { MailNotificationPreferences(context) }
     var notificationsEnabled by remember { mutableStateOf(notificationPrefs.enabled) }
@@ -527,7 +608,7 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "Диагностика",
-                "Копирование и очистка журнала",
+                "ZIP-экспорт, копирование и очистка",
                 AppIcons.Diagnostics,
                 logsExpanded, { changeSection("logs", !logsExpanded) },
             ) {
@@ -573,6 +654,25 @@ internal fun SettingsScreen(
                         detail = "Запустить однократную проверку через WorkManager",
                         iconRes = AppIcons.Notifications,
                         onClick = { MailNotificationScheduler.diagnosticCheckNow(context) },
+                    )
+                }
+                SettingsAction(
+                    title = "Экспортировать ZIP",
+                    detail = exportStatus
+                        ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                            "Сохранить в Загрузки/MPEI Neo/Diagnostics и открыть отправку"
+                        else "Выбрать папку для ZIP и открыть отправку",
+                    iconRes = AppIcons.Download,
+                    enabled = !exporting,
+                    busy = exporting,
+                    onClick = ::exportArchive,
+                )
+                lastExportedUri?.let { uri ->
+                    SettingsAction(
+                        title = "Поделиться архивом ещё раз",
+                        detail = "Открыть системное меню отправки готового ZIP",
+                        iconRes = AppIcons.Attachment,
+                        onClick = { offerShare(uri) },
                     )
                 }
                 SettingsAction(
