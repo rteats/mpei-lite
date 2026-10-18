@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import android.util.AtomicFile
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.google.gson.Gson
@@ -131,8 +132,21 @@ internal class MailCache(private val context: Context) {
     }
 
     private fun <T> read(file: File, cls: Class<T>): T? = runCatching {
-        if (!file.isFile || file.length() > 3_000_000) return@runCatching null
-        val bytes = file.readBytes()
+        // AtomicFile repairs an interrupted write using the last good copy.
+        val atomic = AtomicFile(file)
+        if (!atomic.baseFile.exists() && !File(file.path + ".bak").exists()) return@runCatching null
+        val bytes = atomic.openRead().use { stream ->
+            val max = 3_000_000
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (output.size() + count > max) return@runCatching null
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
         if (bytes.size <= 12) return@runCatching null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, aesKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
@@ -144,11 +158,15 @@ internal class MailCache(private val context: Context) {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, aesKey())
             val payload = cipher.iv + cipher.doFinal(gson.toJson(value).toByteArray(Charsets.UTF_8))
-            val temporary = File(file.parentFile, file.name + ".tmp")
-            temporary.writeBytes(payload)
-            if (!temporary.renameTo(file)) {
-                file.delete()
-                temporary.renameTo(file)
+            val atomic = AtomicFile(file)
+            var stream: java.io.FileOutputStream? = null
+            try {
+                stream = atomic.startWrite()
+                stream.write(payload)
+                atomic.finishWrite(stream)
+            } catch (error: Exception) {
+                stream?.let(atomic::failWrite)
+                throw error
             }
         }
     }
