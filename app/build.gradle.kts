@@ -47,6 +47,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Optional CI instrumented tests execute against the actual R8-processed APK.
+    testBuildType = if (providers.gradleProperty("R8_RUNTIME_TEST").orNull == "true")
+        "release" else "debug"
+
     signingConfigs {
         if (devSigningReady) {
             create("ciDev") {
