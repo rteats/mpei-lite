@@ -126,6 +126,48 @@ class BarsAutoPlanTest {
         )
     }
 
+    @Test fun semesterFocusShowsOnlyActionableUpcomingAssessments() {
+        val first = BarsDiscipline(
+            disciplineName = "Физика",
+            activities = listOf(
+                activity("Главная контрольная", "60%", week = "6"),
+                activity("Другой КМ", "40%", week = "4"),
+            ),
+        )
+        val second = BarsDiscipline(
+            disciplineName = "Математика",
+            activities = listOf(
+                activity("Два одинаковых", "50%", week = "5"),
+                activity("Два одинаковых 2", "50%", week = "7"),
+            ),
+        )
+        val finished = first.copy(disciplineName = "Итог выставлен",
+            activities = first.activities + BarsActivity(
+                type = BarsActivityType.FINAL_MARK, markAndDate = "5",
+            ))
+        val aggregate = first.copy(disciplineName = "По совокупности",
+            assessmentType = "Зачёт (по совокупности)")
+        val focus = semesterAutoFocus(listOf(first, second, finished, aggregate))
+        assertEquals(2, focus.size)
+        assertEquals(listOf("Физика", "Математика"),
+            focus.map { it.disciplineName })
+        assertEquals("Главная контрольная", focus[0].activityName)
+        assertEquals(5, focus[0].recommendedMark)
+        assertEquals("6", focus[0].week)
+    }
+
+    @Test fun semesterFocusSkipsUnknownWeightsAndAlreadySafeCases() {
+        val unknown = BarsDiscipline(
+            disciplineName = "Нет веса",
+            activities = listOf(activity("КМ", null)),
+        )
+        val safe = BarsDiscipline(
+            disciplineName = "Уже хватает",
+            activities = listOf(activity("Готово", "90%", "5"), activity("КМ", "10%")),
+        )
+        assertTrue(semesterAutoFocus(listOf(unknown, safe)).isEmpty())
+    }
+
     @Test fun onlyUpcomingTestIsRankedAndAlreadyGradedKeptAtActualValue() {
         val plan = available(
             activity("Готово", "50%", "5"),
