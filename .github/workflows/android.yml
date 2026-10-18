@@ -67,7 +67,11 @@ jobs:
 
       - name: Build signed dev APK
         run: |
-          gradle --no-daemon testDevDebugUnitTest assembleDevRelease             -PVERSION_CODE=${{ github.run_number }}             -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
+          # R8 trial on rolling Dev only. Stable release is unaffected.
+          gradle --no-daemon testDevDebugUnitTest assembleDevRelease \
+            -POPTIMIZE_RELEASE=true \
+            -PVERSION_CODE=${{ github.run_number }} \
+            -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
           cp app/build/outputs/apk/dev/release/app-dev-release.apk MPEI-Neo-Dev.apk
 
       - name: Prepare API-free Dev update manifest
@@ -115,6 +119,9 @@ jobs:
           overwrite_files: true
           body: |
             Automated development build from `main`.
+
+            R8 code minification and Android resource shrinking are ENABLED for this Dev testing build.
+            Stable releases are unchanged.
 
             versionCode: ${{ github.run_number }}
             versionName: ${{ env.DEV_BASE_VERSION }}-dev.${{ github.run_number }}
