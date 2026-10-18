@@ -57,7 +57,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Exercise release-only reflection on emulator
+      - name: Exercise minified reflection on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -66,7 +66,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            gradle --no-daemon connectedDevReleaseAndroidTest \
+            gradle --no-daemon connectedDevR8TestAndroidTest \
               -PPR_NUMBER=${{ github.event.pull_request.number }} \
               -POPTIMIZE_RELEASE=true \
               -PR8_RUNTIME_TEST=true \
