@@ -9,7 +9,6 @@ import com.rteats.mpeineo.data.OwaComposeProtocol
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.data.MailAttachment
-import com.rteats.mpeineo.data.MailCredentials
 import com.rteats.mpeineo.data.MailDetail
 import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.OwaAuthProbe
@@ -20,7 +19,6 @@ import com.rteats.mpeineo.data.OwaRecipientDirectory
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.MailInboxSyncEvents
 import com.rteats.mpeineo.data.MailSummary
-import com.rteats.mpeineo.data.MailServerCertificate
 import com.rteats.mpeineo.data.markMailRead
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -39,8 +37,6 @@ internal enum class RecipientField { TO, CC, BCC }
 internal data class MailUiState(
     val configured: Boolean = false,
     val loginRequired: Boolean = false,
-    val certificate: MailServerCertificate? = null,
-    val inspectingCertificate: Boolean = false,
     val username: String = "",
     val loading: Boolean = false,
     val items: List<MailSummary> = emptyList(),
