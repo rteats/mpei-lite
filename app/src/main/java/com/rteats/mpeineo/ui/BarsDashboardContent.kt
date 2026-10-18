@@ -147,6 +147,11 @@ internal fun BarsNativeDashboard(
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
+  // Saveable across detail navigation and Activity recreation. The key includes
+  // actual BARS grades/weights so a new mark invalidates stale predictions.
+  var autoScenarios by rememberSaveable {
+    mutableStateOf<Map<String, String>>(emptyMap())
+  }
   val report = remember(state.rawSummary) { BarsReportParser.parseSummary(state.rawSummary) }
   val controls = remember(state.disciplines) { state.controlSchedule }
   val gradeReportScroll = rememberScrollState()
@@ -200,9 +205,19 @@ internal fun BarsNativeDashboard(
       it.disciplineName == expandedName
     }
     if (expandedDiscipline != null) {
+      val planKey = autoScenarioKey(
+        expandedDiscipline,
+        account = state.profileName + "|" + state.profileGroup,
+        semester = state.semester,
+      )
       DisciplineExpandedCard(
         discipline = expandedDiscipline,
         changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
+        savedAutoScenario = autoScenarios[planKey],
+        onAutoScenarioChange = { encoded ->
+          autoScenarios = (autoScenarios + (planKey to encoded))
+            .toList().takeLast(32).toMap()
+        },
         onCollapse = {
           onAcknowledgeGrades(expandedDiscipline.disciplineName)
           selectedDisciplineName = null
@@ -672,6 +687,8 @@ private fun DisciplineCard(
 private fun DisciplineExpandedCard(
   discipline: BarsDiscipline,
   changes: List<BarsGradeChange>,
+  savedAutoScenario: String?,
+  onAutoScenarioChange: (String) -> Unit,
   onCollapse: () -> Unit,
 ) {
   val controls = discipline.activities.filter {
@@ -721,6 +738,23 @@ private fun DisciplineExpandedCard(
         .padding(horizontal = 6.dp, vertical = 4.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+      // The next actionable decision is the 4.2 plan, not a raw grade dump.
+      // Aggregate assessments are excluded by the established BARS rule.
+      if (shouldShowGradeForecastForAssessment(discipline.assessmentType)) {
+        Surface(
+          modifier = Modifier.fillMaxWidth(),
+          shape = MaterialTheme.shapes.extraLarge,
+          color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+          BarsAutoPlanner(
+            discipline = discipline,
+            savedScenario = savedAutoScenario,
+            onScenarioChange = onAutoScenarioChange,
+            modifier = Modifier.padding(16.dp),
+          )
+        }
+      }
+
       Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -803,20 +837,6 @@ private fun DisciplineExpandedCard(
         }
       }
 
-      // "По совокупности" assessments do not need an automatic-grade
-      // forecast. Hide the entire section, not merely its combinations.
-      if (shouldShowGradeForecastForAssessment(discipline.assessmentType)) {
-        Surface(
-          modifier = Modifier.fillMaxWidth(),
-          shape = MaterialTheme.shapes.extraLarge,
-          color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-          Column(modifier = Modifier.padding(16.dp)) {
-            GradeForecastSection(discipline)
-          }
-        }
-      }
-
       Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -874,100 +894,6 @@ private fun DisciplineExpandedCard(
 
       // Keep the bottom content above the shared floating portal action.
       Spacer(Modifier.height(96.dp))
-    }
-  }
-}
-
-/**
-* Present and hypothetical marks occupy the same fixed-width columns.
-* One horizontal scroll state keeps every combination aligned with the
-* source slots, including in narrow display-size configurations.
-*/
-@Composable
-private fun GradeForecastSection(
-  discipline: BarsDiscipline,
-  modifier: Modifier = Modifier,
-) {
-  val forecast = remember(discipline) { calculateGradeForecast(discipline) }
-  val controls = discipline.activities.filter {
-    it.type == BarsActivityType.CONTROL_ACTIVITY
-  }
-  Column(
-    modifier = modifier.fillMaxWidth(),
-    verticalArrangement = Arrangement.spacedBy(7.dp),
-  ) {
-    Text(
-      "Автомат",
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.SemiBold,
-    )
-    if (controls.isNotEmpty()) {
-      Column(
-        modifier = Modifier.fillMaxWidth()
-          .horizontalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        Row(
-          horizontalArrangement = Arrangement.spacedBy(6.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          controls.forEach { activity ->
-            ForecastGradeSlot(activity.markValue)
-          }
-        }
-        if (forecast is GradeForecast.Available) {
-          forecast.combinations
-            .takeIf { forecast.remaining.isNotEmpty() }
-            ?.forEach { combination ->
-              var upcomingIndex = 0
-              Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                controls.forEach { activity ->
-                  val existing = activity.markValue
-                  val mark = when {
-                    existing != null -> existing
-                    parseBarsWeight(activity.weight)
-                      ?.let { it > 0.0 } == true &&
-                      upcomingIndex < combination.marks.size ->
-                      combination.marks[upcomingIndex++].toFloat()
-                    else -> null
-                  }
-                  ForecastGradeSlot(mark)
-                }
-              }
-            }
-        }
-      }
-    }
-    when (forecast) {
-      is GradeForecast.Unavailable -> Text(
-        "Недостаточно данных",
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-      )
-      is GradeForecast.Available -> if (forecast.combinations.isEmpty()) {
-        Text(
-          "Недостижимо",
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          style = MaterialTheme.typography.bodySmall,
-        )
-      }
-    }
-  }
-}
-
-@Composable
-private fun ForecastGradeSlot(mark: Float?) {
-  Box(
-    modifier = Modifier.width(52.dp),
-    contentAlignment = Alignment.Center,
-  ) {
-    if (mark == null) {
-      NeutralChip("—")
-    } else {
-      GradeChip(formatBarsGrade(mark.toDouble()), mark)
     }
   }
 }
