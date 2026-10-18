@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Keep ordinary UI and schedule preferences; never export session material. -->
+    <exclude domain="file" path="diagnostics/" />
+    <exclude domain="sharedpref" path="mail_imap_auth.xml" />
+    <exclude domain="sharedpref" path="mail_notifications_v1.xml" />
+    <exclude domain="sharedpref" path="owa_mail_account_v1.xml" />
+    <exclude domain="sharedpref" path="github_updater.xml" />
+    <exclude domain="database" path="webview.db" />
+</full-backup-content>
