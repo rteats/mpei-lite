@@ -365,7 +365,7 @@ private fun BarsUserHeader(
       (it.kind == BarsProfileKind.SEMESTER && state.semester.isNotBlank())
   }
   val primary = filtered.filter { it.kind.featurePriority() < 100 }
-    .sortedBy { it.kind.featurePriority() }.take(4)
+    .sortedBy { it.kind.featurePriority() }.take(2)
   val secondary = filtered.filterNot { it in primary }
   val colors = MaterialTheme.colorScheme
 
