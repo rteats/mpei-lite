@@ -291,11 +291,7 @@ fun MpeiNeoApp(
         searchExpanded = false
         barsBrowserJustClosed = false
         barsDetailOpen = false
-        routeNames = if (viaClassroom && currentService == AppTab.SCHEDULE) {
-            arrayListOf(AppTab.SCHEDULE.name, target.name)
-        } else {
-            arrayListOf(target.name)
-        }
+        routeNames = serviceRouteAfterOpen(routeNames, target, viaClassroom)
         reveal = 0f
         logNavigation("superapp push " + target.name +
             " origin=" + (currentService?.name ?: "HOME") +
@@ -315,7 +311,7 @@ fun MpeiNeoApp(
         searchExpanded = false
         barsBrowserJustClosed = false
         animateReveal(0f) {
-            routeNames = ArrayList(routeNames.dropLast(1))
+            routeNames = serviceRouteAfterBack(routeNames)
             // The underlying service is already fully rendered, at rest.
             reveal = if (routeNames.isEmpty()) 0f else 1f
             barsDetailOpen = false
