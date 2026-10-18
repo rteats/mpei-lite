@@ -747,7 +747,10 @@ internal fun BarsScreen(
               onRawSnapshot = { source, raw ->
                 view.post {
                   if (webView !== view || mainFrameFailed ||
-                    !BarsDocumentPolicy.isTrusted(view.url.orEmpty())) return@post
+                    !BarsDocumentPolicy.isTrusted(view.url.orEmpty()) ||
+                    (state.browserVisible && source != "MAIN")) return@post
+                  // While browsing, collect Main data but never initiate or
+                  // complete automatic Summary navigation on the user's behalf.
                   val valid = when (source) {
                     "MAIN" -> BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
                     "SUMMARY" -> BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL)
@@ -761,7 +764,8 @@ internal fun BarsScreen(
                     viewModel.logWebEvent("automatic Summary capture: resolving official link")
                     requestOfficialSummary(view, "automatic Summary capture")
                   }
-                  if (source == "SUMMARY" && summaryFetchAttempted) {
+                  if (source == "SUMMARY" && summaryFetchAttempted &&
+                    !state.browserVisible) {
                     viewModel.logWebEvent("summary captured; restoring marks")
                     restoreOfficialMarks("restore marks after Summary")
                   }
