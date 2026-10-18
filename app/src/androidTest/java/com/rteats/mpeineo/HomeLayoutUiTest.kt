@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.rteats.mpeineo.ui.MainUiState
+import com.rteats.mpeineo.ui.BarsUiState
+import com.rteats.mpeineo.ui.MailUiState
 import com.rteats.mpeineo.ui.AppTab
 import com.rteats.mpeineo.ui.HomeTileLayout
 import com.rteats.mpeineo.ui.HomeTileSize
@@ -29,6 +32,11 @@ class HomeLayoutUiTest {
         rule.setContent {
             MpeiNeoTheme {
                 SuperAppHome(
+                    schedule = MainUiState(),
+                    bars = BarsUiState(),
+                    mail = MailUiState(),
+                    onOpenBarsDiscipline = {},
+                    onOpenMailMessage = {},
                     tiles = layout,
                     onChangeLayout = { layout = it },
                     onOpen = { opens++ },
