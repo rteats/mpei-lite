@@ -71,4 +71,33 @@ class BarsPayloadParserTest {
         assertTrue(page.isAuthFlow)
         assertEquals("/bars_web/auth/login", page.path)
     }
+    @Test
+    fun parsesEveryFieldFromTheStartupWebViewPageState() {
+        val page = BarsPayloadParser.parsePageState(
+            """{"url":"https://bars.mpei.ru/bars_web/ST_Study/Main/Main","path":"/bars_web/st_study/main/main","isLoginPage":false,"isAuthFlow":false,"isStudentList":false,"isMarksPage":true,"isSummaryPage":false,"isSummaryReady":false}"""
+        )
+        assertEquals("https://bars.mpei.ru/bars_web/ST_Study/Main/Main", page.url)
+        assertEquals("/bars_web/st_study/main/main", page.path)
+        assertTrue(page.isMarksPage)
+        assertTrue(!page.isAuthFlow)
+        assertTrue(!page.isLoginPage)
+        assertTrue(!page.isStudentList)
+        assertTrue(!page.isSummaryPage)
+        assertTrue(!page.isSummaryReady)
+    }
+
+    @Test
+    fun omittedBooleanFieldsMatchGsonDefaultsAndInvalidJsonFailsClosed() {
+        val missingFields = BarsPayloadParser.parsePageState("""{"url":"https://bars.mpei.ru"}""")
+        assertEquals("", missingFields.path)
+        assertTrue(!missingFields.isMarksPage)
+        assertTrue(!missingFields.isSummaryReady)
+        try {
+            BarsPayloadParser.parsePageState("broken-json")
+            throw AssertionError("Malformed page state must not be accepted")
+        } catch (_: org.json.JSONException) {
+            // Invalid WebView payloads are handled by the extraction-error path.
+        }
+    }
+
 }

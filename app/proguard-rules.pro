@@ -16,3 +16,14 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# BARS WebView bridge payloads originate in JavaScript JSON. Gson relies on
+# reflecting names and constructing these classes; R8 must not make them abstract.
+# In particular BarsRouteDiscovery is reached only by reflective deserialization.
+-keep class com.rteats.mpeineo.ui.BarsRouteDiscovery { *; }
+-keep class com.rteats.mpeineo.ui.BarsPageState { *; }
+
+# Offline campus geometry is also loaded through Gson using package-private DTOs.
+# Keep serialized field names and concrete constructors in optimized Dev builds.
+-keep class com.rteats.mpeineo.ui.CampusGeometry { *; }
+-keep class com.rteats.mpeineo.ui.CampusFeature { *; }
