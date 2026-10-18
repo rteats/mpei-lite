@@ -562,7 +562,9 @@ internal fun BarsScreen(
             if (!shouldExtractBarsMarks(page, marksExtractionStarted)) return
             marksExtractionStarted = true
             viewModel.logWebEvent("marks extraction started source=$source")
-            viewModel.authenticatedPage(page.url)
+            // Interactive browsing can navigate away before the JS result;
+            // do not leave native grades stuck in a loading state in that case.
+            if (source == "native") viewModel.authenticatedPage(page.url)
             val extractionId = extractionGate.begin()
             view.evaluateJavascript(
               BARS_EXTRACT_SCRIPT.replace(
