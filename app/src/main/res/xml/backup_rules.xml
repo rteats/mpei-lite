@@ -6,5 +6,6 @@
     <exclude domain="sharedpref" path="mail_notifications_v1.xml" />
     <exclude domain="sharedpref" path="owa_mail_account_v1.xml" />
     <exclude domain="sharedpref" path="github_updater.xml" />
+    <exclude domain="root" path="app_webview/" />
     <exclude domain="database" path="webview.db" />
 </full-backup-content>
