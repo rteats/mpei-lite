@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
@@ -493,6 +494,7 @@ internal fun CampusMapScreen(
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
+    var keyboardExpanded by rememberSaveable { mutableStateOf(true) }
 
     // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
     // default overview without enormous empty margins above and below.
@@ -515,6 +517,7 @@ internal fun CampusMapScreen(
         // bitmap regeneration is involved.
         selected = place
         selectedRoom = room
+        keyboardExpanded = false
         if (viewport.width > 0 && viewport.height > 0) {
             val targetZoom = 2.2f
             val scale = max(viewport.width / 600f, viewport.height / 850f) * targetZoom
@@ -595,6 +598,7 @@ internal fun CampusMapScreen(
                             }
                             selected = polygonHit ?: nearby
                             selectedRoom = null
+                            if (selected != null) keyboardExpanded = false
                             diagnostics?.log(
                                 "MAP_UI", "select source=tap building=${selected?.symbol ?: "none"}" +
                                     " hit=${if (polygonHit != null) "polygon" else if (nearby != null) "nearby" else "none"}" +
@@ -709,7 +713,30 @@ internal fun CampusMapScreen(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    rows.forEach { row ->
+                    Surface(
+                        onClick = { keyboardExpanded = !keyboardExpanded },
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                            .testTag("campus-keyboard-toggle"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.surfaceContainerLow,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                selected?.let { "Выбрано: ${it.symbol}" } ?: "Выбрать корпус",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            AppIcon(
+                                if (keyboardExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                                contentDescription = if (keyboardExpanded) "Свернуть выбор" else "Показать корпуса",
+                            )
+                        }
+                    }
+                    if (keyboardExpanded) rows.forEach { row ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -777,23 +804,29 @@ internal fun CampusMapScreen(
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
-                onClick = {
-                    selected = null
-                    selectedRoom = null
-                },
                 shape = RoundedCornerShape(24.dp),
                 color = colors.surfaceContainerHigh,
                 shadowElevation = 3.dp,
             ) {
-                Column(Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(place.name, style = MaterialTheme.typography.titleMedium)
-                    selectedRoom?.let { room ->
-                        Text(room, style = MaterialTheme.typography.labelLarge,
-                            color = colors.primary)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp,
+                        bottom = 12.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(place.name, style = MaterialTheme.typography.titleMedium)
+                        selectedRoom?.let { room ->
+                            Text(room, style = MaterialTheme.typography.labelLarge,
+                                color = colors.primary)
+                        }
+                        Text(place.address, style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant)
                     }
-                    Text(place.address, style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceVariant)
+                    TextButton(onClick = {
+                        selected = null
+                        selectedRoom = null
+                    }) { Text("Скрыть") }
                 }
             }
         }

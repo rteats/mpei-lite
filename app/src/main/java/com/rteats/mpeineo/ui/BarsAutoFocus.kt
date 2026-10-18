@@ -6,12 +6,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +35,15 @@ internal fun BarsAutoFocus(
     onOpenDiscipline: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val priorities = remember(disciplines) { semesterAutoFocus(disciplines).take(3) }
+    var orderByWeek by rememberSaveable { mutableStateOf(false) }
+    val priorities = remember(disciplines, orderByWeek) {
+        val candidates = semesterAutoFocus(disciplines)
+        if (orderByWeek) candidates.sortedWith(
+            compareBy<SemesterAutoFocus> {
+                it.week?.filter(Char::isDigit)?.toIntOrNull() ?: Int.MAX_VALUE
+            }.thenByDescending { it.weight * (it.recommendedMark - 3) }
+        ).take(3) else candidates.take(3)
+    }
     if (priorities.isEmpty()) return
 
     Surface(
@@ -57,9 +70,22 @@ internal fun BarsAutoFocus(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !orderByWeek,
+                    onClick = { orderByWeek = false },
+                    label = { Text("По влиянию") },
+                )
+                FilterChip(
+                    selected = orderByWeek,
+                    onClick = { orderByWeek = true },
+                    label = { Text("По неделям") },
+                )
+            }
             Text(
-                "КМ, где более высокая оценка сильнее поможет достичь 4,20. " +
-                    "Нажмите для планирования.",
+                if (orderByWeek) "Показаны КМ с известной ближайшей неделей. " +
+                    "Без указания недели — в конце списка."
+                else "КМ, где более высокая оценка сильнее поможет достичь 4,20.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -23,6 +23,7 @@ class CampusMapKeyboardUiTest {
         rule.onNodeWithTag("campus-building-keyboard").assertIsDisplayed()
         rule.onNodeWithTag("campus-key-А").performClick()
         rule.onNodeWithText("Корпус А").assertIsDisplayed()
+        rule.onNodeWithTag("campus-keyboard-toggle").performClick()
         rule.onNodeWithTag("campus-key-В").performClick()
         rule.onNodeWithText("Корпус В").assertIsDisplayed()
     }
