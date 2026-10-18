@@ -105,7 +105,7 @@ internal fun BarsAutoPlanner(
                                 scenario.reachesTarget ->
                                     "Порог достигнут по вашему плану"
                                 else ->
-                                    "Не хватает ${formatBarsWeightedSum(scenario.gap)}",
+                                    "Не хватает ${formatBarsWeightedSum(scenario.gap)}"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (!plan.canReachTarget) colors.error
