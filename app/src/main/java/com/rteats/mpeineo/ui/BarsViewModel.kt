@@ -9,6 +9,7 @@ import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.BarsCachedSnapshot
+import com.rteats.mpeineo.data.barsSnapshotAccountKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -189,9 +190,13 @@ internal class BarsViewModel(
     private val snapshots: BarsSnapshotStore,
 ) : ViewModel() {
 
-    private val cachedRaw = snapshots.readRaw()
+    private val cachedGrades = snapshots.read()
+    private val cachedRaw = cachedGrades?.payload?.let { payload ->
+        barsSnapshotAccountKey(payload.name, payload.group)
+            ?.let(snapshots::readRaw)
+    }
     private val _state = MutableStateFlow(
-        snapshots.read()?.let { cached ->
+        cachedGrades?.let { cached ->
             BarsUiState(
                 authStage = BarsAuthStage.AUTHENTICATED,
                 profileName = cached.payload.name,
@@ -318,6 +323,12 @@ internal class BarsViewModel(
                         previous.group.trim() == payload.group.trim()) &&
                     (previous.semester.isBlank() || payload.semester.isBlank() ||
                         previous.semester.trim() == payload.semester.trim())
+                val oldKey = barsSnapshotAccountKey(old.profileName, old.profileGroup)
+                val newKey = barsSnapshotAccountKey(payload.name, payload.group)
+                val accountChanged = oldKey != null && newKey != null && oldKey != newKey
+                if (accountChanged) {
+                    diagnostics.log("BARS", "student changed; discarding old Summary state")
+                }
                 if (changed.isNotEmpty()) {
                     diagnostics.log("BARS", "grade_changes disciplines=${changed.size}" +
                         " marks=${changed.values.sumOf { it.size }}")
@@ -333,6 +344,11 @@ internal class BarsViewModel(
                         semester = payload.semester,
                         studentDetails = payload.studentDetails.orEmpty(),
                         disciplines = payload.disciplines,
+                        rawMain = if (accountChanged) "" else it.rawMain,
+                        rawSummary = if (accountChanged) "" else it.rawSummary,
+                        rawCapturedAtMillis = if (accountChanged) 0L else it.rawCapturedAtMillis,
+                        isSummaryLoading = if (accountChanged) false else it.isSummaryLoading,
+                        summaryError = if (accountChanged) null else it.summaryError,
                         gradeChanges = if (sameAccount) it.gradeChanges + changed else changed,
                         isLoading = false,
                         lastUpdatedAtMillis = updatedAt,
@@ -374,8 +390,11 @@ internal class BarsViewModel(
             }
         }
         diagnostics.log("BARS", "raw capture source=$source chars=${text.length}")
-        viewModelScope.launch(Dispatchers.IO) {
-            snapshots.writeRaw(source, text)
+        val accountKey = barsSnapshotAccountKey(_state.value.profileName, _state.value.profileGroup)
+        if (accountKey != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                snapshots.writeRaw(source, text, accountKey)
+            }
         }
     }
 
