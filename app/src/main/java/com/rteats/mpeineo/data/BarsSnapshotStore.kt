@@ -5,6 +5,7 @@ import android.util.AtomicFile
 import com.google.gson.Gson
 import com.rteats.mpeineo.ui.BarsExtractionPayload
 import java.io.File
+import java.security.MessageDigest
 
 /** Only extracted grades and their timestamp; never BARS cookies or credentials. */
 internal data class BarsCachedSnapshot(
@@ -16,7 +17,17 @@ internal data class BarsRawSnapshot(
     val main: String = "",
     val summary: String = "",
     val updatedAtMillis: Long = 0L,
+    val accountKey: String = "",
 )
+
+/** Identifies a BARS student's snapshots without storing their name in metadata. */
+internal fun barsSnapshotAccountKey(name: String, group: String): String? {
+    val normalized = listOf(name, group).joinToString("|") { it.trim().lowercase() }
+    if (name.isBlank() && group.isBlank()) return null
+    return MessageDigest.getInstance("SHA-256")
+        .digest(normalized.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+}
 
 internal class BarsSnapshotStore(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "bars_grade_snapshot.json"))
@@ -52,19 +63,23 @@ internal class BarsSnapshotStore(context: Context) {
         }
     }
 
-    fun readRaw(): BarsRawSnapshot? = runCatching {
+    fun readRaw(accountKey: String): BarsRawSnapshot? = runCatching {
+        if (accountKey.isBlank()) return null
         if (!rawFile.baseFile.exists() || rawFile.baseFile.length() > 900_000L) return null
         gson.fromJson(
             rawFile.openRead().bufferedReader(Charsets.UTF_8).use { it.readText() },
             BarsRawSnapshot::class.java,
         )?.takeIf { it.updatedAtMillis > 0L &&
-            it.updatedAtMillis <= System.currentTimeMillis() }
+            it.updatedAtMillis <= System.currentTimeMillis() &&
+            it.accountKey == accountKey }
     }.getOrNull()
 
     @Synchronized
-    fun writeRaw(source: String, text: String) {
-        if (text.length > 380_000 || source !in setOf("MAIN", "SUMMARY")) return
-        val previous = readRaw() ?: BarsRawSnapshot()
+    fun writeRaw(source: String, text: String, accountKey: String) {
+        if (text.length > 380_000 || source !in setOf("MAIN", "SUMMARY") ||
+            accountKey.isBlank()) return
+        // Never combine Summary/grades from different authenticated students.
+        val previous = readRaw(accountKey) ?: BarsRawSnapshot(accountKey = accountKey)
         val next = when (source) {
             "MAIN" -> previous.copy(main = text, updatedAtMillis = System.currentTimeMillis())
             else -> previous.copy(summary = text, updatedAtMillis = System.currentTimeMillis())
