@@ -556,6 +556,23 @@ internal fun BarsScreen(
             }
           }
 
+          // Grade extraction is read-only, including during interactive WebView login.
+          // It must not open Summary or otherwise take over the user's browser.
+          fun startMarksExtraction(page: BarsPageState, source: String) {
+            if (!shouldExtractBarsMarks(page, marksExtractionStarted)) return
+            marksExtractionStarted = true
+            viewModel.logWebEvent("marks extraction started source=$source")
+            viewModel.authenticatedPage(page.url)
+            val extractionId = extractionGate.begin()
+            view.evaluateJavascript(
+              BARS_EXTRACT_SCRIPT.replace(
+                BARS_EXTRACT_TOKEN_PLACEHOLDER,
+                extractionId.toString(),
+              ),
+              null,
+            )
+          }
+
           view.addJavascriptInterface(
             BarsJavascriptBridge(
               onSummaryDiagnostic = { safeMessage ->
@@ -623,6 +640,11 @@ internal fun BarsScreen(
 
                   if (state.browserVisible) {
                     readiness.navigationStarted()
+                    if (shouldExtractBarsMarks(page, marksExtractionStarted)) {
+                      // A user can sign in or change students without closing WebView.
+                      startMarksExtraction(page, "interactive-webview")
+                    }
+                    // Keep interactive navigation entirely under user control.
                     viewModel.logWebEvent(
                       "browser mode; leaving navigation untouched path=$currentLocation",
                     )
@@ -649,18 +671,7 @@ internal fun BarsScreen(
                           "Сводка не вернула данные. Нажмите «Обновить», чтобы повторить.",
                         )
                       }
-                      if (!marksExtractionStarted) {
-                        marksExtractionStarted = true
-                        viewModel.authenticatedPage(page.url)
-                        val extractionId = extractionGate.begin()
-                        view.evaluateJavascript(
-                          BARS_EXTRACT_SCRIPT.replace(
-                            BARS_EXTRACT_TOKEN_PLACEHOLDER,
-                            extractionId.toString(),
-                          ),
-                          null,
-                        )
-                      }
+                      startMarksExtraction(page, "native")
                     }
                     BarsPageKind.AUTH_FLOW -> {
                       redirectingToMarks = false
@@ -709,7 +720,7 @@ internal fun BarsScreen(
                   if (!extractionGate.consume(token) ||
                     !BarsDocumentPolicy.isCurrent(
                       view.url.orEmpty(), BARS_MARKS_URL,
-                    ) || state.browserVisible || mainFrameFailed
+                    ) || mainFrameFailed
                   ) {
                     viewModel.logWebEvent("ignored stale extraction result")
                     return@post
@@ -721,7 +732,9 @@ internal fun BarsScreen(
                     needsFullViewport = false
                   }
                   readiness.reset()
-                  viewModel.logWebEvent("extraction bridge returned data")
+                  viewModel.logWebEvent(
+                    "extraction bridge returned data browser=${state.browserVisible}",
+                  )
                   CookieManager.getInstance().flush()
                   viewModel.extractionReceived(json)
                   // Extract Main before visiting Summary. The flag prevents a
@@ -731,7 +744,7 @@ internal fun BarsScreen(
               },
               onRawSnapshot = { source, raw ->
                 view.post {
-                  if (webView !== view || state.browserVisible || mainFrameFailed ||
+                  if (webView !== view || mainFrameFailed ||
                     !BarsDocumentPolicy.isTrusted(view.url.orEmpty())) return@post
                   val valid = when (source) {
                     "MAIN" -> BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
@@ -759,7 +772,7 @@ internal fun BarsScreen(
                   }
                   if (!BarsDocumentPolicy.isCurrent(
                       view.url.orEmpty(), BARS_MARKS_URL,
-                    ) || state.browserVisible || mainFrameFailed
+                    ) || mainFrameFailed
                   ) return@post
                   needsFullViewport = false
                   readiness.navigationStarted()
