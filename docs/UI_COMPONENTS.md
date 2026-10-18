@@ -11,7 +11,7 @@
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
 | Class card | LessonCard / ScheduleScreen.kt | Collapsed by default: number pill, single-line ellipsized subject, classroom at right. Tap anywhere to expand full time, kind, multiline name and icon-led room, lecturer and groups, then tap again to collapse. |
-| BARS grade combinations | GradeForecastDropdown / BarsGradeCalculator.kt | Every discipline's details sheet has an expandable calculator for weighted grade combinations satisfying Σ(grade × weight) ≥ 4.2. Known grades stay fixed; ungraded controls are varied 2–5. Does not invent missing weights. |
+| BARS «Автомат» plan | BarsAutoPlanner / BarsAutoPlan.kt / BarsAutoFocus.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, bounds and a compact cross-course focus panel. Actual BARS grades stay fixed. |
 | Settings | SettingsScreen.kt | Update, diagnostics and cache; refresh-on-launch toggle removed. |
 
 ## Data behavior
@@ -49,12 +49,21 @@ a WebView. There is no global horizontal pager or Home FAB.
 
 ## BARS weighted-grade forecasts
 
-The calculator consumes only BARS control activities with readable grade
-weights. Decimal comma, fractional weights and percentages are supported;
-missing or inconsistent weights are not silently guessed. It keeps existing
-grades fixed, explores future values 2–5 and lists up to 30 combinations
-which meet a weighted sum of at least 4.2. The sum, known weight total, and
-limitations are visible. Forecasts are local and never modify BARS grades.
+The new planner consumes only BARS control activities with readable weights.
+Fractional weights, decimal commas and percentages are supported; absent or
+inconsistent weights are not guessed. Actual graded work is fixed, and students
+can assign only 3, 4 or 5 to future KMs. It shows the weighted 4.2 goal,
+current earned sum, future-3 lower bound, future-5 upper bound and whether
+4.2 remains achievable. The default recommendation raises grades on
+higher-weight controls first, minimizing grade-point improvements relative to
+all threes; the app does not pretend to know test difficulty. Each upcoming
+KM shows its name, week, weight and marginal score gain. Scenarios persist
+across tab/detail navigation via saveable in-memory state; the state resets
+when the student/semester/official KMs change. The BARS subject overview
+surfaces up to three cross-course priorities for convenient navigation.
+The old enumeration solver remains for compatibility/tests but is no
+longer the user-facing layout. A 4.2 prediction is not a guarantee that an
+instructor will grant an automatic exam grade. No scenario ever writes to BARS.
 
 ## Native MPEI mail (OWA only)
 
