@@ -317,6 +317,13 @@ internal fun BarsNativeDashboard(
               EmptyBarsCard("В текущем семестре дисциплины не найдены.")
             }
           } else {
+            item(key = "auto-focus") {
+              BarsAutoFocus(
+                disciplines = state.disciplines,
+                onOpenDiscipline = { selectedDisciplineName = it },
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+              )
+            }
             items(
               items = state.disciplines,
               key = { it.disciplineName },
