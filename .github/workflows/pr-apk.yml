@@ -16,7 +16,7 @@ jobs:
   build-pr:
     name: Build installable PR APK
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout PR
         uses: actions/checkout@v5
@@ -49,14 +49,25 @@ jobs:
           echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
           echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
 
-      - name: Run unit tests and build signed PR APK
+      - name: Run unit tests, UI test compilation, lint, and build signed PR APK
         run: |
-          gradle --no-daemon testDevDebugUnitTest assembleDevRelease \
+          gradle --no-daemon testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=0.4.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}
           cp app/build/outputs/apk/dev/release/app-dev-release.apk \
             MPEI-Neo-PR-${{ github.event.pull_request.number }}.apk
+
+      - name: Upload verification reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-${{ github.event.pull_request.number }}-verification
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload test APK
         uses: actions/upload-artifact@v4

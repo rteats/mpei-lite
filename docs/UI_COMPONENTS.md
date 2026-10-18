@@ -56,41 +56,23 @@ grades fixed, explores future values 2–5 and lists up to 30 combinations
 which meet a weighted sum of at least 4.2. The sum, known weight total, and
 limitations are visible. Forecasts are local and never modify BARS grades.
 
-## Native MPEI IMAP inbox
+## Native MPEI mail (OWA only)
 
-The Mail tab shows a native read-only inbox over IMAPS, host `mail.mpei.ru`,
-port `993`, with mandatory TLS certificate/hostname checks. The account
-uses the same IMAP username and password as FairEmail, entered locally in the
-app (never in project source). Credentials are AES-GCM encrypted with an
-Android Keystore key; the app does not send email or require SMTP.
+Mail uses the university Exchange OWA `service.svc` protocol through the
+currently authenticated WebView session. No IMAP credentials, IMAP socket,
+certificate pinning, or SMTP transport are used. The native Inbox and Sent
+folders support pagination, search, previews, read-state synchronization,
+recipient suggestions, and sending text messages with attachments. The
+Compose button is a FAB; the official ОСЭП browser remains available for login.
 
-INBOX is opened READ_ONLY and IMAP peek mode is enabled so opening a message
-does not change its read flag. The latest 60 messages show their sender,
-subject, date, and existing server unread state. Opening one decodes MIME
-text/plain (with HTML-to-text fallback), highlights HTTP(S) links handled by
-Android's default browser, and lists MIME attachments. Tapping an attachment
-streams it to `Downloads/MPEI Neo` via MediaStore on Android 10+, with no
-storage permission. Pull-to-refresh reloads the inbox and keeps the current
-session's list in ViewModel memory during tab navigation. OWA remains a
-fallback through the globe action. Native swiping is disabled on the Mail tab
-while email content is shown to avoid conflicts with text selection; narrow
-edge swipes still allow switching destinations.
+Conversation headers and opened message bodies are stored in an encrypted
+per-account cache under `noBackupFilesDir`. Background notification polling
+uses WorkManager and the same OWA protocol, then broadcasts refreshed headers
+to the live inbox. On logout, local OWA cache and cookies are cleared without
+touching the separate BARS session.
 
-
-### Internal IMAP TLS certificate handling
-
-`MailTlsTrust` retains Android's standard X.509 trust manager. If MPEI serves
-a certificate signed by its private `public-PUBLICCA-CA`, and Android rejects
-it, the app makes a separate **unauthenticated TLS probe** to display the
-offered leaf certificate's subject, issuer, validity dates, SANs and SHA-256
-fingerprint, plus the last certificate in its chain if available. The user
-must verify the fingerprint through FairEmail or university IT and explicitly
-confirm it; no trust exception is granted automatically. The saved exception
-is only the **exact SHA-256 leaf fingerprint** for `mail.mpei.ru`; all other
-network hosts continue to use system trust. The pinned certificate must
-still be in its validity period and name `mail.mpei.ru`. JavaMail's
-`ssl.checkserveridentity=true` remains enabled. On certificate rotation,
-connections fail closed and require another explicit verification.
+Previously supported IMAP credential and trust settings are cleared for
+upgrading users; obsolete JavaMail and TLS transports were removed.
 
 ## Campus map
 
