@@ -137,9 +137,15 @@ internal class MailCache(private val context: Context) {
         if (!atomic.baseFile.exists() && !File(file.path + ".bak").exists()) return@runCatching null
         val bytes = atomic.openRead().use { stream ->
             val max = 3_000_000
-            val data = stream.readNBytes(max + 1)
-            if (data.size > max) return@runCatching null
-            data
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (output.size() + count > max) return@runCatching null
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
         }
         if (bytes.size <= 12) return@runCatching null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
