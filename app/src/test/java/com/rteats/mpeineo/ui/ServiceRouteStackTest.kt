@@ -1,0 +1,27 @@
+package com.rteats.mpeineo.ui
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ServiceRouteStackTest {
+    @Test fun normalNavigationReplacesTheActiveService() {
+        assertEquals(listOf(AppTab.MAIL.name),
+            serviceRouteAfterOpen(emptyList(), AppTab.MAIL, false))
+        assertEquals(listOf(AppTab.BARS.name),
+            serviceRouteAfterOpen(listOf(AppTab.MAIL.name), AppTab.BARS, false))
+    }
+
+    @Test fun classroomOpensMapAboveScheduleOnly() {
+        val nested = serviceRouteAfterOpen(
+            listOf(AppTab.SCHEDULE.name), AppTab.MAPS, true)
+        assertEquals(listOf(AppTab.SCHEDULE.name, AppTab.MAPS.name), nested)
+        assertEquals(listOf(AppTab.SCHEDULE.name), serviceRouteAfterBack(nested))
+    }
+
+    @Test fun leavingRegularServiceReturnsHome() {
+        assertEquals(emptyList<String>(),
+            serviceRouteAfterBack(listOf(AppTab.BARS.name)))
+        assertEquals(listOf(AppTab.MAPS.name),
+            serviceRouteAfterOpen(listOf(AppTab.MAIL.name), AppTab.MAPS, true))
+    }
+}
