@@ -17,22 +17,19 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,6 +62,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.google.gson.Gson
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
@@ -139,6 +139,10 @@ private val CAMPUS_SYMBOLS = listOf(
     "А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К",
     "Л", "М", "Н", "Р", "С", "Т", "Ф", "Х", "Э",
 )
+/** Ordered letter keys, arranged into rows for different device widths. */
+internal fun campusKeyboardRows(symbols: List<String>, columns: Int): List<List<String>> =
+    symbols.distinct().chunked(columns.coerceAtLeast(1))
+
 private val CAMPUS_ADDRESSES = mapOf(
     "А" to "Красноказарменная ул., 17",
     "Б" to "Красноказарменная ул., 17",
@@ -402,7 +406,7 @@ private data class PreparedCampusScene(
 )
 
 /** Map view is precomposed as a tab; unlike MapKit it is safe to render offscreen. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun CampusMapScreen(
     active: Boolean,
@@ -489,7 +493,6 @@ internal fun CampusMapScreen(
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
-    var showList by remember { mutableStateOf(false) }
 
     // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
     // default overview without enormous empty margins above and below.
@@ -503,6 +506,27 @@ internal fun CampusMapScreen(
         pan = fitPan(pan, zoom)
     }
     fun project(p: Offset) = screenPoint(p, mapScale(), pan, viewport)
+    val diagnostics = remember(context) {
+        (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+            ?.container?.diagnostics
+    }
+    fun focusBuilding(place: CampusPlace, room: String?, source: String) {
+        // Change the selected vector overlay immediately; no modal-dismiss or
+        // bitmap regeneration is involved.
+        selected = place
+        selectedRoom = room
+        if (viewport.width > 0 && viewport.height > 0) {
+            val targetZoom = 2.2f
+            val scale = max(viewport.width / 600f, viewport.height / 850f) * targetZoom
+            zoom = targetZoom
+            pan = fitPan(Offset(-place.center.x * scale, -place.center.y * scale), zoom)
+        }
+        diagnostics?.log(
+            "MAP_UI", "select source=$source building=${place.symbol}" +
+                " viewportReady=${viewport.width > 0 && viewport.height > 0}" +
+                " zoom=$zoom",
+        )
+    }
 
     // Apply cross-tab focus only after the map is visible and measured.
     // Consume it once; later gestures and manual building selection remain free.
@@ -511,17 +535,19 @@ internal fun CampusMapScreen(
         if (!active || viewport.width <= 0 || viewport.height <= 0) return@LaunchedEffect
         val place = places.firstOrNull { it.symbol == request.building }
         if (place != null) {
-            val targetZoom = 2.2f
-            val scale = max(viewport.width / 600f, viewport.height / 850f) * targetZoom
-            zoom = targetZoom
-            pan = fitPan(
-                Offset(-place.center.x * scale, -place.center.y * scale),
-                targetZoom,
-            )
-            selected = place
-            selectedRoom = request.classroom.takeIf { it.isNotBlank() }
+            focusBuilding(place, request.classroom.takeIf { it.isNotBlank() }, "schedule")
+        } else {
+            diagnostics?.log("MAP_UI", "focus_unknown building=${request.building}")
         }
         onFocusConsumed()
+    }
+
+    val selectedPaths = remember(prepared, selected?.footprint?.id, buildingVSouth?.id) {
+        val chosen = selected ?: return@remember emptyList<Path>()
+        prepared.buildings.filter {
+            it.source.id == chosen.footprint.id ||
+                (chosen.symbol == "В" && it.source.id == buildingVSouth?.id)
+        }.map { it.path }
     }
 
     val labelPaint = remember {
@@ -539,18 +565,14 @@ internal fun CampusMapScreen(
                     viewport = it
                     pan = fitPan(pan, zoom)
                 }
-                // Taps select buildings; a double-tap zooms toward the touched point.
-                // Drag and pinch are handled separately, so taps still cancel on movement.
+                // Handle single taps as soon as the finger is released.
+                // A double-tap recognizer previously held every tap for the
+                // second-tap timeout before updating the building highlight.
+                // Pinch and the dedicated zoom controls remain available.
                 .pointerInput(prepared, places) {
                     detectTapGestures(
-                        onDoubleTap = { tap ->
-                            val next = applyCampusGesture(
-                                zoom, pan, 1.6f, Offset.Zero, tap, viewport, prepared.bounds,
-                            )
-                            zoom = next.zoom
-                            pan = next.pan
-                        },
                         onTap = mapTap@{ tap ->
+                            val started = SystemClock.elapsedRealtime()
                             val scale = mapScale().takeIf { it > 0 } ?: return@mapTap
                             val point = Offset(
                                 (tap.x - viewport.width / 2f - pan.x) / scale,
@@ -573,6 +595,11 @@ internal fun CampusMapScreen(
                             }
                             selected = polygonHit ?: nearby
                             selectedRoom = null
+                            diagnostics?.log(
+                                "MAP_UI", "select source=tap building=${selected?.symbol ?: "none"}" +
+                                    " hit=${if (polygonHit != null) "polygon" else if (nearby != null) "nearby" else "none"}" +
+                                    " resolveMs=${SystemClock.elapsedRealtime() - started}",
+                            )
                         },
                     )
                 }
@@ -618,23 +645,17 @@ internal fun CampusMapScreen(
                 canvas.restoreToCount(save)
             }
 
-            // Selection stays sharp and costs only one vector path redraw.
-            selected?.let { place ->
-                val selectedPaths = prepared.buildings.filter {
-                    it.source.id == place.footprint.id ||
-                        (place.symbol == "В" && it.source.id == buildingVSouth?.id)
-                }.map { it.path }
-                if (selectedPaths.isNotEmpty()) {
-                    clipRect {
-                        withTransform({
-                            translate(origin.x, origin.y)
-                            scale(scale, scale, pivot = Offset.Zero)
-                        }) {
-                            selectedPaths.forEach { path ->
-                                drawPath(path, colors.primary)
-                                drawPath(path, colors.primary,
-                                    style = Stroke(width = 2.dp.toPx() / scale))
-                            }
+            // Cached vector geometry changes only when selection changes.
+            if (selectedPaths.isNotEmpty()) {
+                clipRect {
+                    withTransform({
+                        translate(origin.x, origin.y)
+                        scale(scale, scale, pivot = Offset.Zero)
+                    }) {
+                        selectedPaths.forEach { path ->
+                            drawPath(path, colors.primary)
+                            drawPath(path, colors.primary,
+                                style = Stroke(width = 2.dp.toPx() / scale))
                         }
                     }
                 }
@@ -665,10 +686,70 @@ internal fun CampusMapScreen(
             labelsCanvas.restoreToCount(labelsSave)
         }
 
-        FilledTonalButton(
-            onClick = { showList = true },
-            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-        ) { Text("Корпуса") }
+        // Direct, alphabet-like building keyboard. No bottom sheet, extra tap,
+        // or dismissal animation between choosing a letter and its highlight.
+        BoxWithConstraints(
+            modifier = Modifier.align(Alignment.TopCenter)
+                .fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
+                .testTag("campus-building-keyboard"),
+        ) {
+            // 44dp letter keys; adapt the number of rows to the available width
+            // instead of making small keys or clipping the last letters.
+            val columns = ((maxWidth.value - 16f + 4f) / 48f).toInt().coerceIn(1, 10)
+            val rows = remember(places, columns) {
+                campusKeyboardRows(places.map { it.symbol }, columns)
+            }
+            val bySymbol = remember(places) { places.associateBy { it.symbol } }
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = colors.surfaceContainerHigh,
+                shadowElevation = 3.dp,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    rows.forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            val missing = columns - row.size
+                            repeat(missing / 2) {
+                                Spacer(Modifier.weight(1f).height(44.dp))
+                            }
+                            row.forEach { symbol ->
+                                val place = bySymbol.getValue(symbol)
+                                val isSelected = selected?.symbol == symbol
+                                Surface(
+                                    onClick = { focusBuilding(place, null, "keyboard") },
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                        .testTag("campus-key-$symbol")
+                                        .semantics { contentDescription = "Корпус $symbol" },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) colors.primaryContainer
+                                        else colors.surfaceContainerLow,
+                                    contentColor = if (isSelected) colors.onPrimaryContainer
+                                        else colors.onSurface,
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            symbol,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold
+                                                else FontWeight.Medium,
+                                        )
+                                    }
+                                }
+                            }
+                            repeat(missing - missing / 2) {
+                                Spacer(Modifier.weight(1f).height(44.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Surface(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
@@ -736,47 +817,4 @@ internal fun CampusMapScreen(
         }
     }
 
-    if (showList) {
-        ModalBottomSheet(onDismissRequest = { showList = false }) {
-            LazyColumn(
-                Modifier.fillMaxWidth().testTag("campus-building-list"),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(places, key = { it.symbol }) { place ->
-                    Surface(
-                        onClick = {
-                            selected = place
-                            selectedRoom = null
-                            zoom = 2.2f
-                            val scale = mapScale()
-                            pan = fitPan(
-                                Offset(-place.center.x * scale, -place.center.y * scale),
-                                zoom,
-                            )
-                            showList = false
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        color = colors.surfaceContainerLow,
-                        shape = MaterialTheme.shapes.large,
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(place.symbol,
-                                color = colors.primary,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.widthIn(min = 24.dp))
-                            Column {
-                                Text(place.name, style = MaterialTheme.typography.bodyLarge)
-                                Text(place.address, color = colors.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

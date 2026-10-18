@@ -27,9 +27,22 @@ with the regenerated output, review changed features, and rebuild.
 Campus buildings are identified from names on OSM polygons (Корпус А,
 Корпус Б etc.), **not** from MpeiX's approximate marker coordinates. Taps
 hit actual building outlines, with a small nearby-label tolerance. Each
-building opens a compact address card, or can be selected from the list.
-Names and addresses remain locally bundled. Buildings without a recognized
-MPEI name are drawn in a neutral surface color.
+building opens a compact address card. The previous «Корпуса» button and
+bottom sheet were replaced by an always-available **letter keyboard** at the
+top of the map. It uses the locally bundled building names, adapts to screen
+width, highlights the selected key, and zooms straight to its footprint.
+
+Single taps are resolved at finger-up instead of waiting for a second
+double-tap; double-tap zoom was removed to eliminate that delay. Use pinch
+or the existing +/- controls to zoom. Prepared selected-building paths are
+reused on redraw instead of filtering features every frame. The map's
+left-edge swipe-back zone starts below the keyboard and remains available.
+
+Diagnostics: `MAP_UI` records only building letter, selection source,
+polygon/label hit and callback processing time; `PERF` continues to record
+asset/bitmap preparation time. Neither records private schedule text or
+student data. Buildings without a recognized MPEI name are drawn in a
+neutral surface color.
 
 Pan and pinch-zoom work entirely in Compose, using Material 3 dynamic color
 roles. No schematic roads/rectangles remain.
