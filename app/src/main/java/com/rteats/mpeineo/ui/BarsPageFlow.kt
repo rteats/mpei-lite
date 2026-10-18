@@ -29,7 +29,8 @@ internal fun classifyBarsPage(page: BarsPageState): BarsPageKind {
 internal fun shouldExtractBarsMarks(
     page: BarsPageState,
     alreadyStarted: Boolean,
-): Boolean = !alreadyStarted && classifyBarsPage(page) == BarsPageKind.MARKS_READY
+): Boolean = !alreadyStarted && page.isMarksPage &&
+    BarsDocumentPolicy.isCurrent(page.url, BARS_MARKS_URL)
 
 /**
  * One readiness timeout per document, not repeated JS polling counters.
