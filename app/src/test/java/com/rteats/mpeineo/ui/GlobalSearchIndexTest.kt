@@ -3,11 +3,27 @@ package com.rteats.mpeineo.ui
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
+import com.rteats.mpeineo.model.Lesson
+import com.rteats.mpeineo.model.ScheduleDay
+import com.rteats.mpeineo.model.ScheduleWeek
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GlobalSearchIndexTest {
+    @Test fun cachedLessonSearchKeepsItsExactWeekAndDate() {
+        val target = ScheduleTarget(2L, "А-12", type = ScheduleTargetType.GROUP)
+        val lesson = Lesson("Физика", "", "11:10", "12:45", "В-206", "Иванов", "")
+        val week = ScheduleWeek(target, "2026-10-19",
+            listOf(ScheduleDay("2026-10-21", listOf(lesson))), 1)
+        val results = GlobalSearchIndex.lessons("В-206", MainUiState(
+            selected = target, agendaWeeks = mapOf(1 to week)))
+        assertEquals(1, results.size)
+        assertEquals(1, results.single().weekOffset)
+        assertEquals("2026-10-21", results.single().date)
+        assertEquals(lesson, results.single().lesson)
+    }
+
     @Test fun combinesCachedMailHeadersWithoutServerRequests() {
         val messages = listOf(
             MailSummary(1L, 1L, "Registrar", "Exam schedule", 0L, true, false),

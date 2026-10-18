@@ -70,6 +70,15 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
+/** Global search focus is a one-shot request anchored to a cached lesson. */
+internal data class ScheduleLessonFocus(
+    val requestId: Int,
+    val weekOffset: Int,
+    val date: String,
+    val name: String,
+    val startTime: String,
+)
+
 /**
  * The vertical agenda is an infinite sequence of bounded, seven-day pages.
  * Normal scrolling remains native LazyColumn scrolling. Only a deliberate
@@ -86,6 +95,7 @@ internal fun ScheduleAgenda(
     onScrollInProgressChanged: (Boolean) -> Unit,
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
+    focusLesson: ScheduleLessonFocus? = null,
     modifier: Modifier = Modifier,
 ) {
     val today = remember { LocalDate.now() }
@@ -118,6 +128,13 @@ internal fun ScheduleAgenda(
         entryDay = currentDayIndex
     }
 
+    LaunchedEffect(focusLesson?.requestId) {
+        val request = focusLesson ?: return@LaunchedEffect
+        visibleWeek = request.weekOffset
+        entryDay = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
+            .getOrDefault(0)
+    }
+
     val motion = MaterialTheme.motionScheme
     key(selectedId, selectedType) {
     AnimatedContent(
@@ -146,6 +163,14 @@ internal fun ScheduleAgenda(
                     onScrollInProgressChanged(scrolling)
                 }
             }
+        }
+        LaunchedEffect(focusLesson?.requestId, displayedWeek, state.agendaWeeks[displayedWeek]) {
+            val request = focusLesson ?: return@LaunchedEffect
+            if (request.weekOffset != displayedWeek ||
+                state.agendaWeeks[displayedWeek] == null) return@LaunchedEffect
+            val index = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
+                .getOrDefault(0).coerceIn(0, 6)
+            listState.animateScrollToItem(index)
         }
         // Only this distance determines both the week switch and visual feedback.
         var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
@@ -274,6 +299,9 @@ internal fun ScheduleAgenda(
                                 failed = displayedWeek in state.agendaFailedOffsets,
                                 onRetry = { onRetryWeek(displayedWeek) },
                                 onLocateRoom = onLocateRoom,
+                                focusLesson = focusLesson?.takeIf {
+                                    it.weekOffset == displayedWeek && it.date == date.toString()
+                                },
                             )
                         }
                     }
@@ -392,6 +420,7 @@ private fun AgendaDaySection(
     failed: Boolean,
     onRetry: () -> Unit,
     onLocateRoom: (String) -> Unit,
+    focusLesson: ScheduleLessonFocus?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
@@ -411,7 +440,10 @@ private fun AgendaDaySection(
                     ) {
                         Spacer(Modifier.height(18.dp))
                     }
-                    LessonCard(lesson, onLocateRoom)
+                    LessonCard(lesson, onLocateRoom,
+                        focused = focusLesson?.let {
+                            it.name == lesson.name && it.startTime == lesson.startTime
+                        } == true)
                 }
             }
             failed -> {
@@ -453,6 +485,7 @@ private fun AgendaDayCard(
     failed: Boolean,
     onRetry: () -> Unit,
     onLocateRoom: (String) -> Unit,
+    focusLesson: ScheduleLessonFocus?,
 ) {
     val isToday = date == today
     Surface(
@@ -476,6 +509,7 @@ private fun AgendaDayCard(
                     failed = failed,
                     onRetry = onRetry,
                     onLocateRoom = onLocateRoom,
+                    focusLesson = focusLesson,
                 )
             }
         }

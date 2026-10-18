@@ -296,7 +296,11 @@ internal fun ScheduleDockedSearch(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     // Results already load as the user types. Submitting via
                     // the IME closes this transient search mode too.
-                    keyboardActions = KeyboardActions(onSearch = { closeSearch() }),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        // Submitting must not erase the visible search results.
+                        keyboardShownDuringSearch = false
+                        keyboard?.hide()
+                    }),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
