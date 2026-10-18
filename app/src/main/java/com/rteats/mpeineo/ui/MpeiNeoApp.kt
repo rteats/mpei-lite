@@ -626,11 +626,14 @@ fun MpeiNeoApp(
                     if (currentService == AppTab.MAPS && canHandleGesture) {
                         // Reserve a slim left strip for the interactive pop.
                         // Everywhere else is exclusively for map panning/pinching.
-                        // Keep the top building-list and bottom attribution clear.
+                        // The alphabet keyboard now occupies the top of the
+                        // map. Start the left-edge back target below it so the
+                        // letter keys remain clickable (including the first
+                        // columns), while back-swipe is still available below.
                         Box(
                             modifier = Modifier.align(Alignment.CenterStart)
                                 .width(96.dp).fillMaxHeight()
-                                .padding(top = 88.dp, bottom = 200.dp)
+                                .padding(top = 248.dp, bottom = 200.dp)
                                 .testTag("campus-map-swipe-back-zone")
                                 .serviceBackGesture(
                                     eligible = true,
