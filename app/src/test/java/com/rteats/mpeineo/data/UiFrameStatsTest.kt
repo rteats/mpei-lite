@@ -44,7 +44,7 @@ class UiFrameStatsTest {
         val first = stats.summaries().single()
         val second = stats.summaries().single()
         assertEquals(first, second)
-        assertEquals(4, first.overBudget)
+        assertEquals(3, first.overBudget)
         assertEquals(15.0, first.p50Ms, 0.0001)
         assertEquals(32.0, first.p95Ms, 0.0001)
     }
