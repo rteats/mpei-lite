@@ -26,6 +26,24 @@ class BarsPageFlowTest {
             classifyBarsPage(page(url = "https://bars.mpei.ru.evil.test/", marks = true)))
     }
 
+    @Test fun authenticatedMarksCanBeExtractedInsideInteractiveWebview() {
+        // Previously onPageState returned early in browser mode, so a
+        // successful manual login never refreshed the native grade cache.
+        val marksPage = page(marks = true)
+        assertTrue(shouldExtractBarsMarks(marksPage, alreadyStarted = false))
+        assertFalse(shouldExtractBarsMarks(marksPage, alreadyStarted = true))
+    }
+
+    @Test fun browserLoginOrStudentSelectionMustNotExtractOldGrades() {
+        assertFalse(shouldExtractBarsMarks(page(auth = true), alreadyStarted = false))
+        assertFalse(shouldExtractBarsMarks(page(list = true), alreadyStarted = false))
+        assertFalse(shouldExtractBarsMarks(
+            page(url = "https://example.net/ST_Study/Main/Main", marks = true),
+            alreadyStarted = false,
+        ))
+        assertFalse(shouldExtractBarsMarks(page(), alreadyStarted = false))
+    }
+
     private class FakeScheduler {
         val jobs = mutableListOf<Pair<Runnable, Long>>()
         fun schedule(task: Runnable, delay: Long) { jobs += task to delay }
