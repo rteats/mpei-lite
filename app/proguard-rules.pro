@@ -3,3 +3,16 @@
 -keepattributes Signature,*Annotation*
 -keep class com.rteats.mpeineo.data.Remote*Dto { *; }
 -keep class com.rteats.mpeineo.model.** { *; }
+
+# Gson cache and Exchange API payloads are deserialized reflectively.
+# Conservative keep rules for the opt-in shrink comparison only.
+-keep class com.rteats.mpeineo.data.** { *; }
+-keep class com.rteats.mpeineo.ui.BarsExtractionPayload { *; }
+-keep class com.rteats.mpeineo.ui.BarsDiscipline { *; }
+-keep class com.rteats.mpeineo.ui.BarsActivity { *; }
+-keep class com.rteats.mpeineo.ui.BarsStudentDetail { *; }
+# WebView invokes these entry points by name; never obfuscate them.
+-keep class com.rteats.mpeineo.ui.BarsJavascriptBridge { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

@@ -7,6 +7,8 @@ val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNul
 val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.4.0-dev"
 // PR artifacts use a separate package so test builds cannot replace the rolling dev app.
 val prNumber = providers.gradleProperty("PR_NUMBER").orNull?.toIntOrNull()?.takeIf { it > 0 }
+// Experimental only: the published Dev and Stable APKs stay unminified until validated.
+val optimizeRelease = providers.gradleProperty("OPTIMIZE_RELEASE").orNull == "true"
 
 val devStoreFile = providers.environmentVariable("ANDROID_DEV_KEYSTORE_FILE").orNull
 val devStorePassword = providers.environmentVariable("ANDROID_DEV_KEYSTORE_PASSWORD").orNull
@@ -92,8 +94,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = optimizeRelease
+            isShrinkResources = optimizeRelease
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
