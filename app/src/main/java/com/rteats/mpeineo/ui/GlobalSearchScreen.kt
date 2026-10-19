@@ -317,6 +317,41 @@ internal fun GlobalSearchScreen(
                 }
             }
             HorizontalDivider()
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(SearchScope.entries) { option ->
+                    FilterChip(
+                        selected = scope == option,
+                        onClick = { onScopeChange(option) },
+                        label = { Text(option.label) },
+                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
+                    )
+                }
+            }
+            if (scope == SearchScope.SCHEDULE) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = schedule.searchType == null,
+                            onClick = { onScheduleTypeChange(null) },
+                            label = { Text("Все расписания") },
+                        )
+                    }
+                    items(ScheduleTargetType.entries) { type ->
+                        FilterChip(
+                            selected = schedule.searchType == type,
+                            onClick = { onScheduleTypeChange(type) },
+                            label = { Text(type.displayName) },
+                        )
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -355,41 +390,6 @@ internal fun GlobalSearchScreen(
                         }
                     }} else null,
                 )
-            }
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(SearchScope.entries) { option ->
-                    FilterChip(
-                        selected = scope == option,
-                        onClick = { onScopeChange(option) },
-                        label = { Text(option.label) },
-                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
-                    )
-                }
-            }
-            if (scope == SearchScope.SCHEDULE) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        FilterChip(
-                            selected = schedule.searchType == null,
-                            onClick = { onScheduleTypeChange(null) },
-                            label = { Text("Все расписания") },
-                        )
-                    }
-                    items(ScheduleTargetType.entries) { type ->
-                        FilterChip(
-                            selected = schedule.searchType == type,
-                            onClick = { onScheduleTypeChange(type) },
-                            label = { Text(type.displayName) },
-                        )
-                    }
-                }
             }
             renameTarget?.let { target ->
                 AlertDialog(
