@@ -286,6 +286,7 @@ fun MpeiNeoApp(
     }
 
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
+        application.container.uiFrameProfiler.markInteraction("NAV_PUSH")
         transitionJob?.cancel()
         if (navigationHaptics && !viaClassroom) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -310,6 +311,7 @@ fun MpeiNeoApp(
 
     fun goBackOneService() {
         if (isTransitioning || routeNames.isEmpty()) return
+        application.container.uiFrameProfiler.markInteraction("NAV_POP")
         if (navigationHaptics) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
