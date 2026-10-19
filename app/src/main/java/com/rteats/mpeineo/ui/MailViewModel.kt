@@ -107,6 +107,7 @@ internal class MailViewModel(
     private var pendingNotification: Pair<Long, Long>? = null
     private var recipientJob: Job? = null
     private var sentRecipientJob: Job? = null
+    private var sentVisible = false
     private var draftWriteJob: Job? = null
     private var draftAccountKey: String? = owaMailRepository.cachedAccountKey()
 
@@ -139,11 +140,27 @@ internal class MailViewModel(
         }
     }
 
+    /** Nonessential Sent-folder enrichment runs only while Sent is foreground. */
+    fun setSentVisible(visible: Boolean) {
+        if (sentVisible == visible) return
+        sentVisible = visible
+        if (!visible) {
+            sentRecipientJob?.cancel()
+            sentRecipientJob = null
+            repository.logState("OWA sent enrichment paused offscreen")
+        } else if (_state.value.sentItems.any { it.recipients.isNullOrEmpty() }) {
+            repository.logState("OWA sent enrichment resumed items=${_state.value.sentItems.size}")
+            hydrateSentRecipients(_state.value.sentItems)
+        }
+    }
+
     private fun hydrateSentRecipients(items: List<MailSummary>) {
+        if (!sentVisible) return
         sentRecipientJob?.cancel()
         val version = sessionVersion
         sentRecipientJob = viewModelScope.launch {
             for (batch in items.filter { it.recipients.isNullOrEmpty() }.chunked(10)) {
+                if (!sentVisible || version != sessionVersion) return@launch
                 val resolved = try {
                     owaMailRepository.sentRecipientNames(batch)
                 } catch (cancelled: CancellationException) {
@@ -153,7 +170,7 @@ internal class MailViewModel(
                         failure.javaClass.simpleName)
                     emptyMap()
                 }
-                if (version != sessionVersion) return@launch
+                if (version != sessionVersion || !sentVisible) return@launch
                 if (resolved.isNotEmpty()) {
                     _state.update { current ->
                         current.copy(sentItems = current.sentItems.map { item ->
@@ -758,6 +775,7 @@ internal class MailViewModel(
         pendingNotification = null
         recipientJob?.cancel()
         sentRecipientJob?.cancel()
+        sentVisible = false
         draftWriteJob?.cancel()
         _state.value.outgoingFiles.forEach { releaseFilePermission(it.uri) }
         viewModelScope.coroutineContext.cancelChildren()
