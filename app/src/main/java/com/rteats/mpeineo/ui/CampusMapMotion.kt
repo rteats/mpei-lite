@@ -108,8 +108,9 @@ internal suspend fun PointerInputScope.detectCampusGestures(
         } while (event.changes.any { it.pressed })
 
         if (!canceled && pastTouchSlop && panned && !usedMultipleFingers) {
+            val trackedVelocity = tracker.calculateVelocity()
             val velocity = campusFlingVelocity(
-                tracker.calculateVelocity(),
+                Offset(trackedVelocity.x, trackedVelocity.y),
                 lastEventTime - lastMoveTime,
             )
             if (velocity != Offset.Zero) onFling(velocity)
