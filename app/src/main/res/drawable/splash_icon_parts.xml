@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five pieces cut from the exact existing account_balance icon: pediment,
+     three pillars and plinth. Starting in the completed position also leaves
+     a recognizable icon when Android disables animations. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="@color/splash_icon_tint">
+    <group
+        android:pivotX="480"
+        android:pivotY="480"
+        android:scaleX="0.46"
+        android:scaleY="0.46"
+        android:translateY="22">
+        <group android:name="pediment">
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M80,320v-80l400,-200 400,200v80H80zM258,240h444L480,130 258,240Z" />
+        </group>
+        <group android:name="pillar_left" android:pivotY="680">
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M200,680v-280h80v280h-80z" />
+        </group>
+        <group android:name="pillar_middle" android:pivotY="680">
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M440,680v-280h80v280h-80z" />
+        </group>
+        <group android:name="pillar_right" android:pivotY="680">
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M680,680v-280h80v280h-80z" />
+        </group>
+        <group android:name="plinth" android:pivotX="480" android:pivotY="800">
+            <path android:fillColor="#FFFFFFFF"
+                android:pathData="M80,840v-80h800v80H80z" />
+        </group>
+    </group>
+</vector>
