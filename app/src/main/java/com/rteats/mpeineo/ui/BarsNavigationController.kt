@@ -5,6 +5,23 @@ import android.webkit.WebView
 import java.net.URI
 
 /**
+ * The hard limit prevents redirects or noisy progress callbacks from extending
+ * a genuinely stalled load indefinitely. The idle limit respects actual
+ * document starts and forward progress.
+ */
+internal object BarsNavigationDeadline {
+    const val CONNECT_IDLE_MS = 12_000L
+    const val DOCUMENT_IDLE_MS = 18_000L
+    const val HARD_LIMIT_MS = 45_000L
+
+    fun remainingMs(started: Boolean, elapsedTotalMs: Long, elapsedIdleMs: Long): Long =
+        minOf(
+            HARD_LIMIT_MS - elapsedTotalMs,
+            (if (started) DOCUMENT_IDLE_MS else CONNECT_IDLE_MS) - elapsedIdleMs,
+        )
+}
+
+/**
  * Single owner for BARS navigation watchdogs and delayed retries.
  * Replacing a request, or destroying its WebView, cancels outstanding callbacks.
  */
@@ -19,6 +36,8 @@ internal class BarsNavigationController(
         val target: String,
         val fallback: String?,
         var started: Boolean = false,
+        val requestedAtMs: Long = SystemClock.elapsedRealtime(),
+        var lastActivityAtMs: Long = requestedAtMs,
     )
 
     private var generation = 0
@@ -48,7 +67,7 @@ internal class BarsNavigationController(
         cancelCallbacks()
         val next = Attempt(++generation, target, fallback)
         attempt = next
-        lastLoadStartedAt = SystemClock.elapsedRealtime()
+        lastLoadStartedAt = next.requestedAtMs
         lastProgressBucket = -1
         log("load requested id=" + next.id + " reason=" + reason +
             " path=" + safeLocation(target) + " priorPath=" + safeLocation(view.url.orEmpty()) +
@@ -56,29 +75,20 @@ internal class BarsNavigationController(
         view.stopLoading()
         view.loadUrl(target)
 
-        val task = Runnable {
-            if (closed || attempt !== next) return@Runnable
-            log("load watchdog fired id=" + next.id + " path=" + safeLocation(target) +
-                " started=" + next.started +
-                " elapsedMs=" + (SystemClock.elapsedRealtime() - lastLoadStartedAt) +
-                " currentPath=" + safeLocation(view.url.orEmpty()) +
-                " progress=" + view.progress + " lastProgressBucket=" + lastProgressBucket)
-            probe("watchdog-id-" + next.id)
-            view.stopLoading()
-            if (fallback != null) {
-                load(fallback, "watchdog fallback")
-            } else {
-                attempt = null
-                onTimeout()
-            }
-        }
-        watchdog = task
-        view.postDelayed(task, 12_000L)
+        scheduleWatchdog(next)
     }
 
     fun onStarted(url: String) {
-        if (BarsDocumentPolicy.isTrusted(url)) attempt?.started = true
-        lastLoadStartedAt = SystemClock.elapsedRealtime()
+        if (!BarsDocumentPolicy.isTrusted(url)) return
+        val now = SystemClock.elapsedRealtime()
+        // Interactive BARS navigation may occur without a tracked request;
+        // still record a correct start timestamp for page-finished logs.
+        lastLoadStartedAt = now
+        val current = attempt ?: return
+        current.started = true
+        current.lastActivityAtMs = now
+        lastProgressBucket = -1
+        scheduleWatchdog(current)
     }
 
     /**
@@ -120,8 +130,54 @@ internal class BarsNavigationController(
 
     fun recordProgress(bucket: Int): Boolean {
         if (lastProgressBucket == bucket) return false
+        val previous = lastProgressBucket
         lastProgressBucket = bucket
+        // A 100 -> 0 WebView reset is not forward progress and must not
+        // repeatedly extend a stalled navigation.
+        val current = attempt
+        if (current != null && current.started && bucket > previous && bucket >= 25) {
+            current.lastActivityAtMs = SystemClock.elapsedRealtime()
+            scheduleWatchdog(current)
+        }
         return true
+    }
+
+    private fun scheduleWatchdog(current: Attempt) {
+        cancelWatchdog()
+        if (closed || attempt !== current) return
+        val now = SystemClock.elapsedRealtime()
+        val left = BarsNavigationDeadline.remainingMs(
+            current.started, now - current.requestedAtMs, now - current.lastActivityAtMs,
+        )
+        val task = Runnable {
+            if (closed || attempt !== current) return@Runnable
+            val checkedAt = SystemClock.elapsedRealtime()
+            val total = checkedAt - current.requestedAtMs
+            val idle = checkedAt - current.lastActivityAtMs
+            // A stale scheduled callback must never preempt fresh progress.
+            if (BarsNavigationDeadline.remainingMs(current.started, total, idle) > 0L) {
+                scheduleWatchdog(current)
+                return@Runnable
+            }
+            log("load watchdog fired id=" + current.id +
+                " path=" + safeLocation(current.target) +
+                " stage=" + (if (current.started) "document" else "connect") +
+                " idleMs=" + idle + " totalMs=" + total +
+                " limit=" + (if (total >= BarsNavigationDeadline.HARD_LIMIT_MS)
+                    "hard" else "idle") +
+                " currentPath=" + safeLocation(view.url.orEmpty()) +
+                " progress=" + view.progress + " lastProgressBucket=" + lastProgressBucket)
+            probe("watchdog-id-" + current.id)
+            view.stopLoading()
+            if (current.fallback != null) {
+                load(current.fallback, "watchdog fallback")
+            } else {
+                attempt = null
+                onTimeout()
+            }
+        }
+        watchdog = task
+        view.postDelayed(task, left.coerceAtLeast(1L))
     }
 
     fun close() {
