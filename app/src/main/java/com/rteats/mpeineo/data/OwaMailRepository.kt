@@ -56,6 +56,17 @@ class OwaMailRepository(
         accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
 
+    fun cachedDraft(): MailDraftSnapshot? =
+        cachedAccountKey()?.let(cache::draft)
+
+    fun saveDraft(snapshot: MailDraftSnapshot) {
+        cachedAccountKey()?.let { cache.saveDraft(it, snapshot) }
+    }
+
+    fun clearDraft() {
+        cachedAccountKey()?.let(cache::clearDraft)
+    }
+
     fun cachedSent(): List<MailSummary> =
         accountPrefs.getString("last_account", null)?.let { cache.sent(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }

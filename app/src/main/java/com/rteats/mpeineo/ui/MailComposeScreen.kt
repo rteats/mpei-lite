@@ -41,7 +41,7 @@ import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.OwaComposeProtocol
 import com.rteats.mpeineo.data.OwaRecipientSuggestion
 
-/** Native message composer; all values remain in MailViewModel while navigating. */
+/** Native message composer; unsent data is encrypted in account-scoped local storage. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailComposeScreen(
@@ -214,7 +214,8 @@ internal fun MailComposeScreen(
         }
         item(key = "compose-help") {
             Text(
-                "Сверните редактор, чтобы вернуться к почте. Черновик останется в приложении. " +
+                "Черновик сохраняется на устройстве. Он доступен после перезапуска " +
+                    "и удаляется после отправки или выхода из ОСЭП. " +
                     "Максимум 8 вложений, до 10 МБ каждое.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
