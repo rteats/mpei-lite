@@ -145,11 +145,10 @@ internal fun BarsNativeDashboard(
   onOpenBrowser: () -> Unit,
   onAcknowledgeGrades: (String) -> Unit,
   onRefreshSummary: () -> Unit,
+  onSearch: () -> Unit = {},
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
-  var disciplineQuery by rememberSaveable { mutableStateOf("") }
-  var disciplineSearchOpen by rememberSaveable { mutableStateOf(false) }
   // Saveable across detail navigation and Activity recreation. The key includes
   // actual BARS grades/weights so a new mark invalidates stale predictions.
   var autoScenarios by rememberSaveable {
@@ -263,6 +262,15 @@ internal fun BarsNativeDashboard(
               )
             }
           }
+          item(key = "bars-search") {
+            UnifiedSearchEntry(
+              placeholder = "Поиск по БАРС",
+              onClick = onSearch,
+              modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              tag = "bars-discipline-search",
+            )
+          }
           item(key = "profile") {
             BarsUserHeader(state = state, onOpenBrowser = onOpenBrowser)
           }
@@ -322,53 +330,14 @@ internal fun BarsNativeDashboard(
               EmptyBarsCard("В текущем семестре дисциплины не найдены.")
             }
           } else {
-            if (state.disciplines.size >= 6) {
-              item(key = "discipline-search") {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                  if (!disciplineSearchOpen) {
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.End,
-                    ) {
-                      TextButton(onClick = { disciplineSearchOpen = true }) {
-                        AppIcon(AppIcons.Search, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Найти дисциплину")
-                      }
-                    }
-                  } else {
-                    OutlinedTextField(
-                      value = disciplineQuery,
-                      onValueChange = { disciplineQuery = it },
-                      singleLine = true,
-                      label = { Text("Дисциплина или преподаватель") },
-                      modifier = Modifier.fillMaxWidth().testTag("bars-discipline-search"),
-                      trailingIcon = {
-                        IconButton(onClick = {
-                          disciplineQuery = ""
-                          disciplineSearchOpen = false
-                        }) { AppIcon(AppIcons.Back, "Закрыть поиск") }
-                      },
-                    )
-                  }
-                }
-              }
-            }
-            if (disciplineQuery.isBlank()) item(key = "auto-focus") {
+            item(key = "auto-focus") {
               BarsAutoFocus(
                 disciplines = state.disciplines,
                 onOpenDiscipline = { selectedDisciplineName = it },
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
               )
             }
-            val matchingDisciplines = if (disciplineQuery.isBlank()) state.disciplines
-              else state.disciplines.filter {
-                it.disciplineName.contains(disciplineQuery.trim(), ignoreCase = true) ||
-                  it.personName.contains(disciplineQuery.trim(), ignoreCase = true)
-              }
-            if (matchingDisciplines.isEmpty()) item(key = "discipline-search-empty") {
-              EmptyBarsCard("Совпадений нет среди загруженных дисциплин.")
-            }
+            val matchingDisciplines = state.disciplines
             items(
               items = matchingDisciplines,
               key = { it.disciplineName },

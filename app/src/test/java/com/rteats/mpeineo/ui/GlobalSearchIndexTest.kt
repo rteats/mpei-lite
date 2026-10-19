@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import com.rteats.mpeineo.data.MailSummary
+import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.Lesson
@@ -31,6 +32,29 @@ class GlobalSearchIndexTest {
         )
         assertEquals(1, GlobalSearchIndex.mail("exam", messages).size)
         assertEquals(2L, GlobalSearchIndex.mail("PROFESSOR", messages).single().uid)
+    }
+
+    @Test fun scopesKeepServiceResultsSeparateWithoutLosingCrossSearch() {
+        assertTrue(SearchScope.ALL.includesSchedule)
+        assertTrue(SearchScope.ALL.includesBars)
+        assertTrue(SearchScope.ALL.includesMail)
+        assertTrue(SearchScope.SCHEDULE.includesSchedule)
+        assertTrue(!SearchScope.SCHEDULE.includesBars)
+        assertTrue(!SearchScope.BARS.includesMail)
+        assertTrue(!SearchScope.MAIL.includesSchedule)
+    }
+
+    @Test fun scopedMailSearchIncludesInboxSentAndRecipientMatches() {
+        val inbox = MailSummary(1L, 1L, "Alice", "Notice", 0L, false, false)
+        val sent = MailSummary(2L, 2L, "My account", "Lab result", 0L, false, false,
+            recipients = listOf("bob@mpei.ru"))
+        val state = MailUiState(items = listOf(inbox), sentItems = listOf(sent))
+        val result = GlobalSearchIndex.mailHits("bob", state)
+        assertEquals(1, result.size)
+        assertEquals(OwaMailFolder.SENT, result.single().folder)
+        assertEquals(sent, result.single().message)
+        assertEquals(2, GlobalSearchIndex.mailHits("", state).size)
+        assertEquals(1, GlobalSearchIndex.mailHits("Alice", state).size)
     }
 
     @Test fun searchesDisciplinesByTitleOrLecturer() {

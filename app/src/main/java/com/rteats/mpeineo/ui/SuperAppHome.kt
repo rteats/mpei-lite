@@ -67,25 +67,12 @@ internal fun SuperAppHome(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Surface(
-                    modifier = Modifier.weight(1f).height(58.dp)
-                        .clickable(onClick = onSearch).testTag("superapp-global-search"),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        AppIcon(AppIcons.Search, contentDescription = null)
-                        Text(
-                            "Поиск по МЭИ",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                UnifiedSearchEntry(
+                    placeholder = "Поиск по МЭИ",
+                    onClick = onSearch,
+                    modifier = Modifier.weight(1f),
+                    tag = "superapp-global-search",
+                )
                 IconButton(
                     onClick = {
                         editing = !editing

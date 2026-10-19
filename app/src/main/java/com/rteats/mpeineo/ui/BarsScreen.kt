@@ -118,6 +118,7 @@ internal fun BarsScreen(
   /** Keep the single WebView alive for automatic Home data refresh. */
   allowBackgroundSync: Boolean = false,
   onBrowserExit: () -> Unit = {},
+  onSearch: () -> Unit = {},
   onDetailOpenChange: (Boolean) -> Unit = {},
   openDisciplineName: String? = null,
   openDisciplineRequest: Int = 0,
@@ -336,6 +337,7 @@ internal fun BarsScreen(
         onOpenDisciplineConsumed = onOpenDisciplineConsumed,
         showCachedRefreshErrors = autoRefreshEnabled || manuallyRequestedConnection,
         onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
+        onSearch = onSearch,
         onRefresh = {
           manuallyRequestedConnection = true
           redirectingToMarks = false

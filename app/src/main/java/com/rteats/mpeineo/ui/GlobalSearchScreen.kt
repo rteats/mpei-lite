@@ -24,11 +24,24 @@ import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
+import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.model.ScheduleTarget
+import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.displayName
 import com.rteats.mpeineo.model.favoriteKey
 import org.json.JSONArray
+
+/** Search opens on the current service, but every surface can switch to All. */
+internal enum class SearchScope(val label: String) {
+    ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта");
+
+    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE
+    val includesBars: Boolean get() = this == ALL || this == BARS
+    val includesMail: Boolean get() = this == ALL || this == MAIL
+}
+
+internal data class SearchMailHit(val folder: OwaMailFolder, val message: MailSummary)
 
 /** The actual lesson and its week/day, rather than only its parent schedule. */
 internal data class ScheduleLessonHit(val weekOffset: Int, val date: String, val lesson: Lesson)
@@ -37,6 +50,22 @@ internal data class ScheduleLessonHit(val weekOffset: Int, val date: String, val
 internal object GlobalSearchIndex {
     fun mail(query: String, items: List<MailSummary>): List<MailSummary> =
         items.filter { it.sender.contains(query, true) || it.subject.contains(query, true) }.take(20)
+
+    fun mailHits(query: String, state: MailUiState): List<SearchMailHit> {
+        val limit = if (query.isBlank()) 4 else 20
+        return listOf(
+            OwaMailFolder.INBOX to state.items,
+            OwaMailFolder.SENT to state.sentItems,
+        ).flatMap { (folder, items) ->
+            items.asSequence().filter { item ->
+                query.isBlank() || item.sender.contains(query, ignoreCase = true) ||
+                    item.subject.contains(query, ignoreCase = true) ||
+                    item.recipients.orEmpty().any {
+                        it.contains(query, ignoreCase = true)
+                    }
+            }.take(limit).map { SearchMailHit(folder, it) }.toList()
+        }
+    }
 
     fun disciplines(query: String, items: List<BarsDiscipline>): List<BarsDiscipline> =
         items.filter {
@@ -92,6 +121,9 @@ internal class GlobalSearchHistory(context: Context) {
 @Composable
 internal fun GlobalSearchScreen(
     query: String,
+    scope: SearchScope,
+    onScopeChange: (SearchScope) -> Unit,
+    onScheduleTypeChange: (ScheduleTargetType?) -> Unit,
     onQueryChange: (String) -> Unit,
     history: List<String>,
     onHistorySelected: (String) -> Unit,
@@ -102,7 +134,7 @@ internal fun GlobalSearchScreen(
     bars: BarsUiState,
     onSchedule: (ScheduleTarget) -> Unit,
     onLesson: (ScheduleLessonHit) -> Unit,
-    onMail: (MailSummary) -> Unit,
+    onMail: (SearchMailHit) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
     onSubmit: () -> Unit,
@@ -116,13 +148,15 @@ internal fun GlobalSearchScreen(
     }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
-    val targets = if (searching) GlobalSearchIndex.targets(trimmed, schedule)
+    val targets = if (!scope.includesSchedule) emptyList()
+        else if (searching) GlobalSearchIndex.targets(trimmed, schedule)
         else schedule.favorites.take(5)
-    val disciplines = if (searching) GlobalSearchIndex.disciplines(trimmed, bars.disciplines)
+    val disciplines = if (!scope.includesBars) emptyList()
+        else if (searching) GlobalSearchIndex.disciplines(trimmed, bars.disciplines)
         else bars.disciplines.take(4)
-    val messages = if (searching) GlobalSearchIndex.mail(trimmed, mail.items)
-        else mail.items.take(4)
-    val lessons = if (searching && schedule.selected != null)
+    val messages = if (scope.includesMail) GlobalSearchIndex.mailHits(trimmed, mail)
+        else emptyList()
+    val lessons = if (scope.includesSchedule && searching && schedule.selected != null)
         GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
 
     Surface(
@@ -143,14 +177,16 @@ internal fun GlobalSearchScreen(
                     singleLine = true,
                     modifier = Modifier.weight(1f).focusRequester(focus)
                         .testTag("global-search-input"),
-                    placeholder = { Text("Поиск по МЭИ") },
-                    shape = RoundedCornerShape(24.dp),
+                    placeholder = { Text(if (scope == SearchScope.ALL) "Поиск по МЭИ" else "Поиск: " + scope.label) },
+                    shape = MaterialTheme.shapes.extraLarge,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
                         onSubmit()
                         keyboard?.hide()
                     }),
                     colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                     ),
@@ -161,12 +197,47 @@ internal fun GlobalSearchScreen(
                     }} else null,
                 )
             }
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(SearchScope.entries) { option ->
+                    FilterChip(
+                        selected = scope == option,
+                        onClick = { onScopeChange(option) },
+                        label = { Text(option.label) },
+                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
+                    )
+                }
+            }
+            if (scope == SearchScope.SCHEDULE) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = schedule.searchType == null,
+                            onClick = { onScheduleTypeChange(null) },
+                            label = { Text("Все расписания") },
+                        )
+                    }
+                    items(ScheduleTargetType.entries) { type ->
+                        FilterChip(
+                            selected = schedule.searchType == type,
+                            onClick = { onScheduleTypeChange(type) },
+                            label = { Text(type.displayName) },
+                        )
+                    }
+                }
+            }
             HorizontalDivider()
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                if (!searching && history.isNotEmpty()) {
+                if (!searching && scope == SearchScope.ALL && history.isNotEmpty()) {
                     item { SearchSection("Недавние запросы", "Очистить", onClearHistory) }
                     items(history, key = { "history-" + it }) { entry ->
                         ListItem(
@@ -210,12 +281,19 @@ internal fun GlobalSearchScreen(
                 }
                 if (messages.isNotEmpty()) {
                     item { SearchSection(if (searching) "Почта · загруженные письма" else "Последние письма") }
-                    items(messages, key = { "mail-" + it.uidValidity + "-" + it.uid }) { item ->
-                        SearchEntry(AppIcons.Mail, item.subject.ifBlank { "Без темы" },
-                            item.sender) { onMail(item) }
+                    items(messages, key = { "mail-" + it.folder.name + "-" + it.message.uidValidity + "-" + it.message.uid }) { hit ->
+                        val item = hit.message
+                        SearchEntry(
+                            AppIcons.Mail,
+                            item.subject.ifBlank { "Без темы" },
+                            (if (hit.folder == OwaMailFolder.SENT) "Отправленные" else "Входящие") +
+                                " · " + (if (hit.folder == OwaMailFolder.SENT)
+                                    item.recipients.orEmpty().joinToString(", ").ifBlank { item.sender }
+                                    else item.sender),
+                        ) { onMail(hit) }
                     }
                 }
-                if (searching && schedule.isSearching) {
+                if (searching && scope.includesSchedule && schedule.isSearching) {
                     item {
                         Row(Modifier.fillMaxWidth().padding(20.dp),
                             horizontalArrangement = Arrangement.Center) {
@@ -224,18 +302,28 @@ internal fun GlobalSearchScreen(
                     }
                 }
                 if (searching && targets.isEmpty() && lessons.isEmpty() &&
-                    disciplines.isEmpty() && messages.isEmpty() && !schedule.isSearching) {
+                    disciplines.isEmpty() && messages.isEmpty() &&
+                    (!scope.includesSchedule || !schedule.isSearching)) {
                     item {
                         Text(
-                            "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
+                            if (scope == SearchScope.MAIL) "Нет совпадений среди загруженных писем."
+                            else if (scope == SearchScope.BARS) "Нет совпадений среди загруженных дисциплин."
+                            else "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
                             modifier = Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                if (!searching && targets.isEmpty() && disciplines.isEmpty() && history.isEmpty()) {
+                if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
+                    messages.isEmpty() && history.isEmpty()) {
                     item {
-                        Text("Найдите группу, преподавателя, аудиторию, дисциплину или письмо.",
+                        Text(
+                            when (scope) {
+                                SearchScope.MAIL -> "В загруженной почте пока нет писем."
+                                SearchScope.BARS -> "Загрузите дисциплины БАРС для поиска."
+                                SearchScope.SCHEDULE -> "Найдите группу, преподавателя или аудиторию."
+                                SearchScope.ALL -> "Найдите группу, преподавателя, аудиторию, дисциплину или письмо."
+                            },
                             Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
