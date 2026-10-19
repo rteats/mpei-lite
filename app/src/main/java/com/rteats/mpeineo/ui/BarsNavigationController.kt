@@ -159,10 +159,10 @@ internal class BarsNavigationController(
             }
             log("load watchdog fired id=" + current.id +
                 " path=" + safeLocation(current.target) +
-                " stage=" + if (current.started) "document" else "connect" +
+                " stage=" + (if (current.started) "document" else "connect") +
                 " idleMs=" + idle + " totalMs=" + total +
-                " limit=" + if (total >= BarsNavigationDeadline.HARD_LIMIT_MS)
-                    "hard" else "idle" +
+                " limit=" + (if (total >= BarsNavigationDeadline.HARD_LIMIT_MS)
+                    "hard" else "idle") +
                 " currentPath=" + safeLocation(view.url.orEmpty()) +
                 " progress=" + view.progress + " lastProgressBucket=" + lastProgressBucket)
             probe("watchdog-id-" + current.id)
