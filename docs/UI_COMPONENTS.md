@@ -5,8 +5,10 @@
 | Super-app home | SuperAppHome.kt | Root launcher with four large service cards (Schedule, BARS, Mail, Campus), cached metadata, and a Settings action. No permanent navbar. |
 | Service push/pop | MpeiNeoApp.kt | Opening a service slides it in from the right; Android Back and full-width right-swipes pop toward Home (or the contextual Schedule origin). Native service page follows the finger, with a 20% threshold and a settling animation; the Android OS owns system-back edge zones. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
-| Bottom floating search bar | ScheduleDockedSearch.kt | Tonal search dock at screen bottom without a navbar. Favorites and suggestions expand upward; selected schedule appears in collapsed placeholder. |
-| Expanded search | ScheduleDockedSearch.kt | Favorites appear in a floating panel ABOVE the bottom search input on focus. As text is entered, matching favorites stay above API results; category filters apply to both. The popup overlays the agenda without resizing it. It responds to keyboard insets and is dismissed when navigating away. |
+| Unified search entry | UnifiedSearchEntry.kt | Same 56dp Monet-tonal search trigger on Home, Schedule, Mail, and BARS; opens the full-screen search with the current service initially selected. |
+| Unified results | GlobalSearchScreen.kt | Scope chips (Все / Пары / БАРС / Почта) filter cached and remote results. BARS disciplines, Inbox and Sent headers are searched locally; timetable suggestions continue using the existing debounced schedule lookup. |
+| Schedule target picker | ScheduleDockedSearch.kt | A separate favorites button opens the existing specialized timetable picker, including favorites, rename and category filters. The normal search bar opens unified scoped search; week-refresh button remains. |
+| Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
 | Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
@@ -27,7 +29,7 @@ and refreshed from the network; the user can also pull down in the agenda for
 an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
-Navigation uses a service launcher as its root instead of a bottom navigation bar. Search suggestions remain above the schedule dock and adapt to the IME.
+Navigation uses a service launcher as its root instead of a bottom navigation bar. Native service search triggers open the same full-screen results experience. The Schedule favorites/target picker remains available as a separate, specialized control.
 
 ## Service navigation, back swipes and WebViews
 
@@ -87,11 +89,35 @@ upgrading users; obsolete JavaMail and TLS transports were removed.
 
 The Campus service in `CampusMapScreen.kt` renders an offline OpenStreetMap
 campus footprint via Compose Canvas with Monet colors. Drag with one finger
-to pan, pinch to zoom around the finger centroid, and double-tap to zoom toward
-a point. Buildings remain tappable; zoom/recenter controls are still available.
+to pan, and release a quick one-finger drag to let the map glide and slow to a stop.
+The fling stops at the map edges or on the next touch. Pinch zoom stays centered
+under the fingers and does not trigger a fling. Buildings remain tappable;
+zoom/recenter controls are still available.
 The map reserves a 96dp-wide left-side strip (excluding the OS's first 24dp)
 between the top and bottom controls for interactive right-swipe navigation.
 Everywhere else, horizontal drags move the map rather than navigate. The
 Android system Back gesture and hardware Back continue to navigate normally.
 OSM attribution remains visible.
 See `docs/OFFLINE_CAMPUS_MAP.md`.
+
+
+## Unified search model
+
+Home opens the common full-screen search in **Все**. Schedule, BARS and
+Mail open that same screen with their own filter already selected; switching
+to **Все** searches across services, without a second bar appearing inside
+the results. Back closes search without changing the currently open service.
+
+The Schedule header keeps a separate favorites/target-picker affordance because
+it also supports renaming favorites and changing the current timetable. This
+is not presented as an alternative global search field. Mail keeps its
+Inbox/Sent folder chips in the inbox, while search includes **both cached**
+folders and shows which folder each result belongs to. Opening a Sent result
+switches to Sent first. No mail-body indexing or server-side mailbox search
+was added, and cached BARS disciplines remain the only BARS search source.
+The campus alphabet keyboard is a spatial building navigator, not text search.
+
+QA: open search from each native service; test scope chip switching and Back.
+Verify Schedule's favorites and week refresh still work, BARS discipline
+results open the correct detail, and both Inbox and Sent results open within
+the correct mail folder. Test narrow screens and IME in light/dark Monet themes.

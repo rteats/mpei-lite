@@ -107,6 +107,7 @@ internal fun ScheduleDockedSearch(
     showWeekInfo: Boolean,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    onOpenUnifiedSearch: () -> Unit = {},
     active: Boolean = true,
     dockRevealProgress: () -> Float = { 1f },
     modifier: Modifier = Modifier,
@@ -138,6 +139,12 @@ internal fun ScheduleDockedSearch(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(expanded, active) {
+        if (expanded && active) {
+            searchFocusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
 
     fun closeSearch() {
         openedFavoriteMenuKey = null
@@ -258,6 +265,20 @@ internal fun ScheduleDockedSearch(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    if (!expanded) {
+                        UnifiedSearchEntry(
+                            placeholder = "Поиск по расписанию",
+                            onClick = onOpenUnifiedSearch,
+                            modifier = Modifier.weight(1f),
+                            tag = "schedule-docked-search",
+                        )
+                        IconButton(onClick = { onExpandedChange(true) }) {
+                            AppIcon(
+                                AppIcons.Favorite,
+                                contentDescription = "Избранные и выбор расписания",
+                            )
+                        }
+                    } else {
                     Surface(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(searchCorner),
@@ -354,6 +375,7 @@ internal fun ScheduleDockedSearch(
                         }
                     },
                 )
+                    }
                     }
                     if (!expanded && selected != null) {
                         val refreshing = visibleWeekOffset in state.agendaLoadingOffsets

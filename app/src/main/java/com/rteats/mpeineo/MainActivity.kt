@@ -50,8 +50,18 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Native system launch animation; installs the regular Activity theme before Compose.
-        installSplashScreen()
+        // Android 12+ plays the five vector parts in the system splash window.
+        // Keep that window visible just long enough to finish the sequence,
+        // without adding any delay on ordinary activity resumes.
+        val launchStart = android.os.SystemClock.uptimeMillis()
+        val splash = installSplashScreen()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+            android.animation.ValueAnimator.areAnimatorsEnabled()
+        ) {
+            splash.setKeepOnScreenCondition {
+                android.os.SystemClock.uptimeMillis() - launchStart < 620L
+            }
+        }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         readMailTarget(intent)
