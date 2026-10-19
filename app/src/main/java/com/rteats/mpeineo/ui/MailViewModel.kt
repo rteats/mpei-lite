@@ -474,9 +474,18 @@ internal class MailViewModel(
         viewModelScope.launch {
             _state.update { it.copy(savingAttachment = attachment.partPath, error = null) }
             try {
-                val file = owaMailRepository.downloadAttachment(attachment)
+                val saved = owaMailRepository.downloadAttachment(attachment)
                 if (version != sessionVersion) return@launch
-                _state.update { it.copy(savingAttachment = null, notice = "Сохранено: " + file) }
+                _state.update { current ->
+                    val id = attachment.owaAttachmentId
+                    current.copy(
+                        savingAttachment = null, notice = "Сохранено: " + saved.name,
+                        localAttachmentUris = if (id != null &&
+                            current.message?.attachments?.any { it.owaAttachmentId == id } == true
+                        ) current.localAttachmentUris + (id to saved.uri)
+                        else current.localAttachmentUris,
+                    )
+                }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -572,6 +581,12 @@ internal class MailViewModel(
         val resolver = repository.contextForNotifications.contentResolver
         val files = uris.distinct().mapNotNull { uri ->
             try {
+                // SAF can persist the original upload's read grant after restart.
+                runCatching {
+                    resolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                }
                 var name = "attachment"
                 var size = -1L
                 resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
