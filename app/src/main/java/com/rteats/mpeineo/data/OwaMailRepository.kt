@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import android.net.Uri
 import java.io.ByteArrayOutputStream
 import android.os.SystemClock
 import android.os.Build
@@ -34,6 +35,8 @@ import org.json.JSONObject
  * Sending follows the separately captured CreateItem / CreateAttachment /
  * UpdateItem exchange; credentials, cookies and message data are never logged.
  */
+internal data class SavedMailAttachment(val name: String, val uri: Uri)
+
 enum class OwaMailFolder(val distinguishedId: String) {
     INBOX("inbox"), SENT("sentitems"),
 }
@@ -49,6 +52,7 @@ class OwaMailRepository(
     private val mutex = Mutex()
     private val sendMutex = Mutex()
     private val cache = MailCache(context)
+    private val attachmentLocations = MailAttachmentLocalStore(context)
     private val accountPrefs = context.getSharedPreferences("owa_mail_account_v1", Context.MODE_PRIVATE)
     @Volatile private var activeAccount: String? = null
 
@@ -87,6 +91,7 @@ class OwaMailRepository(
     suspend fun signOut() {
         val previous = accountPrefs.getString("last_account", null)
         activeAccount = null
+        withContext(Dispatchers.IO) { attachmentLocations.clear() }
         accountPrefs.edit().remove("last_account").apply()
         if (previous != null) withContext(Dispatchers.IO) { cache.clear(previous) }
         // The cookie jar is shared with BARS; clear mail.mpei.ru only.
@@ -320,7 +325,18 @@ class OwaMailRepository(
         diagnostics.log("OWA_MAIL", "read_state_success")
     }
 
-    suspend fun downloadAttachment(attachment: MailAttachment): String {
+    /** Check readability on IO before showing Open for Inbox or Sent. */
+    internal suspend fun localAttachmentUris(
+        attachments: List<MailAttachment>,
+    ): Map<String, Uri> = withContext(Dispatchers.IO) {
+        val account = activeAccount ?: cachedAccountKey()
+        attachments.mapNotNull { attachment ->
+            val id = attachment.owaAttachmentId ?: return@mapNotNull null
+            attachmentLocations.findReadable(account, attachment)?.let { id to it }
+        }.toMap()
+    }
+
+    internal suspend fun downloadAttachment(attachment: MailAttachment): SavedMailAttachment {
         val id = attachment.owaAttachmentId?.takeIf { it.isNotBlank() }
             ?: throw ServiceFailure("attachment_id_not_available")
         val body = JSONObject()
@@ -340,10 +356,8 @@ class OwaMailRepository(
         val bytes = Base64.decode(encoded, Base64.DEFAULT)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
             throw ServiceFailure("requires_android_10_downloads")
-        val filename = attachment.name.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[\\u0000-\\u001f]"), "").take(160)
-            .ifBlank { "attachment" }
-        withContext(Dispatchers.IO) {
+        val filename = attachmentDownloadName(attachment.name)
+        val savedUri = withContext(Dispatchers.IO) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, filename)
                 put(MediaStore.Downloads.MIME_TYPE,
@@ -359,13 +373,15 @@ class OwaMailRepository(
                     ?: throw ServiceFailure("download_stream_failed")
                 val complete = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
                 resolver.update(uri, complete, null, null)
+                uri
             } catch (failure: Exception) {
                 resolver.delete(uri, null, null)
                 throw failure
             }
         }
+        attachmentLocations.remember(activeAccount ?: cachedAccountKey(), id, savedUri)
         diagnostics.log("OWA_MAIL", "attachment_saved bytes=" + bytes.size)
-        return filename
+        return SavedMailAttachment(filename, savedUri)
     }
 
     suspend fun message(summary: MailSummary): MailDetail {
@@ -471,7 +487,7 @@ class OwaMailRepository(
         draft: OutgoingMail,
         files: List<OutgoingFile>,
         onStage: (String) -> Unit = {},
-    ) = sendMutex.withLock {
+    ): Set<Uri> = sendMutex.withLock {
         if (!OwaComposeProtocol.validRecipients(draft))
             throw ServiceFailure("invalid_recipients")
         if (draft.subject.length > 998 || draft.body.length > 1_000_000)
@@ -481,6 +497,7 @@ class OwaMailRepository(
             throw ServiceFailure("attachment_limit")
 
         val started = SystemClock.elapsedRealtime()
+        val sourceLinks = mutableListOf<Pair<String, Uri>>()
         try {
             onStage(if (files.isEmpty()) "Отправка письма…" else "Создание черновика…")
             val created = service(
@@ -511,8 +528,11 @@ class OwaMailRepository(
                         actionId = "-39",
                     )
                     val attached = OwaComposeProtocol.confirmedResponse(response)
-                    changeKey = attached.optJSONArray("Attachments")?.optJSONObject(0)
-                        ?.optJSONObject("AttachmentId")?.optString("RootItemChangeKey")
+                    val attachmentIdentity = attached.optJSONArray("Attachments")?.optJSONObject(0)
+                        ?.optJSONObject("AttachmentId")
+                    attachmentIdentity?.optString("Id")?.takeIf { it.isNotBlank() }
+                        ?.let { sourceLinks.add(it to file.uri) }
+                    changeKey = attachmentIdentity?.optString("RootItemChangeKey")
                         ?.takeIf { it.isNotBlank() }
                         ?: throw ServiceFailure("missing_attachment_change_key")
                 }
@@ -524,12 +544,17 @@ class OwaMailRepository(
                     actionId = "-40",
                 )
                 OwaComposeProtocol.confirmedResponse(sent)
+                val account = activeAccount ?: cachedAccountKey()
+                sourceLinks.forEach { (attachmentId, uri) ->
+                    attachmentLocations.remember(account, attachmentId, uri)
+                }
             }
             diagnostics.log(
                 "OWA_MAIL",
                 "send_success attachments=${files.size} durationMs=" +
                     (SystemClock.elapsedRealtime() - started),
             )
+            sourceLinks.map { it.second }.toSet()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

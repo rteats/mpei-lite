@@ -58,6 +58,7 @@ internal data class MailUiState(
     val message: MailDetail? = null,
     val loadingMessage: Boolean = false,
     val savingAttachment: List<Int>? = null,
+    val localAttachmentUris: Map<String, Uri> = emptyMap(),
     val notice: String? = null,
     val error: String? = null,
     val composing: Boolean = false,
@@ -405,13 +406,38 @@ internal class MailViewModel(
         open(summary)
     }
 
+    private fun refreshLocalAttachmentUris(
+        summary: MailSummary,
+        detail: MailDetail,
+        version: Long,
+    ) {
+        if (detail.attachments.isEmpty()) return
+        viewModelScope.launch {
+            val found = owaMailRepository.localAttachmentUris(detail.attachments)
+            if (version != sessionVersion) return@launch
+            _state.update { current ->
+                if (current.selected?.uid != summary.uid ||
+                    current.selected?.uidValidity != summary.uidValidity ||
+                    current.message != detail
+                ) current else current.copy(
+                    localAttachmentUris = current.localAttachmentUris + found,
+                )
+            }
+        }
+    }
+
+    fun localOpenFailed() {
+        _state.update { it.copy(error = "Не удалось открыть файл. Проверьте доступ и приложение для просмотра.") }
+    }
+
     fun open(summary: MailSummary) {
         val version = sessionVersion
         val cached = owaMailRepository.cachedMessage(summary)
         _state.update {
-            it.copy(selected = summary, message = cached,
+            it.copy(selected = summary, message = cached, localAttachmentUris = emptyMap(),
                 loadingMessage = cached == null, error = null, notice = null)
         }
+        if (cached != null) refreshLocalAttachmentUris(summary, cached, version)
         viewModelScope.launch {
             try {
                 val detail = owaMailRepository.message(summary)
@@ -425,8 +451,9 @@ internal class MailViewModel(
                                 if (row.uid == summary.uid) row.copy(recipients = detail.recipients)
                                 else row
                             } else current.sentItems,
-                        notice = null)
+                        notice = null, localAttachmentUris = emptyMap())
                 }
+                refreshLocalAttachmentUris(summary, detail, version)
                 if (summary.unread && _state.value.mailbox == OwaMailFolder.INBOX &&
                     _state.value.selected?.uid == summary.uid) {
                     try {
@@ -475,7 +502,8 @@ internal class MailViewModel(
     }
 
     fun closeMessage() {
-        _state.update { it.copy(selected = null, loadingMessage = false, notice = null, error = null) }
+        _state.update { it.copy(selected = null, loadingMessage = false, notice = null,
+            error = null, localAttachmentUris = emptyMap()) }
     }
 
     fun download(attachment: MailAttachment) {
@@ -484,9 +512,18 @@ internal class MailViewModel(
         viewModelScope.launch {
             _state.update { it.copy(savingAttachment = attachment.partPath, error = null) }
             try {
-                val file = owaMailRepository.downloadAttachment(attachment)
+                val saved = owaMailRepository.downloadAttachment(attachment)
                 if (version != sessionVersion) return@launch
-                _state.update { it.copy(savingAttachment = null, notice = "Сохранено: " + file) }
+                _state.update { current ->
+                    val id = attachment.owaAttachmentId
+                    current.copy(
+                        savingAttachment = null, notice = "Сохранено: " + saved.name,
+                        localAttachmentUris = if (id != null &&
+                            current.message?.attachments?.any { it.owaAttachmentId == id } == true
+                        ) current.localAttachmentUris + (id to saved.uri)
+                        else current.localAttachmentUris,
+                    )
+                }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -668,13 +705,18 @@ internal class MailViewModel(
         _state.update { it.copy(sending = true, sendError = null, sendStage = "Подготовка…") }
         viewModelScope.launch {
             try {
-                owaMailRepository.sendMail(current.draft, current.outgoingFiles) { stage ->
+                val linkedSourceUris = owaMailRepository.sendMail(
+                    current.draft, current.outgoingFiles,
+                ) { stage ->
                     _state.update { old -> old.copy(sendStage = stage) }
                 }
                 if (version != sessionVersion) return@launch
                 draftWriteJob?.cancel()
                 withContext(Dispatchers.IO) { owaMailRepository.clearDraft() }
-                current.outgoingFiles.forEach { releaseFilePermission(it.uri) }
+                // Keep the original SAF grant for a source confirmed by Exchange,
+                // so the sent message can open it without another download.
+                current.outgoingFiles.filterNot { it.uri in linkedSourceUris }
+                    .forEach { releaseFilePermission(it.uri) }
                 _state.update {
                     it.copy(
                         composing = false, draft = OutgoingMail(), outgoingFiles = emptyList(),

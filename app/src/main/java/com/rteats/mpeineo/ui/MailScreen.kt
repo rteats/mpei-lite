@@ -73,6 +73,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
 import androidx.compose.ui.platform.LocalConfiguration
 import com.rteats.mpeineo.R
 import androidx.compose.ui.text.LinkAnnotation
@@ -98,6 +100,7 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
@@ -267,6 +270,11 @@ internal fun MailScreen(
                             state = state,
                             isSent = state.mailbox == OwaMailFolder.SENT,
                             onDownload = viewModel::download,
+                            onOpenLocal = { attachment, uri ->
+                                if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
+                                    viewModel.localOpenFailed()
+                                }
+                            },
                             onBack = viewModel::closeMessage,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -536,6 +544,7 @@ private fun MailMessage(
     state: MailUiState,
     isSent: Boolean,
     onDownload: (com.rteats.mpeineo.data.MailAttachment) -> Unit,
+    onOpenLocal: (com.rteats.mpeineo.data.MailAttachment, Uri) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -598,18 +607,19 @@ private fun MailMessage(
                     fontWeight = FontWeight.SemiBold,
                 )
                 detail.attachments.forEach { attachment ->
+                    val localUri = attachment.owaAttachmentId?.let { id ->
+                        state.localAttachmentUris[id]
+                    }
                     Surface(
-                        onClick = { onDownload(attachment) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
                         color = MaterialTheme.colorScheme.surfaceContainer,
                     ) {
                         Row(
                             modifier = Modifier.padding(
-                                horizontal = 14.dp,
-                                vertical = 13.dp,
+                                start = 12.dp, end = 4.dp, top = 7.dp, bottom = 7.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppIcon(
@@ -626,18 +636,31 @@ private fun MailMessage(
                                 fontWeight = FontWeight.Medium,
                             )
                             if (state.savingAttachment == attachment.partPath) {
-                                ContainedLoadingIndicator(
-                                    modifier = Modifier.size(26.dp),
-                                )
-                            } else AppIcon(
-                                AppIcons.Download,
-                                contentDescription = "Сохранить в Загрузки",
-                            )
+                                ContainedLoadingIndicator(modifier = Modifier.size(36.dp))
+                            } else {
+                                IconButton(
+                                    onClick = { onDownload(attachment) },
+                                    enabled = state.savingAttachment == null,
+                                ) {
+                                    AppIcon(
+                                        AppIcons.Download,
+                                        contentDescription = "Скачать " + attachment.name,
+                                    )
+                                }
+                            }
+                            if (localUri != null) {
+                                IconButton(onClick = { onOpenLocal(attachment, localUri) }) {
+                                    AppIcon(
+                                        AppIcons.OpenPortal,
+                                        contentDescription = "Открыть " + attachment.name,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
                 Text(
-                    "Нажмите на вложение, чтобы сохранить его в Загрузки/MPEI Neo.",
+                    "Скачанные вложения доступны в Загрузки/MPEI Neo.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
