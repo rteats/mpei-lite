@@ -620,6 +620,7 @@ internal class MailViewModel(
                 )
             }
         }
+        retainOutgoingFileGrants()
     }
 
     // Persist document read access only for files actually kept in the draft.
