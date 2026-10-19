@@ -2,6 +2,7 @@ package com.rteats.mpeineo.ui
 
 import androidx.lifecycle.ViewModel
 import android.net.Uri
+import android.content.Intent
 import android.provider.OpenableColumns
 import com.rteats.mpeineo.data.OutgoingMail
 import com.rteats.mpeineo.data.OutgoingFile
@@ -56,6 +57,7 @@ internal data class MailUiState(
     val message: MailDetail? = null,
     val loadingMessage: Boolean = false,
     val savingAttachment: List<Int>? = null,
+    val localAttachmentUris: Map<String, Uri> = emptyMap(),
     val notice: String? = null,
     val error: String? = null,
     val composing: Boolean = false,
@@ -368,13 +370,36 @@ internal class MailViewModel(
         open(summary)
     }
 
+    private fun refreshLocalAttachmentUris(
+        summary: MailSummary,
+        detail: MailDetail,
+        version: Int,
+    ) {
+        if (detail.attachments.isEmpty()) return
+        viewModelScope.launch {
+            val found = owaMailRepository.localAttachmentUris(detail.attachments)
+            if (version != sessionVersion) return@launch
+            _state.update { current ->
+                if (current.selected?.uid != summary.uid ||
+                    current.selected?.uidValidity != summary.uidValidity ||
+                    current.message != detail
+                ) current else current.copy(localAttachmentUris = found)
+            }
+        }
+    }
+
+    fun localOpenFailed() {
+        _state.update { it.copy(error = "Не удалось открыть файл. Проверьте доступ и приложение для просмотра.") }
+    }
+
     fun open(summary: MailSummary) {
         val version = sessionVersion
         val cached = owaMailRepository.cachedMessage(summary)
         _state.update {
-            it.copy(selected = summary, message = cached,
+            it.copy(selected = summary, message = cached, localAttachmentUris = emptyMap(),
                 loadingMessage = cached == null, error = null, notice = null)
         }
+        if (cached != null) refreshLocalAttachmentUris(summary, cached, version)
         viewModelScope.launch {
             try {
                 val detail = owaMailRepository.message(summary)
@@ -388,8 +413,9 @@ internal class MailViewModel(
                                 if (row.uid == summary.uid) row.copy(recipients = detail.recipients)
                                 else row
                             } else current.sentItems,
-                        notice = null)
+                        notice = null, localAttachmentUris = emptyMap())
                 }
+                refreshLocalAttachmentUris(summary, detail, version)
                 if (summary.unread && _state.value.mailbox == OwaMailFolder.INBOX &&
                     _state.value.selected?.uid == summary.uid) {
                     try {
@@ -438,7 +464,8 @@ internal class MailViewModel(
     }
 
     fun closeMessage() {
-        _state.update { it.copy(selected = null, loadingMessage = false, notice = null, error = null) }
+        _state.update { it.copy(selected = null, loadingMessage = false, notice = null,
+            error = null, localAttachmentUris = emptyMap()) }
     }
 
     fun download(attachment: MailAttachment) {
