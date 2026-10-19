@@ -26,6 +26,13 @@ internal data class UiFrameSummary(
     val layoutP95Ms: Double = 0.0,
     val drawP95Ms: Double = 0.0,
     val gpuP95Ms: Double = 0.0,
+    val syncP95Ms: Double = 0.0,
+    val swapP95Ms: Double = 0.0,
+    val unknownP95Ms: Double = 0.0,
+    val inputSamples: Int = 0,
+    val layoutSamples: Int = 0,
+    val drawSamples: Int = 0,
+    val gpuSamples: Int = 0,
 )
 
 internal class UiFrameStats(private val frameBudgetNs: Long) {
@@ -35,6 +42,9 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
         val layouts = ArrayList<Long>()
         val draws = ArrayList<Long>()
         val gpus = ArrayList<Long>()
+        val syncs = ArrayList<Long>()
+        val swaps = ArrayList<Long>()
+        val unknowns = ArrayList<Long>()
         var overBudget = 0
         var callbackDrops = 0
     }
@@ -50,6 +60,9 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
         layoutNs: Long = 0L,
         drawNs: Long = 0L,
         gpuNs: Long = 0L,
+        syncNs: Long = 0L,
+        swapNs: Long = 0L,
+        unknownNs: Long = 0L,
     ) {
         if (durationNs <= 0L) return
         val bucket = buckets.getOrPut(screen) { Bucket() }
@@ -60,6 +73,9 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
         if (layoutNs > 0) bucket.layouts.add(layoutNs)
         if (drawNs > 0) bucket.draws.add(drawNs)
         if (gpuNs > 0) bucket.gpus.add(gpuNs)
+        if (syncNs > 0) bucket.syncs.add(syncNs)
+        if (swapNs > 0) bucket.swaps.add(swapNs)
+        if (unknownNs > 0) bucket.unknowns.add(unknownNs)
         if (durationNs > frameBudgetNs) bucket.overBudget++
         bucket.callbackDrops += callbackDrops.coerceAtLeast(0)
     }
@@ -86,6 +102,13 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
             layoutP95Ms = percentile(bucket.layouts, .95),
             drawP95Ms = percentile(bucket.draws, .95),
             gpuP95Ms = percentile(bucket.gpus, .95),
+            syncP95Ms = percentile(bucket.syncs, .95),
+            swapP95Ms = percentile(bucket.swaps, .95),
+            unknownP95Ms = percentile(bucket.unknowns, .95),
+            inputSamples = bucket.inputs.size,
+            layoutSamples = bucket.layouts.size,
+            drawSamples = bucket.draws.size,
+            gpuSamples = bucket.gpus.size,
         )
     }
 }
@@ -152,6 +175,9 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
                 drawNs = metrics.getMetric(FrameMetrics.DRAW_DURATION),
                 gpuNs = if (Build.VERSION.SDK_INT >= 31)
                     metrics.getMetric(FrameMetrics.GPU_DURATION) else 0L,
+                syncNs = metrics.getMetric(FrameMetrics.SYNC_DURATION),
+                swapNs = metrics.getMetric(FrameMetrics.SWAP_BUFFERS_DURATION),
+                unknownNs = metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION),
             )
         }
         try {
@@ -207,6 +233,8 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
                         " p95Ms=" + sample.p95Ms.formatMs() +
                         " maxMs=" + sample.maxMs.formatMs() +
                         " overBudget=" + sample.overBudget +
+                        " overBudgetPct=" + if (sample.frames == 0) "0.0" else
+                            (100.0 * sample.overBudget / sample.frames).formatMs() +
                         " callbackDrops=" + sample.callbackDrops +
                         " inputP95Ms=" + sample.inputP95Ms.formatMs() +
                         " layoutP95Ms=" + sample.layoutP95Ms.formatMs() +
