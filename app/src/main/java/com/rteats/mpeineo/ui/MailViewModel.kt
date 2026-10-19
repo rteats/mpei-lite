@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+internal fun attachmentLocalKey(attachment: MailAttachment): String =
+    attachment.partPath.joinToString(".") + ":" + attachment.owaAttachmentId.orEmpty()
+
 internal enum class RecipientField { TO, CC, BCC }
 
 internal data class MailUiState(
@@ -56,6 +59,7 @@ internal data class MailUiState(
     val message: MailDetail? = null,
     val loadingMessage: Boolean = false,
     val savingAttachment: List<Int>? = null,
+    val localAttachmentUris: Map<String, Uri> = emptyMap(),
     val notice: String? = null,
     val error: String? = null,
     val composing: Boolean = false,
@@ -373,6 +377,7 @@ internal class MailViewModel(
         val cached = owaMailRepository.cachedMessage(summary)
         _state.update {
             it.copy(selected = summary, message = cached,
+                localAttachmentUris = emptyMap(),
                 loadingMessage = cached == null, error = null, notice = null)
         }
         viewModelScope.launch {
@@ -438,7 +443,39 @@ internal class MailViewModel(
     }
 
     fun closeMessage() {
-        _state.update { it.copy(selected = null, loadingMessage = false, notice = null, error = null) }
+        _state.update { it.copy(selected = null, loadingMessage = false,
+            localAttachmentUris = emptyMap(), notice = null, error = null) }
+    }
+
+    /**
+     * Check exact local mappings and app-owned Downloads off the main thread.
+     * Never show an Open button for a URI whose read grant has expired.
+     */
+    fun checkLocalAttachments() {
+        val selection = _state.value.selected ?: return
+        val detail = _state.value.message ?: return
+        val isSent = _state.value.mailbox == OwaMailFolder.SENT
+        val version = sessionVersion
+        viewModelScope.launch {
+            val found = detail.attachments.mapNotNull { attachment ->
+                val uri = owaMailRepository.localAttachmentUri(attachment, isSent, detail)
+                uri?.let { attachmentLocalKey(attachment) to it }
+            }.toMap()
+            if (sessionVersion != version) return@launch
+            _state.update { current ->
+                if (current.selected?.uid != selection.uid ||
+                    current.selected?.uidValidity != selection.uidValidity ||
+                    current.message != detail || (current.mailbox == OwaMailFolder.SENT) != isSent
+                ) current
+                else current.copy(localAttachmentUris = found)
+            }
+        }
+    }
+
+    fun localOpenFailed() {
+        _state.update { it.copy(notice = null,
+            error = "Не удалось открыть файл. Возможно, он удалён или недоступен.") }
+        checkLocalAttachments()
     }
 
     fun download(attachment: MailAttachment) {
@@ -450,6 +487,7 @@ internal class MailViewModel(
                 val file = owaMailRepository.downloadAttachment(attachment)
                 if (version != sessionVersion) return@launch
                 _state.update { it.copy(savingAttachment = null, notice = "Сохранено: " + file) }
+                checkLocalAttachments()
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -581,6 +619,15 @@ internal class MailViewModel(
                     },
                 )
             }
+        }
+    }
+
+    // Persist document read access only for files actually kept in the draft.
+    // OpenDocument grants can then survive a process restart for Sent Items.
+    // The original URI still gets checked before any Open affordance appears.
+    fun retainOutgoingFileGrants() {
+        _state.value.outgoingFiles.forEach { file ->
+            owaMailRepository.persistSelectedDocument(file.uri)
         }
     }
 
