@@ -85,7 +85,9 @@ internal fun prioritizedSentIds(
     visible: Set<Long>,
     batchSize: Int = 10,
 ): List<Long> = unresolved.distinct().let { unique ->
-    (unique.filter { it in visible } + unique.filterNot { it in visible })
+    // The caller preserves viewport order in its LinkedHashSet. A user sees
+    // those rows before older unresolved messages, regardless of mail order.
+    (visible.filter { it in unique } + unique.filterNot { it in visible })
         .take(batchSize.coerceAtLeast(0))
 }
 
