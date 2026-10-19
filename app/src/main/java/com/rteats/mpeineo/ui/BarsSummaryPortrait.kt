@@ -71,7 +71,7 @@ private fun headerCount(
     val second = flatCells(rows[1]).drop(1)
     return if (grades) {
         if (first.any { "недел" in it } &&
-            second.any { it.value.trim().toIntOrNull() in 1..54 }) 2 else 0
+            second.any { (it.value.trim().toIntOrNull()?.let { number -> number in 1..54 } == true) }) 2 else 0
     } else {
         if (first.any { "по журналу" in it } &&
             first.any { "по учебному плану" in it }) 2 else 0
@@ -115,7 +115,7 @@ internal fun barsPortraitMatrix(
     val weeks = if (grades && headers == 2) {
         columns.filter { col ->
             col.group.contains("недел", ignoreCase = true) &&
-                col.label.trim().toIntOrNull() in 1..54
+                (col.label.trim().toIntOrNull()?.let { number -> number in 1..54 } == true)
         }
     } else emptyList()
     return BarsPortraitMatrix(
