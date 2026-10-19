@@ -59,8 +59,11 @@ class OwaMailRepository(
     fun cachedDraft(): MailDraftSnapshot? =
         cachedAccountKey()?.let(cache::draft)
 
-    fun saveDraft(snapshot: MailDraftSnapshot) {
-        cachedAccountKey()?.let { cache.saveDraft(it, snapshot) }
+    fun saveDraft(snapshot: MailDraftSnapshot, expectedAccount: String?) {
+        // Never write an old draft into the next account after an OWA login switch.
+        if (expectedAccount != null && cachedAccountKey() == expectedAccount) {
+            cache.saveDraft(expectedAccount, snapshot)
+        }
     }
 
     fun clearDraft() {
