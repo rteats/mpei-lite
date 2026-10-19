@@ -330,7 +330,7 @@ private fun LessonTypeChip(kind: String) {
 }
 
 @Composable
-private fun lessonContainerColor(kind: String): Color {
+internal fun lessonContainerColor(kind: String): Color {
     val scheme = MaterialTheme.colorScheme
     val normalized = kind.lowercase(Locale.forLanguageTag("ru"))
     val semantic = when {
