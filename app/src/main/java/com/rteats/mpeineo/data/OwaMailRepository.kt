@@ -276,6 +276,7 @@ class OwaMailRepository(
      * No email addresses or subjects are written to diagnostics.
      */
     suspend fun sentRecipientNames(summaries: List<MailSummary>): Map<Long, List<String>> {
+        val started = SystemClock.elapsedRealtime()
         val pending = summaries.filter { it.recipients.isNullOrEmpty() &&
             !it.owaConversationId.isNullOrBlank() }.take(10)
         if (pending.isEmpty()) return emptyMap()
@@ -293,7 +294,8 @@ class OwaMailRepository(
                 cache.updateSentRecipients(account, found)
             }
         }
-        diagnostics.log("OWA_MAIL", "sent_recipients requested=${pending.size} resolved=${found.size}")
+        diagnostics.log("OWA_MAIL", "sent_recipients requested=${pending.size}" +
+            " resolved=${found.size} durationMs=${SystemClock.elapsedRealtime() - started}")
         return found
     }
 

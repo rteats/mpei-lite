@@ -45,6 +45,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.rteats.mpeineo.MpeiNeoApplication
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -112,6 +114,8 @@ internal fun ScheduleAgenda(
     val locale = remember { Locale.forLanguageTag("ru") }
     val weekDateFormat = remember { DateTimeFormatter.ofPattern("d MMM", locale) }
     val haptic = LocalHapticFeedback.current
+    val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
+        ?.container?.uiFrameProfiler
     val overscrollThreshold = with(LocalDensity.current) { 76.dp.toPx() }
     val overscrollMax = with(LocalDensity.current) { 180.dp.toPx() }
 
@@ -154,6 +158,18 @@ internal fun ScheduleAgenda(
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
+        // These strings are static for this week. Avoid date formatting on
+        // every pointer-driven overscroll animation frame.
+        val previousWeekLabel = remember(monday, displayedWeek, weekDateFormat) {
+            weekRange(monday, displayedWeek - 1).let { (start, end) ->
+                start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
+            }
+        }
+        val nextWeekLabel = remember(monday, displayedWeek, weekDateFormat) {
+            weekRange(monday, displayedWeek + 1).let { (start, end) ->
+                start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
+            }
+        }
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
@@ -258,10 +274,12 @@ internal fun ScheduleAgenda(
                                 if (displayedWeek == visibleWeek) {
                                     when (weekDeltaForPull(pullDistance, overscrollThreshold)) {
                                         -1 -> {
+                                            profiler?.markInteraction("WEEK_CHANGE")
                                             entryDay = 6
                                             visibleWeek = displayedWeek - 1
                                         }
                                         1 -> {
+                                            profiler?.markInteraction("WEEK_CHANGE")
                                             entryDay = 0
                                             visibleWeek = displayedWeek + 1
                                         }
@@ -310,9 +328,7 @@ internal fun ScheduleAgenda(
                 // can stick after release, cancellation or a week transition.
                 WeekPullIndicator(
                     previous = true,
-                    destination = weekRange(monday, displayedWeek - 1).let { (start, end) ->
-                        start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
-                    },
+                    destination = previousWeekLabel,
                     progress = (pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance >= overscrollThreshold,
                     modifier = Modifier.align(Alignment.TopCenter)
@@ -320,9 +336,7 @@ internal fun ScheduleAgenda(
                 )
                 WeekPullIndicator(
                     previous = false,
-                    destination = weekRange(monday, displayedWeek + 1).let { (start, end) ->
-                        start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
-                    },
+                    destination = nextWeekLabel,
                     progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance <= -overscrollThreshold,
                     modifier = Modifier.align(Alignment.BottomCenter)
@@ -433,11 +447,13 @@ private fun AgendaDaySection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                val oneHourBreaks = remember(day.lessons) {
+                    day.lessons.indices.filter { index ->
+                        index > 0 && isOneHourBreak(day.lessons[index - 1], day.lessons[index])
+                    }.toSet()
+                }
                 day.lessons.forEachIndexed { index, lesson ->
-                    if (
-                        index > 0 &&
-                        isOneHourBreak(day.lessons[index - 1], lesson)
-                    ) {
+                    if (index in oneHourBreaks) {
                         Spacer(Modifier.height(18.dp))
                     }
                     LessonCard(lesson, onLocateRoom,

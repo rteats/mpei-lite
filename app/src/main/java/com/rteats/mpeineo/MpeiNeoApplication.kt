@@ -1,6 +1,8 @@
 package com.rteats.mpeineo
 
 import android.app.Application
+import android.content.ComponentCallbacks2
+import com.rteats.mpeineo.ui.clearCampusRasterOnLowMemory
 import com.google.gson.GsonBuilder
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
@@ -40,6 +42,16 @@ class MpeiNeoApplication : Application() {
         )
         // Preserve existing WorkManager cadence, but restore a missing registration.
         MailNotificationScheduler.reconcileOnStartup(this)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            clearCampusRasterOnLowMemory()
+            if (::container.isInitialized) {
+                container.diagnostics.log("PERF", "campus_raster cache=evicted trimLevel=$level")
+            }
+        }
     }
 
     /**
