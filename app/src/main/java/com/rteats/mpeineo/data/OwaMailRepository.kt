@@ -49,6 +49,7 @@ class OwaMailRepository(
     private val mutex = Mutex()
     private val sendMutex = Mutex()
     private val cache = MailCache(context)
+    private val localAttachments = MailLocalAttachmentStore(context)
     private val accountPrefs = context.getSharedPreferences("owa_mail_account_v1", Context.MODE_PRIVATE)
     @Volatile private var activeAccount: String? = null
 
@@ -70,10 +71,27 @@ class OwaMailRepository(
     /** Account owning the encrypted inbox snapshot, including after process restart. */
     fun cachedAccountKey(): String? = accountPrefs.getString("last_account", null)
 
+    internal fun persistSelectedDocument(uri: android.net.Uri) =
+        localAttachments.persistPickedDocument(uri)
+
+    internal suspend fun localAttachmentUri(
+        attachment: MailAttachment,
+        isSent: Boolean,
+        detail: MailDetail?,
+    ): android.net.Uri? = withContext(Dispatchers.IO) {
+        localAttachments.resolve(
+            activeAccount ?: cachedAccountKey(), attachment, isSent, detail,
+        )
+    }
+
+    internal suspend fun isReadableLocalFile(uri: android.net.Uri): Boolean =
+        withContext(Dispatchers.IO) { localAttachments.isReadable(uri) }
+
     suspend fun signOut() {
         val previous = accountPrefs.getString("last_account", null)
         activeAccount = null
         accountPrefs.edit().remove("last_account").apply()
+        localAttachments.clearAssociations()
         if (previous != null) withContext(Dispatchers.IO) { cache.clear(previous) }
         // The cookie jar is shared with BARS; clear mail.mpei.ru only.
         withContext(Dispatchers.Main) {
@@ -345,6 +363,9 @@ class OwaMailRepository(
                     ?: throw ServiceFailure("download_stream_failed")
                 val complete = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
                 resolver.update(uri, complete, null, null)
+                localAttachments.rememberDownload(
+                    activeAccount ?: cachedAccountKey(), attachment, uri,
+                )
             } catch (failure: Exception) {
                 resolver.delete(uri, null, null)
                 throw failure
@@ -485,6 +506,7 @@ class OwaMailRepository(
                     ?: throw ServiceFailure("missing_draft_change_key")
 
                 var uploadedBytes = 0L
+                val uploadedFiles = mutableListOf<LocalUploadFile>()
                 files.forEachIndexed { index, file ->
                     onStage("Вложение ${index + 1} из ${files.size}…")
                     val bytes = withContext(Dispatchers.IO) { readOutgoingFile(file) }
@@ -497,6 +519,15 @@ class OwaMailRepository(
                         actionId = "-39",
                     )
                     val attached = OwaComposeProtocol.confirmedResponse(response)
+                    val sentAttachmentId = attached.optJSONArray("Attachments")
+                        ?.optJSONObject(0)?.optJSONObject("AttachmentId")
+                        ?.optString("Id")?.takeIf { it.isNotBlank() }
+                    uploadedFiles += LocalUploadFile(
+                        name = file.name,
+                        size = bytes.size.toLong(),
+                        uri = file.uri.toString(),
+                        owaAttachmentId = sentAttachmentId,
+                    )
                     changeKey = attached.optJSONArray("Attachments")?.optJSONObject(0)
                         ?.optJSONObject("AttachmentId")?.optString("RootItemChangeKey")
                         ?.takeIf { it.isNotBlank() }
@@ -510,6 +541,9 @@ class OwaMailRepository(
                     actionId = "-40",
                 )
                 OwaComposeProtocol.confirmedResponse(sent)
+                localAttachments.rememberUpload(
+                    activeAccount ?: cachedAccountKey(), draft, uploadedFiles,
+                )
             }
             diagnostics.log(
                 "OWA_MAIL",
