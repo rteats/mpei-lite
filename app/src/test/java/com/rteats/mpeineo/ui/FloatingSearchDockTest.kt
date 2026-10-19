@@ -23,6 +23,19 @@ class FloatingSearchDockTest {
         assertEquals(SearchScope.ALL, floatingSearchContext(AppTab.SETTINGS).scope)
     }
 
+    @Test fun contextualDockKeepsExactlyOneTrailingAction() {
+        assertEquals(FloatingDockAction.REFRESH_WEEK,
+            floatingDockAction(AppTab.SCHEDULE, mailListReady = true))
+        assertEquals(FloatingDockAction.COMPOSE_MAIL,
+            floatingDockAction(AppTab.MAIL, mailListReady = true))
+        assertEquals(FloatingDockAction.NONE,
+            floatingDockAction(AppTab.MAIL, mailListReady = false))
+        assertEquals(FloatingDockAction.NONE,
+            floatingDockAction(AppTab.MAPS, mailListReady = true))
+        assertEquals(FloatingDockAction.NONE,
+            floatingDockAction(null, mailListReady = true))
+    }
+
     @Test fun campusSearchRecognizesKnownCyrillicBuildingsAndRooms() {
         assertEquals(listOf("А"), campusBuildingHits("а"))
         assertEquals(listOf("А"), campusBuildingHits("корпус А"))
