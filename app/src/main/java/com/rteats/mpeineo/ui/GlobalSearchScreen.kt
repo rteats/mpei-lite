@@ -34,11 +34,12 @@ import org.json.JSONArray
 
 /** Search opens on the current service, but every surface can switch to All. */
 internal enum class SearchScope(val label: String) {
-    ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта");
+    ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
 
-    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE
+    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE || this == MAPS
     val includesBars: Boolean get() = this == ALL || this == BARS
     val includesMail: Boolean get() = this == ALL || this == MAIL
+    val includesMaps: Boolean get() = this == ALL || this == MAPS
 }
 
 internal data class SearchMailHit(val folder: OwaMailFolder, val message: MailSummary)
@@ -133,13 +134,19 @@ internal fun GlobalSearchScreen(
     mail: MailUiState,
     bars: BarsUiState,
     onSchedule: (ScheduleTarget) -> Unit,
+    onToggleFavorite: (ScheduleTarget) -> Unit,
+    onRenameFavorite: (ScheduleTarget, String) -> Unit,
     onLesson: (ScheduleLessonHit) -> Unit,
+    onCampus: (String) -> Unit,
     onMail: (SearchMailHit) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
     onSubmit: () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
+    var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
     val keyboard = LocalSoftwareKeyboardController.current
     BackHandler(onBack = onClose)
     LaunchedEffect(Unit) {
@@ -158,45 +165,159 @@ internal fun GlobalSearchScreen(
         else emptyList()
     val lessons = if (scope.includesSchedule && searching && schedule.selected != null)
         GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
+    val buildings = if (scope.includesMaps && (searching || scope == SearchScope.MAPS))
+        campusBuildingHits(trimmed)
+        .take(if (searching) 19 else if (scope == SearchScope.MAPS) 19 else 4)
+        else emptyList()
 
     Surface(
         modifier = Modifier.fillMaxSize().testTag("global-search-screen"),
         color = MaterialTheme.colorScheme.background,
     ) {
         Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                IconButton(onClick = onClose) {
-                    AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
+                if (!searching && scope == SearchScope.ALL && history.isNotEmpty()) {
+                    item { SearchSection("Недавние запросы", "Очистить", onClearHistory) }
+                    items(history, key = { "history-" + it }) { entry ->
+                        ListItem(
+                            modifier = Modifier.clickable { onHistorySelected(entry) },
+                            leadingContent = { AppIcon(AppIcons.Refresh, null) },
+                            headlineContent = { Text(entry, maxLines = 1) },
+                            trailingContent = {
+                                IconButton(onClick = { onRemoveHistory(entry) }) {
+                                    AppIcon(AppIcons.ClearLog, "Удалить запрос")
+                                }
+                            },
+                        )
+                    }
                 }
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).focusRequester(focus)
-                        .testTag("global-search-input"),
-                    placeholder = { Text(if (scope == SearchScope.ALL) "Поиск по МЭИ" else "Поиск: " + scope.label) },
-                    shape = MaterialTheme.shapes.extraLarge,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        onSubmit()
-                        keyboard?.hide()
-                    }),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    ),
-                    trailingIcon = if (query.isNotBlank()) {{
-                        IconButton(onClick = { onQueryChange("") }) {
-                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
+                if (targets.isNotEmpty()) {
+                    item { SearchSection(if (searching) "Расписание" else "Избранные расписания") }
+                    items(targets, key = { "schedule-" + it.favoriteKey() }) { target ->
+                        ListItem(
+                            modifier = Modifier.fillMaxWidth().clickable { onSchedule(target) },
+                            leadingContent = {
+                                AppIcon(AppIcons.Schedule, null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                            },
+                            headlineContent = {
+                                Text(target.displayName(schedule.favoriteNames),
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            },
+                            supportingContent = {
+                                Text(target.type.displayName + " · " + target.description,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (target.favoriteKey() in favorites) {
+                                        IconButton(
+                                            onClick = {
+                                                renameTarget = target
+                                                renameText = target.displayName(schedule.favoriteNames)
+                                            },
+                                        ) {
+                                            AppIcon(AppIcons.Edit, "Переименовать избранное")
+                                        }
+                                    }
+                                    IconButton(onClick = { onToggleFavorite(target) }) {
+                                        AppIcon(
+                                            AppIcons.Favorite,
+                                            if (target.favoriteKey() in favorites)
+                                                "Удалить из избранного" else "В избранное",
+                                            tint = if (target.favoriteKey() in favorites)
+                                                MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+                if (lessons.isNotEmpty()) {
+                    item { SearchSection("Пары в загруженном расписании") }
+                    items(lessons, key = { "lesson-" + it.date + it.lesson.name + it.lesson.startTime }) { hit ->
+                        SearchEntry(AppIcons.Schedule, hit.lesson.name,
+                            hit.date + " · " + hit.lesson.startTime + " · " + hit.lesson.place) {
+                            onLesson(hit)
                         }
-                    }} else null,
-                )
+                    }
+                }
+                if (buildings.isNotEmpty()) {
+                    item { SearchSection("Корпуса МЭИ") }
+                    items(buildings, key = { "campus-" + it }) { letter ->
+                        SearchEntry(
+                            AppIcons.Location, "Корпус $letter",
+                            "Показать на карте кампуса",
+                        ) { onCampus(letter) }
+                    }
+                }
+                if (disciplines.isNotEmpty()) {
+                    item { SearchSection("Дисциплины БАРС") }
+                    items(disciplines, key = { "bars-" + it.disciplineName }) { discipline ->
+                        SearchEntry(AppIcons.Bars, discipline.disciplineName,
+                            discipline.personName.ifBlank { "Оценки БАРС" }) {
+                            onDiscipline(discipline.disciplineName)
+                        }
+                    }
+                }
+                if (messages.isNotEmpty()) {
+                    item { SearchSection(if (searching) "Почта · загруженные письма" else "Последние письма") }
+                    items(messages, key = { "mail-" + it.folder.name + "-" + it.message.uidValidity + "-" + it.message.uid }) { hit ->
+                        val item = hit.message
+                        SearchEntry(
+                            AppIcons.Mail,
+                            item.subject.ifBlank { "Без темы" },
+                            (if (hit.folder == OwaMailFolder.SENT) "Отправленные" else "Входящие") +
+                                " · " + (if (hit.folder == OwaMailFolder.SENT)
+                                    item.recipients.orEmpty().joinToString(", ").ifBlank { item.sender }
+                                    else item.sender),
+                        ) { onMail(hit) }
+                    }
+                }
+                if (searching && scope.includesSchedule && schedule.isSearching) {
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(20.dp),
+                            horizontalArrangement = Arrangement.Center) {
+                            CircularProgressIndicator(Modifier.size(22.dp))
+                        }
+                    }
+                }
+                if (searching && targets.isEmpty() && lessons.isEmpty() &&
+                    disciplines.isEmpty() && messages.isEmpty() && buildings.isEmpty() &&
+                    (!scope.includesSchedule || !schedule.isSearching)) {
+                    item {
+                        Text(
+                            if (scope == SearchScope.MAIL) "Нет совпадений среди загруженных писем."
+                            else if (scope == SearchScope.MAPS) "Корпус не найден."
+                            else if (scope == SearchScope.BARS) "Нет совпадений среди загруженных дисциплин."
+                            else "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
+                            modifier = Modifier.padding(24.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
+                    messages.isEmpty() && buildings.isEmpty() && history.isEmpty()) {
+                    item {
+                        Text(
+                            when (scope) {
+                                SearchScope.MAIL -> "В загруженной почте пока нет писем."
+                                SearchScope.BARS -> "Загрузите дисциплины БАРС для поиска."
+                                SearchScope.SCHEDULE -> "Найдите группу, преподавателя или аудиторию."
+                                SearchScope.MAPS -> "Найдите корпус или аудиторию на карте."
+                                SearchScope.ALL -> "Найдите группу, преподавателя, аудиторию, дисциплину или письмо."
+                            },
+                            Modifier.padding(24.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
+            HorizontalDivider()
             androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -232,102 +353,67 @@ internal fun GlobalSearchScreen(
                     }
                 }
             }
-            HorizontalDivider()
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!searching && scope == SearchScope.ALL && history.isNotEmpty()) {
-                    item { SearchSection("Недавние запросы", "Очистить", onClearHistory) }
-                    items(history, key = { "history-" + it }) { entry ->
-                        ListItem(
-                            modifier = Modifier.clickable { onHistorySelected(entry) },
-                            leadingContent = { AppIcon(AppIcons.Refresh, null) },
-                            headlineContent = { Text(entry, maxLines = 1) },
-                            trailingContent = {
-                                IconButton(onClick = { onRemoveHistory(entry) }) {
-                                    AppIcon(AppIcons.ClearLog, "Удалить запрос")
-                                }
-                            },
+                IconButton(onClick = onClose) {
+                    AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
+                }
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    modifier = Modifier.weight(1f).focusRequester(focus)
+                        .testTag("global-search-input"),
+                    placeholder = { Text(when (scope) {
+                        SearchScope.ALL -> "Поиск по МЭИ"
+                        SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
+                        SearchScope.BARS -> "Поиск дисциплины в БАРС"
+                        SearchScope.MAIL -> "Поиск по почте"
+                        SearchScope.MAPS -> "Корпус или аудитория"
+                    }) },
+                    shape = MaterialTheme.shapes.extraLarge,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        onSubmit()
+                        keyboard?.hide()
+                    }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                    trailingIcon = if (query.isNotBlank()) {{
+                        IconButton(onClick = { onQueryChange("") }) {
+                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
+                        }
+                    }} else null,
+                )
+            }
+            renameTarget?.let { target ->
+                AlertDialog(
+                    onDismissRequest = { renameTarget = null },
+                    title = { Text("Название в избранном") },
+                    text = {
+                        OutlinedTextField(
+                            value = renameText,
+                            onValueChange = { renameText = it },
+                            singleLine = true,
+                            label = { Text("Имя расписания") },
                         )
-                    }
-                }
-                if (targets.isNotEmpty()) {
-                    item { SearchSection(if (searching) "Расписание" else "Избранные расписания") }
-                    items(targets, key = { "schedule-" + it.favoriteKey() }) { target ->
-                        SearchEntry(AppIcons.Schedule,
-                            target.displayName(schedule.favoriteNames),
-                            target.type.displayName + " · " + target.description,
-                        ) { onSchedule(target) }
-                    }
-                }
-                if (lessons.isNotEmpty()) {
-                    item { SearchSection("Пары в загруженном расписании") }
-                    items(lessons, key = { "lesson-" + it.date + it.lesson.name + it.lesson.startTime }) { hit ->
-                        SearchEntry(AppIcons.Schedule, hit.lesson.name,
-                            hit.date + " · " + hit.lesson.startTime + " · " + hit.lesson.place) {
-                            onLesson(hit)
-                        }
-                    }
-                }
-                if (disciplines.isNotEmpty()) {
-                    item { SearchSection("Дисциплины БАРС") }
-                    items(disciplines, key = { "bars-" + it.disciplineName }) { discipline ->
-                        SearchEntry(AppIcons.Bars, discipline.disciplineName,
-                            discipline.personName.ifBlank { "Оценки БАРС" }) {
-                            onDiscipline(discipline.disciplineName)
-                        }
-                    }
-                }
-                if (messages.isNotEmpty()) {
-                    item { SearchSection(if (searching) "Почта · загруженные письма" else "Последние письма") }
-                    items(messages, key = { "mail-" + it.folder.name + "-" + it.message.uidValidity + "-" + it.message.uid }) { hit ->
-                        val item = hit.message
-                        SearchEntry(
-                            AppIcons.Mail,
-                            item.subject.ifBlank { "Без темы" },
-                            (if (hit.folder == OwaMailFolder.SENT) "Отправленные" else "Входящие") +
-                                " · " + (if (hit.folder == OwaMailFolder.SENT)
-                                    item.recipients.orEmpty().joinToString(", ").ifBlank { item.sender }
-                                    else item.sender),
-                        ) { onMail(hit) }
-                    }
-                }
-                if (searching && scope.includesSchedule && schedule.isSearching) {
-                    item {
-                        Row(Modifier.fillMaxWidth().padding(20.dp),
-                            horizontalArrangement = Arrangement.Center) {
-                            CircularProgressIndicator(Modifier.size(22.dp))
-                        }
-                    }
-                }
-                if (searching && targets.isEmpty() && lessons.isEmpty() &&
-                    disciplines.isEmpty() && messages.isEmpty() &&
-                    (!scope.includesSchedule || !schedule.isSearching)) {
-                    item {
-                        Text(
-                            if (scope == SearchScope.MAIL) "Нет совпадений среди загруженных писем."
-                            else if (scope == SearchScope.BARS) "Нет совпадений среди загруженных дисциплин."
-                            else "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
-                            modifier = Modifier.padding(24.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
-                    messages.isEmpty() && history.isEmpty()) {
-                    item {
-                        Text(
-                            when (scope) {
-                                SearchScope.MAIL -> "В загруженной почте пока нет писем."
-                                SearchScope.BARS -> "Загрузите дисциплины БАРС для поиска."
-                                SearchScope.SCHEDULE -> "Найдите группу, преподавателя или аудиторию."
-                                SearchScope.ALL -> "Найдите группу, преподавателя, аудиторию, дисциплину или письмо."
-                            },
-                            Modifier.padding(24.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            onRenameFavorite(target, renameText)
+                            renameTarget = null
+                        }) { Text("Сохранить") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameTarget = null }) { Text("Отмена") }
+                    },
+                )
             }
         }
     }

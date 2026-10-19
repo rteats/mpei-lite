@@ -324,12 +324,6 @@ internal fun MailScreen(
                                             modifier = Modifier.fillMaxWidth()
                                                 .padding(bottom = 6.dp),
                                         ) {
-                                            UnifiedSearchEntry(
-                                                placeholder = "Поиск по почте",
-                                                onClick = onSearch,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                tag = "mail-open-search",
-                                            )
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),

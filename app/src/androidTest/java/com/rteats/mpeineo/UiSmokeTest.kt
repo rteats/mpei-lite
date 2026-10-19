@@ -30,7 +30,7 @@ class UiSmokeTest {
     @Test
     fun primaryDestinationsRender() {
         composeRule
-            .onNodeWithTag("schedule-docked-search")
+            .onNodeWithTag("floating-search-entry")
             .performClick()
 
         composeRule
