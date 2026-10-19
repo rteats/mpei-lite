@@ -221,7 +221,6 @@ fun MpeiNeoApp(
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var widthPx by remember { mutableFloatStateOf(1f) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
-    var searchExpanded by remember { mutableStateOf(false) }
     var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
     var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
     var globalQuery by rememberSaveable { mutableStateOf("") }
@@ -298,7 +297,6 @@ fun MpeiNeoApp(
         if (currentService == AppTab.BARS && barsState.browserVisible) {
             dismissIme("bars-leave-service")
         }
-        searchExpanded = false
         barsBrowserJustClosed = false
         barsDetailOpen = false
         routeNames = serviceRouteAfterOpen(routeNames, target, viaClassroom)
@@ -318,7 +316,6 @@ fun MpeiNeoApp(
             " depth=" + routeNames.size)
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
         mailWebVisible = false
-        searchExpanded = false
         barsBrowserJustClosed = false
         animateReveal(0f) {
             routeNames = serviceRouteAfterBack(routeNames)
@@ -447,22 +444,7 @@ fun MpeiNeoApp(
                                 focusLesson = scheduleLessonFocus,
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            ScheduleDockedSearch(
-                                state = scheduleState,
-                                onQueryChanged = viewModel::updateSearchQuery,
-                                onTypeChanged = viewModel::setSearchType,
-                                onSelect = viewModel::selectTarget,
-                                onToggleFavorite = viewModel::toggleFavorite,
-                                onRenameFavorite = viewModel::renameFavorite,
-                                visibleWeekOffset = viewedScheduleWeek,
-                                onRefreshWeek = viewModel::refreshAgendaWeek,
-                                showWeekInfo = weekInfoVisible,
-                                expanded = searchExpanded,
-                                onExpandedChange = { searchExpanded = it },
-                                onOpenUnifiedSearch = { openGlobalSearch(SearchScope.SCHEDULE) },
-                                active = active,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+
                         }
                         // BARS lives in a permanent sibling composition below.
                         // Its WebView must not be destroyed by Home/service routing.
@@ -523,7 +505,7 @@ fun MpeiNeoApp(
                             !imeVisible && !mailWebVisible && mailState.configured &&
                             !mailState.composing && mailState.selected == null,
                         modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp),
+                            .padding(end = 16.dp, bottom = 92.dp),
                         enter = fadeIn(tween(150)),
                         exit = fadeOut(tween(110)),
                     ) {
@@ -643,7 +625,7 @@ fun MpeiNeoApp(
                 val isNativeContent = currentService != AppTab.BARS ||
                     (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
                         !barsState.browserVisible)
-                val canHandleGesture = !isTransitioning && !searchExpanded &&
+                val canHandleGesture = !isTransitioning &&
                     !imeVisible && !mailWebVisible && isNativeContent
                 val canInteractivelyPop = canHandleGesture &&
                     !barsDetailOpen &&
@@ -716,17 +698,37 @@ fun MpeiNeoApp(
                 }
             }
 
+            // One stationary search surface over Home, native pages and portals.
+            // The actual results/keyboard view replaces this trigger while expanded.
+            AnimatedVisibility(
+                visible = !globalSearchOpen && !imeVisible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(90)),
+            ) {
+                FloatingSearchDock(
+                    context = floatingSearchContext(currentService),
+                    onSearch = {
+                        if (!isTransitioning) {
+                            openGlobalSearch(floatingSearchContext(currentService).scope)
+                        }
+                    },
+                    onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
+                        ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
+                )
+            }
+
             AnimatedVisibility(
                 visible = globalSearchOpen,
                 modifier = Modifier.align(Alignment.TopCenter).fillMaxSize(),
-                enter = expandVertically(
-                    expandFrom = Alignment.Top,
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                ) + fadeIn(tween(160)),
-                exit = shrinkVertically(
-                    shrinkTowards = Alignment.Top,
-                    animationSpec = tween(220, easing = FastOutSlowInEasing),
-                ) + fadeOut(tween(110)),
+                enter = slideInVertically(
+                    initialOffsetY = { it / 4 },
+                    animationSpec = tween(270, easing = FastOutSlowInEasing),
+                ) + fadeIn(tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it / 4 },
+                    animationSpec = tween(210, easing = FastOutSlowInEasing),
+                ) + fadeOut(tween(120)),
             ) {
                 GlobalSearchScreen(
                     query = globalQuery,
