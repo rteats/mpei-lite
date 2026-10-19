@@ -262,15 +262,6 @@ internal fun BarsNativeDashboard(
               )
             }
           }
-          item(key = "bars-search") {
-            UnifiedSearchEntry(
-              placeholder = "Поиск по БАРС",
-              onClick = onSearch,
-              modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-              tag = "bars-discipline-search",
-            )
-          }
           item(key = "profile") {
             BarsUserHeader(state = state, onOpenBrowser = onOpenBrowser)
           }
