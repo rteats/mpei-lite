@@ -54,6 +54,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -100,6 +101,12 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    // The ViewModel survives navigation. Pause nonessential Sent enrichment
+    // immediately when the screen is hidden, then resume cached work on return.
+    DisposableEffect(active, state.mailbox) {
+        viewModel.setSentVisible(active && state.mailbox == OwaMailFolder.SENT)
+        onDispose { viewModel.setSentVisible(false) }
+    }
     val context = LocalContext.current
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
