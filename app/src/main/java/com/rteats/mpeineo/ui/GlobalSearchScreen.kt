@@ -26,6 +26,7 @@ import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.model.ScheduleTarget
+import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.displayName
 import com.rteats.mpeineo.model.favoriteKey
@@ -122,6 +123,7 @@ internal fun GlobalSearchScreen(
     query: String,
     scope: SearchScope,
     onScopeChange: (SearchScope) -> Unit,
+    onScheduleTypeChange: (ScheduleTargetType?) -> Unit,
     onQueryChange: (String) -> Unit,
     history: List<String>,
     onHistorySelected: (String) -> Unit,
@@ -176,13 +178,15 @@ internal fun GlobalSearchScreen(
                     modifier = Modifier.weight(1f).focusRequester(focus)
                         .testTag("global-search-input"),
                     placeholder = { Text(if (scope == SearchScope.ALL) "Поиск по МЭИ" else "Поиск: " + scope.label) },
-                    shape = RoundedCornerShape(24.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
                         onSubmit()
                         keyboard?.hide()
                     }),
                     colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                     ),
@@ -204,6 +208,28 @@ internal fun GlobalSearchScreen(
                         label = { Text(option.label) },
                         modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
                     )
+                }
+            }
+            if (scope == SearchScope.SCHEDULE) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = schedule.searchType == null,
+                            onClick = { onScheduleTypeChange(null) },
+                            label = { Text("Все расписания") },
+                        )
+                    }
+                    items(ScheduleTargetType.entries) { type ->
+                        FilterChip(
+                            selected = schedule.searchType == type,
+                            onClick = { onScheduleTypeChange(type) },
+                            label = { Text(type.displayName) },
+                        )
+                    }
                 }
             }
             HorizontalDivider()
@@ -288,9 +314,16 @@ internal fun GlobalSearchScreen(
                         )
                     }
                 }
-                if (!searching && targets.isEmpty() && disciplines.isEmpty() && history.isEmpty()) {
+                if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
+                    messages.isEmpty() && history.isEmpty()) {
                     item {
-                        Text("Найдите группу, преподавателя, аудиторию, дисциплину или письмо.",
+                        Text(
+                            when (scope) {
+                                SearchScope.MAIL -> "В загруженной почте пока нет писем."
+                                SearchScope.BARS -> "Загрузите дисциплины БАРС для поиска."
+                                SearchScope.SCHEDULE -> "Найдите группу, преподавателя или аудиторию."
+                                SearchScope.ALL -> "Найдите группу, преподавателя, аудиторию, дисциплину или письмо."
+                            },
                             Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
