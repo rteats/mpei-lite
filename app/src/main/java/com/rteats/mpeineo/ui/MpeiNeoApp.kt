@@ -732,6 +732,7 @@ fun MpeiNeoApp(
                     query = globalQuery,
                     scope = searchScope,
                     onScopeChange = ::updateSearchScope,
+                    onScheduleTypeChange = viewModel::setSearchType,
                     onQueryChange = ::updateGlobalQuery,
                     history = recentQueries,
                     onHistorySelected = ::updateGlobalQuery,
