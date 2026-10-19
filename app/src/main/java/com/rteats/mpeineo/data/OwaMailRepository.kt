@@ -56,6 +56,20 @@ class OwaMailRepository(
         accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
 
+    internal fun cachedDraft(): MailDraftSnapshot? =
+        cachedAccountKey()?.let(cache::draft)
+
+    internal fun saveDraft(snapshot: MailDraftSnapshot, expectedAccount: String?) {
+        // Never write an old draft into the next account after an OWA login switch.
+        if (expectedAccount != null && cachedAccountKey() == expectedAccount) {
+            cache.saveDraft(expectedAccount, snapshot)
+        }
+    }
+
+    internal fun clearDraft() {
+        cachedAccountKey()?.let(cache::clearDraft)
+    }
+
     fun cachedSent(): List<MailSummary> =
         accountPrefs.getString("last_account", null)?.let { cache.sent(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }

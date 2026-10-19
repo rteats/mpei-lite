@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import android.net.Uri
 import android.util.AtomicFile
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -112,6 +113,40 @@ internal class MailCache(private val context: Context) {
         }
     }
 
+    /** Unsent OWA draft; encrypted using the same Android Keystore key as mail cache. */
+    @Synchronized fun draft(username: String): MailDraftSnapshot? =
+        read(file(username, "draft"), CachedDraft::class.java)?.let { cached ->
+            MailDraftSnapshot(
+                mail = cached.mail,
+                files = cached.files.take(8).mapNotNull { attachment ->
+                    runCatching {
+                        OutgoingFile(
+                            uri = Uri.parse(attachment.uri), name = attachment.name,
+                            mimeType = attachment.mimeType, size = attachment.size,
+                        )
+                    }.getOrNull()
+                },
+            )
+        }
+
+    @Synchronized fun saveDraft(username: String, draft: MailDraftSnapshot) {
+        if (draft.isEmpty()) {
+            clearDraft(username)
+            return
+        }
+        write(file(username, "draft"), CachedDraft(
+            draft.mail, draft.files.map { file ->
+                CachedDraftFile(file.uri.toString(), file.name, file.mimeType, file.size)
+            },
+        ))
+    }
+
+    @Synchronized fun clearDraft(username: String) {
+        val target = file(username, "draft")
+        target.delete()
+        File(target.path + ".bak").delete()
+    }
+
     @Synchronized fun clear(username: String) {
         val prefix = keyForAccount(username) + "_"
         folder.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() }
@@ -178,6 +213,18 @@ internal class MailCache(private val context: Context) {
 
     private data class CachedInbox(val validity: Long, val items: List<MailSummary>)
     private data class CachedBody(val validity: Long, val detail: MailDetail)
+    private data class CachedDraft(val mail: OutgoingMail, val files: List<CachedDraftFile>)
+    private data class CachedDraftFile(val uri: String, val name: String,
+        val mimeType: String, val size: Long)
+}
+
+/** Only one locally stored unsent message is supported per authenticated account. */
+internal data class MailDraftSnapshot(
+    val mail: OutgoingMail = OutgoingMail(),
+    val files: List<OutgoingFile> = emptyList(),
+) {
+    fun isEmpty() = mail.to.isBlank() && mail.cc.isBlank() && mail.bcc.isBlank() &&
+        mail.subject.isBlank() && mail.body.isBlank() && files.isEmpty()
 }
 
 /** Only unseen headers are fetched; existing envelopes reuse cached metadata. */

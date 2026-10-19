@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -41,7 +42,7 @@ import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.OwaComposeProtocol
 import com.rteats.mpeineo.data.OwaRecipientSuggestion
 
-/** Native message composer; all values remain in MailViewModel while navigating. */
+/** Native message composer; unsent data is encrypted in account-scoped local storage. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailComposeScreen(
@@ -50,6 +51,25 @@ internal fun MailComposeScreen(
     modifier: Modifier = Modifier,
 ) {
     val draft = state.draft
+    val hasDraft = draft.to.isNotBlank() || draft.cc.isNotBlank() || draft.bcc.isNotBlank() ||
+        draft.subject.isNotBlank() || draft.body.isNotBlank() || state.outgoingFiles.isNotEmpty()
+    var askDiscard by remember { mutableStateOf(false) }
+    if (askDiscard) {
+        AlertDialog(
+            onDismissRequest = { askDiscard = false },
+            title = { Text("Удалить черновик?") },
+            text = { Text("Текст, получатели и вложения будут удалены с устройства.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askDiscard = false
+                    viewModel.discardDraft()
+                }) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { askDiscard = false }) { Text("Отмена") }
+            },
+        )
+    }
     var showCopies by remember { mutableStateOf(draft.cc.isNotBlank() || draft.bcc.isNotBlank()) }
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -71,10 +91,13 @@ internal fun MailComposeScreen(
                     AppIcon(AppIcons.Back, contentDescription = "Свернуть черновик")
                 }
                 Text(
-                    "Новое письмо",
+                    if (hasDraft) "Черновик" else "Новое письмо",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
+                if (hasDraft && !state.sending) {
+                    TextButton(onClick = { askDiscard = true }) { Text("Удалить") }
+                }
                 Button(
                     onClick = viewModel::sendDraft,
                     enabled = !state.sending && OwaComposeProtocol.validRecipients(draft) &&
@@ -214,7 +237,8 @@ internal fun MailComposeScreen(
         }
         item(key = "compose-help") {
             Text(
-                "Сверните редактор, чтобы вернуться к почте. Черновик останется в приложении. " +
+                "Черновик сохраняется на устройстве. Он доступен после перезапуска " +
+                    "и удаляется после отправки или выхода из ОСЭП. " +
                     "Максимум 8 вложений, до 10 МБ каждое.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

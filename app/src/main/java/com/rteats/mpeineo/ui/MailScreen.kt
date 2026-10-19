@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -54,6 +55,12 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,6 +102,15 @@ internal fun MailScreen(
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
     var inboxQuery by rememberSaveable { mutableStateOf("") }
+    var mailSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    val mailSearchFocus = remember { FocusRequester() }
+    val mailKeyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(mailSearchExpanded, active, state.composing, state.selected) {
+        if (mailSearchExpanded && active && !state.composing && state.selected == null) {
+            mailSearchFocus.requestFocus()
+            mailKeyboard?.show()
+        }
+    }
     val folderItems = if (state.mailbox == OwaMailFolder.SENT) state.sentItems else state.items
     val folderLoading = if (state.mailbox == OwaMailFolder.SENT) state.sentLoading else state.loading
     val folderLoadingMore = if (state.mailbox == OwaMailFolder.SENT)
@@ -126,6 +142,12 @@ internal fun MailScreen(
     }
     val motion = MaterialTheme.motionScheme
 
+    BackHandler(enabled = active && !state.composing && state.selected == null &&
+        mailSearchExpanded) {
+        mailSearchExpanded = false
+        inboxQuery = ""
+        mailKeyboard?.hide()
+    }
     BackHandler(enabled = active && !state.composing && state.selected != null) {
         viewModel.closeMessage()
     }
@@ -293,38 +315,65 @@ internal fun MailScreen(
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         FilterChip(
                                             selected = state.mailbox == OwaMailFolder.INBOX,
-                                            onClick = { inboxQuery = ""; viewModel.switchMailbox(OwaMailFolder.INBOX) },
+                                            onClick = { viewModel.switchMailbox(OwaMailFolder.INBOX) },
                                             label = { Text("Входящие") },
                                             modifier = Modifier.testTag("mail-folder-inbox"),
                                         )
                                         FilterChip(
                                             selected = state.mailbox == OwaMailFolder.SENT,
-                                            onClick = { inboxQuery = ""; viewModel.switchMailbox(OwaMailFolder.SENT) },
+                                            onClick = { viewModel.switchMailbox(OwaMailFolder.SENT) },
                                             label = { Text("Отправленные") },
                                             modifier = Modifier.testTag("mail-folder-sent"),
                                         )
-                                    }
-                                    OutlinedTextField(
-                                        value = inboxQuery,
-                                        onValueChange = { inboxQuery = it },
-                                        placeholder = { Text("Поиск по загруженным письмам") },
-                                        leadingIcon = {
-                                            AppIcon(AppIcons.Search, contentDescription = null)
-                                        },
-                                        trailingIcon = if (inboxQuery.isNotBlank()) {
-                                            {
-                                                TextButton(onClick = { inboxQuery = "" }) {
-                                                    Text("Сброс")
-                                                }
+                                        if (!mailSearchExpanded) {
+                                            IconButton(
+                                                onClick = { mailSearchExpanded = true },
+                                                modifier = Modifier.testTag("mail-open-search"),
+                                            ) {
+                                                AppIcon(AppIcons.Search, "Поиск писем")
                                             }
-                                        } else null,
-                                        singleLine = true,
-                                        shape = MaterialTheme.shapes.extraLarge,
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                                    )
+                                        }
+                                    }
+                                    if (mailSearchExpanded) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            OutlinedTextField(
+                                                value = inboxQuery,
+                                                onValueChange = { inboxQuery = it },
+                                                placeholder = { Text("В загруженных письмах") },
+                                                leadingIcon = {
+                                                    AppIcon(AppIcons.Search, contentDescription = null)
+                                                },
+                                                trailingIcon = if (inboxQuery.isNotBlank()) {{
+                                                    IconButton(onClick = { inboxQuery = "" }) {
+                                                        AppIcon(AppIcons.ClearLog, "Очистить поиск")
+                                                    }
+                                                }} else null,
+                                                singleLine = true,
+                                                shape = MaterialTheme.shapes.extraLarge,
+                                                modifier = Modifier.weight(1f)
+                                                    .focusRequester(mailSearchFocus)
+                                                    .testTag("mail-search-input"),
+                                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                                keyboardActions = KeyboardActions(
+                                                    onSearch = { mailKeyboard?.hide() },
+                                                ),
+                                            )
+                                            IconButton(onClick = {
+                                                mailSearchExpanded = false
+                                                inboxQuery = ""
+                                                mailKeyboard?.hide()
+                                            }) {
+                                                AppIcon(AppIcons.Back, "Закрыть поиск")
+                                            }
+                                        }
+                                    }
                                     }
                                     }
                                 }
