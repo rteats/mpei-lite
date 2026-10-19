@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -510,28 +509,7 @@ fun MpeiNeoApp(
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                    AnimatedVisibility(
-                        visible = destination == AppTab.MAIL && active &&
-                            !imeVisible && !mailWebVisible && mailState.configured &&
-                            !mailState.composing && mailState.selected == null,
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 92.dp),
-                        enter = fadeIn(tween(150)),
-                        exit = fadeOut(tween(110)),
-                    ) {
-                        ExtendedFloatingActionButton(
-                            onClick = mailViewModel::startCompose,
-                            modifier = Modifier.testTag("mail-compose-fab"),
-                            icon = {
-                                AppIcon(
-                                    AppIcons.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            },
-                            text = { Text("Написать") },
-                        )
-                    }
+
                 }
             }
         }
@@ -713,8 +691,14 @@ fun MpeiNeoApp(
             AnimatedVisibility(
                 visible = !globalSearchOpen && !imeVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(90)),
+                enter = slideInVertically(
+                    initialOffsetY = { it / 2 },
+                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                ) + fadeIn(tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it / 3 },
+                    animationSpec = tween(170, easing = FastOutSlowInEasing),
+                ) + fadeOut(tween(130)),
             ) {
                 FloatingSearchDock(
                     context = floatingSearchContext(currentService),
@@ -725,6 +709,13 @@ fun MpeiNeoApp(
                     },
                     onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
+                    scheduleRefreshing = viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
+                    onMailCompose = if (floatingDockAction(
+                            currentService,
+                            mailListReady = mailState.configured && !mailState.composing &&
+                                mailState.selected == null && !mailWebVisible,
+                        ) == FloatingDockAction.COMPOSE_MAIL
+                    ) mailViewModel::startCompose else null,
                 )
             }
 

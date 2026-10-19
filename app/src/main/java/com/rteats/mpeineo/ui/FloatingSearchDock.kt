@@ -1,14 +1,23 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,17 +44,35 @@ internal fun floatingSearchContext(tab: AppTab?): FloatingSearchContext = when (
     AppTab.SETTINGS -> FloatingSearchContext(SearchScope.ALL, "Поиск по МЭИ")
 }
 
+internal enum class FloatingDockAction { NONE, REFRESH_WEEK, COMPOSE_MAIL }
+
+/** The dock owns its trailing action: Mail never draws a second floating button. */
+internal fun floatingDockAction(tab: AppTab?, mailListReady: Boolean): FloatingDockAction =
+    when {
+        tab == AppTab.SCHEDULE -> FloatingDockAction.REFRESH_WEEK
+        tab == AppTab.MAIL && mailListReady -> FloatingDockAction.COMPOSE_MAIL
+        else -> FloatingDockAction.NONE
+    }
+
 /**
- * Single stationary search affordance at the root of the application.
- * It does not move with service transitions or intercept swipes elsewhere.
+ * One stationary search affordance and one contextual trailing action.
+ * The dock lives above route animations and cannot intercept map/scroll gestures elsewhere.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun FloatingSearchDock(
     context: FloatingSearchContext,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     onScheduleRefresh: (() -> Unit)? = null,
+    scheduleRefreshing: Boolean = false,
+    onMailCompose: (() -> Unit)? = null,
 ) {
+    val action = when {
+        onScheduleRefresh != null -> FloatingDockAction.REFRESH_WEEK
+        onMailCompose != null -> FloatingDockAction.COMPOSE_MAIL
+        else -> FloatingDockAction.NONE
+    }
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -62,13 +89,43 @@ internal fun FloatingSearchDock(
             ),
             tag = "floating-search-entry",
         )
-        if (onScheduleRefresh != null) {
-            FilledTonalIconButton(
-                onClick = onScheduleRefresh,
-                modifier = Modifier.size(56.dp)
-                    .testTag("schedule-week-refresh"),
-            ) {
-                AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
+        AnimatedContent(
+            targetState = action,
+            transitionSpec = {
+                (fadeIn(tween(170)) + scaleIn(tween(230), initialScale = 0.82f)) togetherWith
+                    (fadeOut(tween(120)) + scaleOut(tween(180), targetScale = 0.88f))
+            },
+            label = "floating-dock-action",
+        ) { visibleAction ->
+            when (visibleAction) {
+                FloatingDockAction.REFRESH_WEEK -> FilledTonalIconButton(
+                    onClick = { onScheduleRefresh?.invoke() },
+                    enabled = !scheduleRefreshing,
+                    modifier = Modifier.size(56.dp)
+                        .shadow(6.dp, CircleShape)
+                        .testTag("schedule-week-refresh"),
+                ) {
+                    Crossfade(
+                        targetState = scheduleRefreshing,
+                        animationSpec = tween(180),
+                        label = "floating-week-refresh-progress",
+                    ) { refreshing ->
+                        if (refreshing) {
+                            LoadingIndicator(modifier = Modifier.size(24.dp))
+                        } else {
+                            AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
+                        }
+                    }
+                }
+                FloatingDockAction.COMPOSE_MAIL -> FilledTonalIconButton(
+                    onClick = { onMailCompose?.invoke() },
+                    modifier = Modifier.size(56.dp)
+                        .shadow(6.dp, CircleShape)
+                        .testTag("mail-compose-fab"),
+                ) {
+                    AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
+                }
+                FloatingDockAction.NONE -> Unit
             }
         }
     }
