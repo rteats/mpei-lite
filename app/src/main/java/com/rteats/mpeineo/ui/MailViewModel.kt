@@ -79,6 +79,16 @@ internal fun mergeOwaInboxPages(
     older: List<MailSummary>,
 ): List<MailSummary> = (existing + older).distinctBy { it.uidValidity to it.uid }
 
+/** Return up to ten unresolved IDs, prioritizing rows currently on screen. */
+internal fun prioritizedSentIds(
+    unresolved: List<Long>,
+    visible: Set<Long>,
+    batchSize: Int = 10,
+): List<Long> = unresolved.distinct().let { unique ->
+    (unique.filter { it in visible } + unique.filterNot { it in visible })
+        .take(batchSize.coerceAtLeast(0))
+}
+
 /** Preserve previously fetched recipients when a refreshed sent page omits To. */
 internal fun mergeOwaSentPages(
     incoming: List<MailSummary>,
@@ -107,6 +117,8 @@ internal class MailViewModel(
     private var pendingNotification: Pair<Long, Long>? = null
     private var recipientJob: Job? = null
     private var sentRecipientJob: Job? = null
+    private var sentVisible = false
+    private var visibleSentUids = emptySet<Long>()
     private var draftWriteJob: Job? = null
     private var draftAccountKey: String? = owaMailRepository.cachedAccountKey()
 
@@ -139,11 +151,42 @@ internal class MailViewModel(
         }
     }
 
-    private fun hydrateSentRecipients(items: List<MailSummary>) {
+    /** Optional enrichment never steals network bandwidth from another service. */
+    fun setSentVisible(visible: Boolean) {
+        if (sentVisible == visible) return
+        sentVisible = visible
+        if (!visible) {
+            sentRecipientJob?.cancel()
+            sentRecipientJob = null
+            visibleSentUids = emptySet()
+            repository.logState("OWA sent enrichment paused offscreen")
+        } else if (!_state.value.sentLoading &&
+            _state.value.sentItems.any { it.recipients.isNullOrEmpty() }) {
+            repository.logState("OWA sent enrichment resumed items=${_state.value.sentItems.size}")
+            hydrateSentRecipients()
+        }
+    }
+
+    /** Nonprivate identifiers are kept in memory, but never written to logs. */
+    fun updateVisibleSentUids(ids: Set<Long>) {
+        visibleSentUids = ids
+    }
+
+    private fun hydrateSentRecipients() {
+        if (!sentVisible) return
         sentRecipientJob?.cancel()
         val version = sessionVersion
         sentRecipientJob = viewModelScope.launch {
-            for (batch in items.filter { it.recipients.isNullOrEmpty() }.chunked(10)) {
+            val unsuccessful = HashSet<Long>()
+            while (sentVisible && version == sessionVersion) {
+                val pending = _state.value.sentItems.filter {
+                    it.recipients.isNullOrEmpty() && !it.owaConversationId.isNullOrBlank() &&
+                        it.uid !in unsuccessful
+                }
+                val byUid = pending.associateBy { it.uid }
+                val batch = prioritizedSentIds(pending.map { it.uid }, visibleSentUids)
+                    .mapNotNull(byUid::get)
+                if (batch.isEmpty()) break
                 val resolved = try {
                     owaMailRepository.sentRecipientNames(batch)
                 } catch (cancelled: CancellationException) {
@@ -153,7 +196,8 @@ internal class MailViewModel(
                         failure.javaClass.simpleName)
                     emptyMap()
                 }
-                if (version != sessionVersion) return@launch
+                if (version != sessionVersion || !sentVisible) return@launch
+                unsuccessful.addAll(batch.map { it.uid }.filter { it !in resolved })
                 if (resolved.isNotEmpty()) {
                     _state.update { current ->
                         current.copy(sentItems = current.sentItems.map { item ->
@@ -161,6 +205,10 @@ internal class MailViewModel(
                         })
                     }
                 }
+                repository.logState(
+                    "OWA sent enrichment batch=${batch.size} resolved=${resolved.size}" +
+                        " remaining=${_state.value.sentItems.count { it.recipients.isNullOrEmpty() }}",
+                )
             }
         }
     }
@@ -355,7 +403,7 @@ internal class MailViewModel(
                         sentMoreError = false, loginRequired = false,
                     )
                 }
-                hydrateSentRecipients(_state.value.sentItems)
+                hydrateSentRecipients()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -390,7 +438,7 @@ internal class MailViewModel(
                     sentHasMore = page.size == MAIL_PAGE_SIZE,
                     sentLoadingMore = false, sentMoreError = false,
                 ) }
-                hydrateSentRecipients(_state.value.sentItems)
+                hydrateSentRecipients()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -758,6 +806,8 @@ internal class MailViewModel(
         pendingNotification = null
         recipientJob?.cancel()
         sentRecipientJob?.cancel()
+        sentVisible = false
+        visibleSentUids = emptySet()
         draftWriteJob?.cancel()
         _state.value.outgoingFiles.forEach { releaseFilePermission(it.uri) }
         viewModelScope.coroutineContext.cancelChildren()
