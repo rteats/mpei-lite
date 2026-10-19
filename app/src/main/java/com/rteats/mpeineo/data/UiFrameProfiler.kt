@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.data
 
 import android.os.Handler
+import android.os.Build
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
@@ -21,11 +22,19 @@ internal data class UiFrameSummary(
     val maxMs: Double,
     val overBudget: Int,
     val callbackDrops: Int,
+    val inputP95Ms: Double = 0.0,
+    val layoutP95Ms: Double = 0.0,
+    val drawP95Ms: Double = 0.0,
+    val gpuP95Ms: Double = 0.0,
 )
 
 internal class UiFrameStats(private val frameBudgetNs: Long) {
     private class Bucket {
         val durations = ArrayList<Long>()
+        val inputs = ArrayList<Long>()
+        val layouts = ArrayList<Long>()
+        val draws = ArrayList<Long>()
+        val gpus = ArrayList<Long>()
         var overBudget = 0
         var callbackDrops = 0
     }
@@ -33,12 +42,24 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
     private val buckets = linkedMapOf<String, Bucket>()
 
     @Synchronized
-    fun record(screen: String, durationNs: Long, callbackDrops: Int = 0) {
+    fun record(
+        screen: String,
+        durationNs: Long,
+        callbackDrops: Int = 0,
+        inputNs: Long = 0L,
+        layoutNs: Long = 0L,
+        drawNs: Long = 0L,
+        gpuNs: Long = 0L,
+    ) {
         if (durationNs <= 0L) return
         val bucket = buckets.getOrPut(screen) { Bucket() }
         // 60 seconds at 120 Hz is ~7,200 frames. Cap accidental longer runs.
         if (bucket.durations.size >= 10_000) return
         bucket.durations.add(durationNs)
+        if (inputNs > 0) bucket.inputs.add(inputNs)
+        if (layoutNs > 0) bucket.layouts.add(layoutNs)
+        if (drawNs > 0) bucket.draws.add(drawNs)
+        if (gpuNs > 0) bucket.gpus.add(gpuNs)
         if (durationNs > frameBudgetNs) bucket.overBudget++
         bucket.callbackDrops += callbackDrops.coerceAtLeast(0)
     }
@@ -46,20 +67,25 @@ internal class UiFrameStats(private val frameBudgetNs: Long) {
     @Synchronized
     fun summaries(): List<UiFrameSummary> = buckets.map { (screen, bucket) ->
         val sorted = bucket.durations.sorted()
-        fun percentile(fraction: Double): Double {
-            if (sorted.isEmpty()) return 0.0
-            val index = (ceil(sorted.size * fraction).toInt() - 1)
-                .coerceIn(0, sorted.lastIndex)
-            return sorted[index] / 1_000_000.0
+        fun percentile(values: List<Long>, fraction: Double): Double {
+            if (values.isEmpty()) return 0.0
+            val ordered = values.sorted()
+            val index = (ceil(ordered.size * fraction).toInt() - 1)
+                .coerceIn(0, ordered.lastIndex)
+            return ordered[index] / 1_000_000.0
         }
         UiFrameSummary(
             screen = screen,
             frames = sorted.size,
-            p50Ms = percentile(.50),
-            p95Ms = percentile(.95),
-            maxMs = percentile(1.0),
+            p50Ms = percentile(sorted, .50),
+            p95Ms = percentile(sorted, .95),
+            maxMs = percentile(sorted, 1.0),
             overBudget = bucket.overBudget,
             callbackDrops = bucket.callbackDrops,
+            inputP95Ms = percentile(bucket.inputs, .95),
+            layoutP95Ms = percentile(bucket.layouts, .95),
+            drawP95Ms = percentile(bucket.draws, .95),
+            gpuP95Ms = percentile(bucket.gpus, .95),
         )
     }
 }
@@ -73,6 +99,8 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
         private set
 
     @Volatile private var screen = "HOME"
+    @Volatile private var interaction: String? = null
+    @Volatile private var interactionUntilMs = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
     private var thread: HandlerThread? = null
     private var listener: Window.OnFrameMetricsAvailableListener? = null
@@ -92,6 +120,16 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
         }
     }
 
+    /** Label a short window of frames after a gesture, without private data. */
+    fun markInteraction(kind: String, durationMs: Long = 1_200L) {
+        if (!active || kind !in setOf(
+                "LESSON_TOGGLE", "WEEK_CHANGE", "MAIL_OPEN", "NAV_PUSH", "NAV_POP",
+            )) return
+        interaction = kind
+        interactionUntilMs = SystemClock.elapsedRealtime() + durationMs.coerceIn(100, 3_000)
+        diagnostics.log("PERF", "frame_profile interaction=" + kind + " route=" + screen)
+    }
+
     /** Main thread only. No listener or handler thread exists while disabled. */
     fun start(window: Window, durationMs: Long = 60_000L): Boolean {
         if (active) return false
@@ -101,7 +139,20 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
         val collector = UiFrameStats(budgetNs)
         val handlerThread = HandlerThread("NeoFrameProfile").apply { start() }
         val callback = Window.OnFrameMetricsAvailableListener { _, metrics, dropped ->
-            collector.record(screen, metrics.getMetric(FrameMetrics.TOTAL_DURATION), dropped)
+            val event = interaction
+            val label = if (event != null &&
+                SystemClock.elapsedRealtime() < interactionUntilMs
+            ) screen + "/" + event else screen
+            collector.record(
+                screen = label,
+                durationNs = metrics.getMetric(FrameMetrics.TOTAL_DURATION),
+                callbackDrops = dropped,
+                inputNs = metrics.getMetric(FrameMetrics.INPUT_HANDLING_DURATION),
+                layoutNs = metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION),
+                drawNs = metrics.getMetric(FrameMetrics.DRAW_DURATION),
+                gpuNs = if (Build.VERSION.SDK_INT >= 31)
+                    metrics.getMetric(FrameMetrics.GPU_DURATION) else 0L,
+            )
         }
         try {
             window.addOnFrameMetricsAvailableListener(callback, Handler(handlerThread.looper))
@@ -131,6 +182,8 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
     fun stop(reason: String = "manual") {
         if (!active) return
         active = false
+        interaction = null
+        interactionUntilMs = 0L
         timeout?.let(mainHandler::removeCallbacks)
         timeout = null
         val elapsed = SystemClock.elapsedRealtime() - startedMs
@@ -154,7 +207,11 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
                         " p95Ms=" + sample.p95Ms.formatMs() +
                         " maxMs=" + sample.maxMs.formatMs() +
                         " overBudget=" + sample.overBudget +
-                        " callbackDrops=" + sample.callbackDrops)
+                        " callbackDrops=" + sample.callbackDrops +
+                        " inputP95Ms=" + sample.inputP95Ms.formatMs() +
+                        " layoutP95Ms=" + sample.layoutP95Ms.formatMs() +
+                        " drawP95Ms=" + sample.drawP95Ms.formatMs() +
+                        " gpuP95Ms=" + sample.gpuP95Ms.formatMs())
             }
         }
     }
