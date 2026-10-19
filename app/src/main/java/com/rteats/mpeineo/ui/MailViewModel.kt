@@ -373,7 +373,7 @@ internal class MailViewModel(
     private fun refreshLocalAttachmentUris(
         summary: MailSummary,
         detail: MailDetail,
-        version: Int,
+        version: Long,
     ) {
         if (detail.attachments.isEmpty()) return
         viewModelScope.launch {
