@@ -17,10 +17,11 @@ class CampusMapKeyboardUiTest {
 
     @Test fun keyboardHighlightsBuildingDirectlyWithoutModal() {
         rule.onNodeWithTag("service-maps").performClick()
+        rule.onNodeWithTag("campus-building-keyboard").assertIsDisplayed()
+        rule.onNodeWithTag("campus-keyboard-toggle").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {
             rule.onAllNodesWithTag("campus-key-А").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithTag("campus-building-keyboard").assertIsDisplayed()
         rule.onNodeWithTag("campus-key-А").performClick()
         rule.onNodeWithText("Корпус А").assertIsDisplayed()
         rule.onNodeWithTag("campus-keyboard-toggle").performClick()
