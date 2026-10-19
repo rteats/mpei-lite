@@ -21,8 +21,14 @@ durations and campus vector/raster preparation. These are **not** frame times.
 5. Copy the existing diagnostic journal. Look for `[PERF] frame_profile`.
 
 The report groups Android **Window** frame durations by the currently selected
-service: `frames`, `p50Ms`, `p95Ms`, `maxMs`, `overBudget` and
-`callbackDrops`. The frame budget is derived from the device display refresh
+service and labels short windows for `NAV_PUSH`, `NAV_POP`, `LESSON_TOGGLE`,
+`WEEK_CHANGE` and `MAIL_OPEN`. For each group it logs `frames`, `p50Ms`,
+`p95Ms`, `maxMs`, `overBudget`, `overBudgetPct`, and `callbackDrops`.
+It additionally logs the p95 of input handling, layout/measure, drawing,
+render synchronization, buffer swapping, unknown delay and supported GPU
+duration metrics, plus per-stage sample counts. **Stage percentiles belong to
+different frames and cannot be added together**; a 0.0 ms stage can mean
+unsupported/missing data rather than evidence of no work. The frame budget is derived from the device display refresh
 rate at capture start. `overBudget` means total recorded frame duration
 exceeded that **approximate** budget; it is **not** an exact missed-vsync or
 user-visible jank count. `callbackDrops` reports sampling callbacks skipped
@@ -31,7 +37,9 @@ by Android, **not** frames proven dropped by the UI.
 Do not compare samples with different refresh rates, different screens visited,
 different network conditions, or different foreground/background behavior.
 For a meaningful before/after comparison, repeat the same route at least
-three times per build and compare p95 and over-budget ratio. The first
+three times per build and compare p95 and over-budget ratio. Keep interaction
+windows separate from base screen buckets and do not interpret the number of
+sampled frames per second as measured FPS. The first
 navigation after install and warm navigations should be assessed separately.
 
 No frame-by-frame logs or page contents are collected. The capture stays
