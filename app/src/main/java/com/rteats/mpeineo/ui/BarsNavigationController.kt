@@ -79,12 +79,14 @@ internal class BarsNavigationController(
     }
 
     fun onStarted(url: String) {
-        val current = attempt ?: return
         if (!BarsDocumentPolicy.isTrusted(url)) return
         val now = SystemClock.elapsedRealtime()
+        // Interactive BARS navigation may occur without a tracked request;
+        // still record a correct start timestamp for page-finished logs.
+        lastLoadStartedAt = now
+        val current = attempt ?: return
         current.started = true
         current.lastActivityAtMs = now
-        lastLoadStartedAt = now
         lastProgressBucket = -1
         scheduleWatchdog(current)
     }
