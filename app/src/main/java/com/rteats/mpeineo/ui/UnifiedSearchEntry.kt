@@ -1,5 +1,7 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,13 +43,19 @@ internal fun UnifiedSearchEntry(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AppIcon(AppIcons.Search, contentDescription = null)
-            Text(
-                placeholder,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Crossfade(
+                targetState = placeholder,
+                animationSpec = tween(durationMillis = 190),
+                label = "floating-search-hint",
+            ) { hint ->
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
