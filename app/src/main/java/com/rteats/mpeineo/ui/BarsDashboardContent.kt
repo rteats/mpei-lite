@@ -157,8 +157,10 @@ internal fun BarsNativeDashboard(
   }
   val report = remember(state.rawSummary) { BarsReportParser.parseSummary(state.rawSummary) }
   val controls = remember(state.disciplines) { state.controlSchedule }
-  val gradeReportScroll = rememberScrollState()
-  val attendanceReportScroll = rememberScrollState()
+  // Retain the chosen week across sections; a new semester starts at "current".
+  var selectedWeekColumn by rememberSaveable(report.semester) {
+    androidx.compose.runtime.mutableIntStateOf(-1)
+  }
   val dashboardListState = rememberLazyListState()
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
@@ -308,8 +310,8 @@ internal fun BarsNativeDashboard(
               section = selectedSection,
               report = report,
               controls = controls,
-              gradeScroll = gradeReportScroll,
-              attendanceScroll = attendanceReportScroll,
+              selectedWeekColumn = selectedWeekColumn,
+              onSelectWeek = { selectedWeekColumn = it },
               onOpenDiscipline = { selectedDisciplineName = it },
               isSummaryLoading = state.isSummaryLoading,
               summaryError = state.summaryError,
