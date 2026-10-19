@@ -23,3 +23,22 @@ internal data class CampusMapFocus(
     val building: String,
     val classroom: String,
 )
+
+/** Campus letters are a stable offline search index; no map network request. */
+internal val campusSearchSymbols = listOf(
+    "А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К",
+    "Л", "М", "Н", "Р", "С", "Т", "Ф", "Х", "Э",
+)
+
+/** Recognize a named building or an auditorium's building prefix. */
+internal fun campusBuildingHits(query: String): List<String> {
+    val normalized = query.trim().uppercase(Locale.ROOT).replace('Ё', 'Е')
+    if (normalized.isBlank()) return campusSearchSymbols
+    val compact = normalized.removePrefix("КОРПУС")
+        .removePrefix("КОРП.")
+        .removePrefix("КОРП")
+        .trim().removePrefix("№").trim()
+    val match = Regex("^([АБВГДЕЖЗИКЛМНРСТФХЭ])(?:\\s*[-–—]\\s*\\d{1,4})?$")
+        .matchEntire(compact)
+    return match?.groupValues?.get(1)?.let(::listOf).orEmpty()
+}
