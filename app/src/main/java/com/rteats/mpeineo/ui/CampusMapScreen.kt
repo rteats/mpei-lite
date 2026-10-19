@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -563,7 +564,7 @@ internal fun CampusMapScreen(
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
-    var keyboardExpanded by rememberSaveable { mutableStateOf(true) }
+    var keyboardExpanded by rememberSaveable { mutableStateOf(false) }
 
     // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
     // default overview without enormous empty margins above and below.
@@ -780,90 +781,105 @@ internal fun CampusMapScreen(
             labelsCanvas.restoreToCount(labelsSave)
         }
 
-        // Direct, alphabet-like building keyboard. No bottom sheet, extra tap,
-        // or dismissal animation between choosing a letter and its highlight.
+        // The bottom dock is the only search. Keep direct alphabet building
+        // shortcuts behind a small, discoverable button instead of a second
+        // full-width search-like header at the top of the map.
         BoxWithConstraints(
-            modifier = Modifier.align(Alignment.TopCenter)
+            modifier = Modifier.align(Alignment.TopEnd)
                 .fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
                 .testTag("campus-building-keyboard"),
         ) {
-            // 44dp letter keys; adapt the number of rows to the available width
-            // instead of making small keys or clipping the last letters.
             val columns = ((maxWidth.value - 16f + 4f) / 48f).toInt().coerceIn(1, 10)
             val rows = remember(places, columns) {
                 campusKeyboardRows(places.map { it.symbol }, columns)
             }
             val bySymbol = remember(places) { places.associateBy { it.symbol } }
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = colors.surfaceContainerHigh,
-                shadowElevation = 3.dp,
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Surface(
+                    onClick = {
+                        stopFling()
+                        keyboardExpanded = !keyboardExpanded
+                    },
+                    modifier = Modifier.width(76.dp).height(48.dp)
+                        .testTag("campus-keyboard-toggle"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = colors.surfaceContainerHigh,
+                    shadowElevation = 3.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("А–Я", style = MaterialTheme.typography.labelLarge)
+                        AppIcon(
+                            if (keyboardExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                            contentDescription = if (keyboardExpanded)
+                                "Скрыть буквы корпусов" else "Показать буквы корпусов",
+                        )
+                    }
+                }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = keyboardExpanded,
+                    enter = androidx.compose.animation.expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                    ) + androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                    ) + androidx.compose.animation.fadeOut(),
                 ) {
                     Surface(
-                        onClick = {
-                            stopFling()
-                            keyboardExpanded = !keyboardExpanded
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp)
-                            .testTag("campus-keyboard-toggle"),
-                        shape = RoundedCornerShape(16.dp),
-                        color = colors.surfaceContainerLow,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = colors.surfaceContainerHigh,
+                        shadowElevation = 3.dp,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text(
-                                selected?.let { "Выбрано: ${it.symbol}" } ?: "Выбрать корпус",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            AppIcon(
-                                if (keyboardExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
-                                contentDescription = if (keyboardExpanded) "Свернуть выбор" else "Показать корпуса",
-                            )
-                        }
-                    }
-                    if (keyboardExpanded) rows.forEach { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            val missing = columns - row.size
-                            repeat(missing / 2) {
-                                Spacer(Modifier.weight(1f).height(44.dp))
-                            }
-                            row.forEach { symbol ->
-                                val place = bySymbol.getValue(symbol)
-                                val isSelected = selected?.symbol == symbol
-                                Surface(
-                                    onClick = { focusBuilding(place, null, "keyboard") },
-                                    modifier = Modifier.weight(1f).height(44.dp)
-                                        .testTag("campus-key-$symbol")
-                                        .semantics { contentDescription = "Корпус $symbol" },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) colors.primaryContainer
-                                        else colors.surfaceContainerLow,
-                                    contentColor = if (isSelected) colors.onPrimaryContainer
-                                        else colors.onSurface,
+                            rows.forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            symbol,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = if (isSelected) FontWeight.Bold
-                                                else FontWeight.Medium,
-                                        )
+                                    val missing = columns - row.size
+                                    repeat(missing / 2) {
+                                        Spacer(Modifier.weight(1f).height(44.dp))
+                                    }
+                                    row.forEach { symbol ->
+                                        val place = bySymbol.getValue(symbol)
+                                        val isSelected = selected?.symbol == symbol
+                                        Surface(
+                                            onClick = { focusBuilding(place, null, "keyboard") },
+                                            modifier = Modifier.weight(1f).height(44.dp)
+                                                .testTag("campus-key-$symbol")
+                                                .semantics { contentDescription = "Корпус $symbol" },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) colors.primaryContainer
+                                                else colors.surfaceContainerLow,
+                                            contentColor = if (isSelected) colors.onPrimaryContainer
+                                                else colors.onSurface,
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    symbol,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = if (isSelected) FontWeight.Bold
+                                                        else FontWeight.Medium,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    repeat(missing - missing / 2) {
+                                        Spacer(Modifier.weight(1f).height(44.dp))
                                     }
                                 }
-                            }
-                            repeat(missing - missing / 2) {
-                                Spacer(Modifier.weight(1f).height(44.dp))
                             }
                         }
                     }
