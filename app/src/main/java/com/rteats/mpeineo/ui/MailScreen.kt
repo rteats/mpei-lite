@@ -54,6 +54,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -101,10 +102,31 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    // The ViewModel survives navigation. Pause nonessential Sent enrichment
+    // immediately when the screen is hidden, then resume cached work on return.
+    DisposableEffect(active, state.mailbox, state.selected, state.composing) {
+        viewModel.setSentVisible(active && state.mailbox == OwaMailFolder.SENT &&
+            state.selected == null && !state.composing)
+        onDispose { viewModel.setSentVisible(false) }
+    }
     val context = LocalContext.current
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
+    // Compose list keys contain only stable, opaque IDs; never log or persist
+    // those identifiers. Prioritize rows that are actually on screen.
+    LaunchedEffect(active, state.mailbox, state.selected, state.composing, sentScrollState) {
+        if (active && state.mailbox == OwaMailFolder.SENT &&
+            state.selected == null && !state.composing) {
+            snapshotFlow {
+                sentScrollState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+                    val key = info.key.toString()
+                    if (key.startsWith("SENT-")) key.substringAfterLast('-').toLongOrNull()
+                    else null
+                }.toSet()
+            }.distinctUntilChanged().collect(viewModel::updateVisibleSentUids)
+        }
+    }
     val folderItems = if (state.mailbox == OwaMailFolder.SENT) state.sentItems else state.items
     val folderLoading = if (state.mailbox == OwaMailFolder.SENT) state.sentLoading else state.loading
     val folderLoadingMore = if (state.mailbox == OwaMailFolder.SENT)
@@ -352,7 +374,11 @@ internal fun MailScreen(
                                     MailInboxRow(
                                         summary = item,
                                         isSent = state.mailbox == OwaMailFolder.SENT,
-                                        onClick = { viewModel.open(item) },
+                                        onClick = {
+                                            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+                                                ?.container?.uiFrameProfiler?.markInteraction("MAIL_OPEN")
+                                            viewModel.open(item)
+                                        },
                                         modifier = Modifier,
                                     )
                                 }
