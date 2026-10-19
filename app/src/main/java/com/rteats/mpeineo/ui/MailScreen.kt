@@ -3,6 +3,8 @@ package com.rteats.mpeineo.ui
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -66,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import com.rteats.mpeineo.R
 import androidx.compose.ui.text.LinkAnnotation
@@ -110,6 +113,26 @@ internal fun MailScreen(
             } ||
             it.subject.contains(inboxQuery.trim(), ignoreCase = true)
     }
+    val context = LocalContext.current
+    LaunchedEffect(
+        state.selected?.uid, state.selected?.uidValidity, state.message, state.mailbox,
+    ) {
+        if (state.selected != null && state.message != null) {
+            viewModel.checkLocalAttachments()
+        }
+    }
+    val openLocalAttachment: (Uri, String) -> Unit = { uri, mime ->
+        try {
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime.ifBlank { "application/octet-stream" })
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(view, "Открыть файл"))
+        } catch (_: RuntimeException) {
+            viewModel.localOpenFailed()
+        }
+    }
+
     // Search is explicitly local to downloaded pages, not a server-wide search.
     LaunchedEffect(scrollState, folderItems.size, folderHasMore,
         folderLoadingMore, folderLoading, folderMoreError, inboxQuery,
@@ -245,6 +268,7 @@ internal fun MailScreen(
                             state = state,
                             isSent = state.mailbox == OwaMailFolder.SENT,
                             onDownload = viewModel::download,
+                            onOpenLocal = openLocalAttachment,
                             onBack = viewModel::closeMessage,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -487,6 +511,7 @@ private fun MailMessage(
     state: MailUiState,
     isSent: Boolean,
     onDownload: (com.rteats.mpeineo.data.MailAttachment) -> Unit,
+    onOpenLocal: (Uri, String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -549,18 +574,17 @@ private fun MailMessage(
                     fontWeight = FontWeight.SemiBold,
                 )
                 detail.attachments.forEach { attachment ->
+                    val localUri = state.localAttachmentUris[attachmentLocalKey(attachment)]
                     Surface(
-                        onClick = { onDownload(attachment) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.large,
                         color = MaterialTheme.colorScheme.surfaceContainer,
                     ) {
                         Row(
                             modifier = Modifier.padding(
-                                horizontal = 14.dp,
-                                vertical = 13.dp,
+                                start = 14.dp, end = 5.dp, top = 6.dp, bottom = 6.dp,
                             ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppIcon(
@@ -576,19 +600,39 @@ private fun MailMessage(
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                             )
-                            if (state.savingAttachment == attachment.partPath) {
-                                ContainedLoadingIndicator(
-                                    modifier = Modifier.size(26.dp),
-                                )
-                            } else AppIcon(
-                                AppIcons.Download,
-                                contentDescription = "Сохранить в Загрузки",
-                            )
+                            IconButton(
+                                onClick = { onDownload(attachment) },
+                                enabled = state.savingAttachment == null,
+                                modifier = Modifier.testTag("mail-attachment-download"),
+                            ) {
+                                if (state.savingAttachment == attachment.partPath) {
+                                    ContainedLoadingIndicator(modifier = Modifier.size(26.dp))
+                                } else {
+                                    AppIcon(
+                                        AppIcons.Download,
+                                        contentDescription = "Скачать вложение",
+                                    )
+                                }
+                            }
+                            if (localUri != null) {
+                                IconButton(
+                                    onClick = {
+                                        onOpenLocal(localUri, attachment.mimeType)
+                                    },
+                                    modifier = Modifier.testTag("mail-attachment-open"),
+                                ) {
+                                    AppIcon(
+                                        AppIcons.OpenPortal,
+                                        contentDescription = "Открыть сохранённый файл",
+                                    )
+                                }
+                            }
                         }
                     }
                 }
                 Text(
-                    "Нажмите на вложение, чтобы сохранить его в Загрузки/MPEI Neo.",
+                    "Скачать — сохранить в Загрузки/MPEI Neo. " +
+                        "Открыть — показать доступный файл с устройства.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
