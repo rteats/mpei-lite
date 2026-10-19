@@ -36,6 +36,30 @@ class UiFrameStatsTest {
         assertEquals(0, stats.summaries().single().callbackDrops)
     }
 
+    @Test fun frameStagesReportIndependentPercentiles() {
+        val stats = UiFrameStats(16_666_667L)
+        stats.record("SCHEDULE/LESSON_TOGGLE", 35_000_000L,
+            inputNs = 2_000_000L, layoutNs = 15_000_000L,
+            drawNs = 8_000_000L, gpuNs = 4_000_000L)
+        stats.record("SCHEDULE/LESSON_TOGGLE", 50_000_000L,
+            inputNs = 3_000_000L, layoutNs = 25_000_000L,
+            drawNs = 12_000_000L, gpuNs = 7_000_000L)
+        val sample = stats.summaries().single()
+        assertEquals("SCHEDULE/LESSON_TOGGLE", sample.screen)
+        assertEquals(25.0, sample.layoutP95Ms, 0.001)
+        assertEquals(12.0, sample.drawP95Ms, 0.001)
+        assertEquals(7.0, sample.gpuP95Ms, 0.001)
+        assertEquals(3.0, sample.inputP95Ms, 0.001)
+    }
+
+    @Test fun unsupportedStageMetricsRemainZero() {
+        val stats = UiFrameStats(16_666_667L)
+        stats.record("MAPS", 20_000_000L, inputNs = -1L)
+        val sample = stats.summaries().single()
+        assertEquals(0.0, sample.inputP95Ms, 0.001)
+        assertEquals(0.0, sample.gpuP95Ms, 0.001)
+    }
+
     @Test fun repeatedSnapshotIsStable() {
         val stats = UiFrameStats(frameBudgetNs = 16_000_000L)
         listOf(8L, 12L, 14L, 15L, 16L, 17L, 20L, 32L).forEach {
