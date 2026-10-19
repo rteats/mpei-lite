@@ -233,13 +233,21 @@ class UiFrameProfiler(private val diagnostics: DiagnosticLog) {
                         " p95Ms=" + sample.p95Ms.formatMs() +
                         " maxMs=" + sample.maxMs.formatMs() +
                         " overBudget=" + sample.overBudget +
-                        " overBudgetPct=" + if (sample.frames == 0) "0.0" else
-                            (100.0 * sample.overBudget / sample.frames).formatMs() +
+                        " overBudgetPct=" +
+                        (if (sample.frames == 0) "0.0" else
+                            (100.0 * sample.overBudget / sample.frames).formatMs()) +
                         " callbackDrops=" + sample.callbackDrops +
                         " inputP95Ms=" + sample.inputP95Ms.formatMs() +
                         " layoutP95Ms=" + sample.layoutP95Ms.formatMs() +
                         " drawP95Ms=" + sample.drawP95Ms.formatMs() +
-                        " gpuP95Ms=" + sample.gpuP95Ms.formatMs())
+                        " gpuP95Ms=" + sample.gpuP95Ms.formatMs() +
+                        " syncP95Ms=" + sample.syncP95Ms.formatMs() +
+                        " swapP95Ms=" + sample.swapP95Ms.formatMs() +
+                        " unknownP95Ms=" + sample.unknownP95Ms.formatMs() +
+                        " inputSamples=" + sample.inputSamples +
+                        " layoutSamples=" + sample.layoutSamples +
+                        " drawSamples=" + sample.drawSamples +
+                        " gpuSamples=" + sample.gpuSamples)
             }
         }
     }
