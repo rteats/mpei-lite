@@ -11,11 +11,13 @@ import android.graphics.RectF
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +78,8 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -546,6 +551,13 @@ internal fun CampusMapScreen(
                     " pixels=${value?.bitmap?.width ?: 0}x${value?.bitmap?.height ?: 0}",
             )
     }
+    val flingScope = rememberCoroutineScope()
+    val flingDecay = rememberSplineBasedDecay<Offset>()
+    var flingJob by remember { mutableStateOf<Job?>(null) }
+    fun stopFling() {
+        flingJob?.cancel()
+        flingJob = null
+    }
     var zoom by rememberSaveable { mutableFloatStateOf(1.45f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -561,6 +573,7 @@ internal fun CampusMapScreen(
         return clampCampusPan(nextPan, scale, viewport, prepared.bounds)
     }
     fun changeZoom(factor: Float) {
+        stopFling()
         zoom = (zoom * factor).coerceIn(.65f, 5f)
         pan = fitPan(pan, zoom)
     }
@@ -570,6 +583,7 @@ internal fun CampusMapScreen(
             ?.container?.diagnostics
     }
     fun focusBuilding(place: CampusPlace, room: String?, source: String) {
+        stopFling()
         // Change the selected vector overlay immediately; no modal-dismiss or
         // bitmap regeneration is involved.
         selected = place
@@ -586,6 +600,11 @@ internal fun CampusMapScreen(
                 " viewportReady=${viewport.width > 0 && viewport.height > 0}" +
                 " zoom=$zoom",
         )
+    }
+
+    // This tab stays composed when hidden. It must not keep moving offscreen.
+    LaunchedEffect(active) {
+        if (!active) stopFling()
     }
 
     // Apply cross-tab focus only after the map is visible and measured.
@@ -622,6 +641,7 @@ internal fun CampusMapScreen(
         Canvas(
             modifier = Modifier.fillMaxSize()
                 .onSizeChanged {
+                    stopFling()
                     viewport = it
                     pan = fitPan(pan, zoom)
                 }
@@ -664,16 +684,29 @@ internal fun CampusMapScreen(
                         },
                     )
                 }
-                // One-finger pan and two-finger pinch, with zoom anchored to the
-                // gesture centroid instead of snapping toward the map's center.
+                // Keep pinch zoom anchored to the fingers. Only one-finger
+                // drags carry momentum after release; a new touch interrupts it.
                 .pointerInput(prepared.bounds, viewport) {
-                    detectTransformGestures { centroid, panDelta, zoomDelta, _ ->
-                        val next = applyCampusGesture(
-                            zoom, pan, zoomDelta, panDelta, centroid, viewport, prepared.bounds,
-                        )
-                        zoom = next.zoom
-                        pan = next.pan
-                    }
+                    detectCampusGestures(
+                        onDown = { stopFling() },
+                        onTransform = { centroid, panDelta, zoomDelta ->
+                            val next = applyCampusGesture(
+                                zoom, pan, zoomDelta, panDelta, centroid, viewport, prepared.bounds,
+                            )
+                            zoom = next.zoom
+                            pan = next.pan
+                        },
+                        onFling = { velocity ->
+                            val startPan = pan
+                            val startZoom = zoom
+                            flingJob = flingScope.launch {
+                                val movement = Animatable(Offset.Zero, Offset.VectorConverter)
+                                movement.animateDecay(velocity, flingDecay) {
+                                    pan = fitPan(startPan + value, startZoom)
+                                }
+                            }
+                        },
+                    )
                 },
         ) {
             if (viewport.width == 0 || viewport.height == 0) return@Canvas
@@ -771,7 +804,10 @@ internal fun CampusMapScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Surface(
-                        onClick = { keyboardExpanded = !keyboardExpanded },
+                        onClick = {
+                            stopFling()
+                            keyboardExpanded = !keyboardExpanded
+                        },
                         modifier = Modifier.fillMaxWidth().height(44.dp)
                             .testTag("campus-keyboard-toggle"),
                         shape = RoundedCornerShape(16.dp),
@@ -849,6 +885,7 @@ internal fun CampusMapScreen(
                     Text("−", style = MaterialTheme.typography.headlineSmall)
                 }
                 IconButton(onClick = {
+                    stopFling()
                     zoom = 1.45f
                     pan = fitPan(Offset.Zero, zoom)
                 }) {

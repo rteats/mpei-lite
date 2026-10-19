@@ -98,6 +98,7 @@ internal fun MailScreen(
     viewModel: MailViewModel,
     active: Boolean,
     onOpenPortal: () -> Unit = {},
+    onSearch: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -126,16 +127,6 @@ internal fun MailScreen(
             }.distinctUntilChanged().collect(viewModel::updateVisibleSentUids)
         }
     }
-    var inboxQuery by rememberSaveable { mutableStateOf("") }
-    var mailSearchExpanded by rememberSaveable { mutableStateOf(false) }
-    val mailSearchFocus = remember { FocusRequester() }
-    val mailKeyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(mailSearchExpanded, active, state.composing, state.selected) {
-        if (mailSearchExpanded && active && !state.composing && state.selected == null) {
-            mailSearchFocus.requestFocus()
-            mailKeyboard?.show()
-        }
-    }
     val folderItems = if (state.mailbox == OwaMailFolder.SENT) state.sentItems else state.items
     val folderLoading = if (state.mailbox == OwaMailFolder.SENT) state.sentLoading else state.loading
     val folderLoadingMore = if (state.mailbox == OwaMailFolder.SENT)
@@ -144,18 +135,12 @@ internal fun MailScreen(
         state.sentHasMore else state.hasMore
     val folderMoreError = if (state.mailbox == OwaMailFolder.SENT)
         state.sentMoreError else state.moreError
-    val visibleMessages = if (inboxQuery.isBlank()) folderItems else folderItems.filter {
-        it.sender.contains(inboxQuery.trim(), ignoreCase = true) ||
-            it.recipients.orEmpty().any { recipient ->
-                recipient.contains(inboxQuery.trim(), ignoreCase = true)
-            } ||
-            it.subject.contains(inboxQuery.trim(), ignoreCase = true)
-    }
-    // Search is explicitly local to downloaded pages, not a server-wide search.
+    val visibleMessages = folderItems
+    // Full-screen search handles cached Inbox and Sent results in one place.
     LaunchedEffect(scrollState, folderItems.size, folderHasMore,
-        folderLoadingMore, folderLoading, folderMoreError, inboxQuery,
+        folderLoadingMore, folderLoading, folderMoreError,
         state.selected, active, state.mailbox) {
-        if (active && state.selected == null && inboxQuery.isBlank() &&
+        if (active && state.selected == null &&
             folderHasMore && !folderLoadingMore &&
             !folderLoading && !folderMoreError) {
             snapshotFlow {
@@ -167,12 +152,6 @@ internal fun MailScreen(
     }
     val motion = MaterialTheme.motionScheme
 
-    BackHandler(enabled = active && !state.composing && state.selected == null &&
-        mailSearchExpanded) {
-        mailSearchExpanded = false
-        inboxQuery = ""
-        mailKeyboard?.hide()
-    }
     BackHandler(enabled = active && !state.composing && state.selected != null) {
         viewModel.closeMessage()
     }
@@ -341,70 +320,35 @@ internal fun MailScreen(
                                 }
                                 stickyHeader(key = "inbox-search") {
                                     Surface(color = MaterialTheme.colorScheme.background) {
-                                    Column {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        FilterChip(
-                                            selected = state.mailbox == OwaMailFolder.INBOX,
-                                            onClick = { viewModel.switchMailbox(OwaMailFolder.INBOX) },
-                                            label = { Text("Входящие") },
-                                            modifier = Modifier.testTag("mail-folder-inbox"),
-                                        )
-                                        FilterChip(
-                                            selected = state.mailbox == OwaMailFolder.SENT,
-                                            onClick = { viewModel.switchMailbox(OwaMailFolder.SENT) },
-                                            label = { Text("Отправленные") },
-                                            modifier = Modifier.testTag("mail-folder-sent"),
-                                        )
-                                        if (!mailSearchExpanded) {
-                                            IconButton(
-                                                onClick = { mailSearchExpanded = true },
-                                                modifier = Modifier.testTag("mail-open-search"),
-                                            ) {
-                                                AppIcon(AppIcons.Search, "Поиск писем")
-                                            }
-                                        }
-                                    }
-                                    if (mailSearchExpanded) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth()
+                                                .padding(bottom = 6.dp),
                                         ) {
-                                            OutlinedTextField(
-                                                value = inboxQuery,
-                                                onValueChange = { inboxQuery = it },
-                                                placeholder = { Text("В загруженных письмах") },
-                                                leadingIcon = {
-                                                    AppIcon(AppIcons.Search, contentDescription = null)
-                                                },
-                                                trailingIcon = if (inboxQuery.isNotBlank()) {{
-                                                    IconButton(onClick = { inboxQuery = "" }) {
-                                                        AppIcon(AppIcons.ClearLog, "Очистить поиск")
-                                                    }
-                                                }} else null,
-                                                singleLine = true,
-                                                shape = MaterialTheme.shapes.extraLarge,
-                                                modifier = Modifier.weight(1f)
-                                                    .focusRequester(mailSearchFocus)
-                                                    .testTag("mail-search-input"),
-                                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                                keyboardActions = KeyboardActions(
-                                                    onSearch = { mailKeyboard?.hide() },
-                                                ),
+                                            UnifiedSearchEntry(
+                                                placeholder = "Поиск по почте",
+                                                onClick = onSearch,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                tag = "mail-open-search",
                                             )
-                                            IconButton(onClick = {
-                                                mailSearchExpanded = false
-                                                inboxQuery = ""
-                                                mailKeyboard?.hide()
-                                            }) {
-                                                AppIcon(AppIcons.Back, "Закрыть поиск")
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                FilterChip(
+                                                    selected = state.mailbox == OwaMailFolder.INBOX,
+                                                    onClick = { viewModel.switchMailbox(OwaMailFolder.INBOX) },
+                                                    label = { Text("Входящие") },
+                                                    modifier = Modifier.testTag("mail-folder-inbox"),
+                                                )
+                                                FilterChip(
+                                                    selected = state.mailbox == OwaMailFolder.SENT,
+                                                    onClick = { viewModel.switchMailbox(OwaMailFolder.SENT) },
+                                                    label = { Text("Отправленные") },
+                                                    modifier = Modifier.testTag("mail-folder-sent"),
+                                                )
                                             }
                                         }
-                                    }
-                                    }
                                     }
                                 }
                                 if (visibleMessages.isEmpty()) {
@@ -415,8 +359,7 @@ internal fun MailScreen(
                                         ) {
                                             if (folderLoading) ContainedLoadingIndicator()
                                             else Text(
-                                                if (inboxQuery.isNotBlank()) "Среди загруженных писем совпадений нет"
-                                                else if (state.mailbox == OwaMailFolder.SENT)
+                                                if (state.mailbox == OwaMailFolder.SENT)
                                                     "Отправленных писем нет."
                                                 else "Писем нет. Потяните вниз для обновления.",
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

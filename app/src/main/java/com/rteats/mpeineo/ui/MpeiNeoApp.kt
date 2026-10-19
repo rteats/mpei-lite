@@ -223,6 +223,7 @@ fun MpeiNeoApp(
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     var searchExpanded by remember { mutableStateOf(false) }
     var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
     var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
     var recentQueries by remember { mutableStateOf(searchHistory.load()) }
@@ -310,8 +311,8 @@ fun MpeiNeoApp(
     }
 
     fun goBackOneService() {
-        if (isTransitioning || routeNames.isEmpty()) return
         application.container.uiFrameProfiler.markInteraction("NAV_POP")
+        if (isTransitioning || routeNames.isEmpty()) return
         if (navigationHaptics) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
@@ -337,7 +338,13 @@ fun MpeiNeoApp(
 
     fun updateGlobalQuery(value: String) {
         globalQuery = value
-        viewModel.updateSearchQuery(value)
+        // Only Schedule and All need the remote schedule-target lookup.
+        viewModel.updateSearchQuery(if (searchScope.includesSchedule) value else "")
+    }
+
+    fun updateSearchScope(next: SearchScope) {
+        searchScope = next
+        viewModel.updateSearchQuery(if (next.includesSchedule) globalQuery else "")
     }
 
     fun rememberGlobalQuery() {
@@ -352,7 +359,8 @@ fun MpeiNeoApp(
         viewModel.updateSearchQuery("")
     }
 
-    fun openGlobalSearch() {
+    fun openGlobalSearch(scope: SearchScope = SearchScope.ALL) {
+        searchScope = scope
         globalSearchOpen = true
         globalQuery = ""
         viewModel.updateSearchQuery("")
@@ -362,7 +370,7 @@ fun MpeiNeoApp(
         rememberGlobalQuery()
         closeGlobalSearch()
         viewModel.selectTarget(target)
-        openService(AppTab.SCHEDULE)
+        if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
     }
 
     fun openLessonResult(hit: ScheduleLessonHit) {
@@ -375,14 +383,15 @@ fun MpeiNeoApp(
         )
         // The hit belongs to the selected timetable. Do not re-select that
         // timetable: doing so clears its loaded weeks and loses the result.
-        openService(AppTab.SCHEDULE)
+        if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
     }
 
-    fun openMailResult(summary: MailSummary) {
+    fun openMailResult(hit: SearchMailHit) {
         rememberGlobalQuery()
         closeGlobalSearch()
-        openService(AppTab.MAIL)
-        mailViewModel.openInboxMessage(summary)
+        if (currentService != AppTab.MAIL) openService(AppTab.MAIL)
+        mailViewModel.switchMailbox(hit.folder)
+        mailViewModel.open(hit.message)
     }
 
     fun openBarsResult(discipline: String) {
@@ -390,7 +399,7 @@ fun MpeiNeoApp(
         closeGlobalSearch()
         barsSearchRequest++
         barsRequestedDiscipline = discipline
-        openService(AppTab.BARS)
+        if (currentService != AppTab.BARS) openService(AppTab.BARS)
     }
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
@@ -452,6 +461,7 @@ fun MpeiNeoApp(
                                 showWeekInfo = weekInfoVisible,
                                 expanded = searchExpanded,
                                 onExpandedChange = { searchExpanded = it },
+                                onOpenUnifiedSearch = { openGlobalSearch(SearchScope.SCHEDULE) },
                                 active = active,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -464,6 +474,7 @@ fun MpeiNeoApp(
                                 viewModel = mailViewModel,
                                 active = active && !mailWebVisible,
                                 onOpenPortal = { mailWebVisible = true },
+                                onSearch = { openGlobalSearch(SearchScope.MAIL) },
                                 modifier = Modifier.fillMaxSize(),
                             )
                             if (mailWebVisible && active) {
@@ -611,7 +622,7 @@ fun MpeiNeoApp(
                             }
                         },
                         onSearch = {
-                            if (currentService == null && !isTransitioning) openGlobalSearch()
+                            if (currentService == null && !isTransitioning) openGlobalSearch(SearchScope.ALL)
                         },
                         onOpenBarsDiscipline = { discipline ->
                             if (currentService == null && !isTransitioning) {
@@ -690,6 +701,7 @@ fun MpeiNeoApp(
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     BarsScreen(
                         viewModel = barsViewModel,
+                        onSearch = { openGlobalSearch(SearchScope.BARS) },
                         autoRefreshEnabled = barsAutoRefreshEnabled,
                         active = barsForeground,
                         allowBackgroundSync = barsAutoRefreshEnabled,
@@ -720,6 +732,9 @@ fun MpeiNeoApp(
             ) {
                 GlobalSearchScreen(
                     query = globalQuery,
+                    scope = searchScope,
+                    onScopeChange = ::updateSearchScope,
+                    onScheduleTypeChange = viewModel::setSearchType,
                     onQueryChange = ::updateGlobalQuery,
                     history = recentQueries,
                     onHistorySelected = ::updateGlobalQuery,
