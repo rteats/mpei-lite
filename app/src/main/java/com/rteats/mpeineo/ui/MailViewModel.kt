@@ -85,11 +85,8 @@ internal fun prioritizedSentIds(
     visible: Set<Long>,
     batchSize: Int = 10,
 ): List<Long> = unresolved.distinct().let { unique ->
-    unique.filter { it in visible }.take(batchSize) +
-        unique.filter { it !in visible }.take(
-            (batchSize - unique.count { it in visible }.coerceAtMost(batchSize))
-                .coerceAtLeast(0),
-        )
+    (unique.filter { it in visible } + unique.filterNot { it in visible })
+        .take(batchSize.coerceAtLeast(0))
 }
 
 /** Preserve previously fetched recipients when a refreshed sent page omits To. */
