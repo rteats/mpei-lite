@@ -148,7 +148,8 @@ internal class MailViewModel(
             sentRecipientJob?.cancel()
             sentRecipientJob = null
             repository.logState("OWA sent enrichment paused offscreen")
-        } else if (_state.value.sentItems.any { it.recipients.isNullOrEmpty() }) {
+        } else if (!_state.value.sentLoading &&
+            _state.value.sentItems.any { it.recipients.isNullOrEmpty() }) {
             repository.logState("OWA sent enrichment resumed items=${_state.value.sentItems.size}")
             hydrateSentRecipients(_state.value.sentItems)
         }
