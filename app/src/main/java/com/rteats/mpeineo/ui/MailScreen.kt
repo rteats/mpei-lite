@@ -416,7 +416,11 @@ internal fun MailScreen(
                                     MailInboxRow(
                                         summary = item,
                                         isSent = state.mailbox == OwaMailFolder.SENT,
-                                        onClick = { viewModel.open(item) },
+                                        onClick = {
+                                            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+                                                ?.container?.uiFrameProfiler?.markInteraction("MAIL_OPEN")
+                                            viewModel.open(item)
+                                        },
                                         modifier = Modifier,
                                     )
                                 }
