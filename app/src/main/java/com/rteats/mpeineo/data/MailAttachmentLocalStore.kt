@@ -25,7 +25,20 @@ internal class MailAttachmentLocalStore(context: Context) {
         prefs.edit().putString(key, uri.toString()).apply()
     }
 
+    /** Drop stored links and their persisted SAF grants when the user signs out. */
     fun clear() {
+        prefs.all.values.mapNotNull { it as? String }
+            .distinct()
+            .forEach { stored ->
+                val uri = runCatching { Uri.parse(stored) }.getOrNull()
+                if (uri?.scheme == "content") {
+                    runCatching {
+                        resolver.releasePersistableUriPermission(
+                            uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    }
+                }
+            }
         prefs.edit().clear().apply()
     }
 

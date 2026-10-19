@@ -60,6 +60,20 @@ class OwaMailRepository(
         accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
 
+    internal fun cachedDraft(): MailDraftSnapshot? =
+        cachedAccountKey()?.let(cache::draft)
+
+    internal fun saveDraft(snapshot: MailDraftSnapshot, expectedAccount: String?) {
+        // Never write an old draft into the next account after an OWA login switch.
+        if (expectedAccount != null && cachedAccountKey() == expectedAccount) {
+            cache.saveDraft(expectedAccount, snapshot)
+        }
+    }
+
+    internal fun clearDraft() {
+        cachedAccountKey()?.let(cache::clearDraft)
+    }
+
     fun cachedSent(): List<MailSummary> =
         accountPrefs.getString("last_account", null)?.let { cache.sent(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
@@ -77,7 +91,7 @@ class OwaMailRepository(
     suspend fun signOut() {
         val previous = accountPrefs.getString("last_account", null)
         activeAccount = null
-        attachmentLocations.clear()
+        withContext(Dispatchers.IO) { attachmentLocations.clear() }
         accountPrefs.edit().remove("last_account").apply()
         if (previous != null) withContext(Dispatchers.IO) { cache.clear(previous) }
         // The cookie jar is shared with BARS; clear mail.mpei.ru only.
@@ -311,7 +325,7 @@ class OwaMailRepository(
         diagnostics.log("OWA_MAIL", "read_state_success")
     }
 
-    /** Validate actual local read access on IO before showing Open in Inbox or Sent. */
+    /** Check readability on IO before showing Open for Inbox or Sent. */
     internal suspend fun localAttachmentUris(
         attachments: List<MailAttachment>,
     ): Map<String, Uri> = withContext(Dispatchers.IO) {
@@ -473,7 +487,7 @@ class OwaMailRepository(
         draft: OutgoingMail,
         files: List<OutgoingFile>,
         onStage: (String) -> Unit = {},
-    ) = sendMutex.withLock {
+    ): Set<Uri> = sendMutex.withLock {
         if (!OwaComposeProtocol.validRecipients(draft))
             throw ServiceFailure("invalid_recipients")
         if (draft.subject.length > 998 || draft.body.length > 1_000_000)
@@ -483,6 +497,7 @@ class OwaMailRepository(
             throw ServiceFailure("attachment_limit")
 
         val started = SystemClock.elapsedRealtime()
+        val sourceLinks = mutableListOf<Pair<String, Uri>>()
         try {
             onStage(if (files.isEmpty()) "Отправка письма…" else "Создание черновика…")
             val created = service(
@@ -501,7 +516,6 @@ class OwaMailRepository(
                     ?: throw ServiceFailure("missing_draft_change_key")
 
                 var uploadedBytes = 0L
-                val sourceLinks = mutableListOf<Pair<String, Uri>>()
                 files.forEachIndexed { index, file ->
                     onStage("Вложение ${index + 1} из ${files.size}…")
                     val bytes = withContext(Dispatchers.IO) { readOutgoingFile(file) }
@@ -540,6 +554,7 @@ class OwaMailRepository(
                 "send_success attachments=${files.size} durationMs=" +
                     (SystemClock.elapsedRealtime() - started),
             )
+            sourceLinks.map { it.second }.toSet()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

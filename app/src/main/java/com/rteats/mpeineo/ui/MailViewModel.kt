@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.OpenableColumns
 import com.rteats.mpeineo.data.OutgoingMail
 import com.rteats.mpeineo.data.OutgoingFile
+import com.rteats.mpeineo.data.MailDraftSnapshot
 import com.rteats.mpeineo.data.OwaComposeProtocol
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -106,6 +107,37 @@ internal class MailViewModel(
     private var pendingNotification: Pair<Long, Long>? = null
     private var recipientJob: Job? = null
     private var sentRecipientJob: Job? = null
+    private var draftWriteJob: Job? = null
+    private var draftAccountKey: String? = owaMailRepository.cachedAccountKey()
+
+    /** Never log message contents or recipient addresses. */
+    private fun scheduleDraftSave() {
+        draftWriteJob?.cancel()
+        val snapshot = MailDraftSnapshot(_state.value.draft, _state.value.outgoingFiles)
+        val accountAtEdit = draftAccountKey
+        draftWriteJob = viewModelScope.launch {
+            delay(300)
+            withContext(Dispatchers.IO) {
+                owaMailRepository.saveDraft(snapshot, expectedAccount = accountAtEdit)
+            }
+        }
+    }
+
+    private fun restoreDraftForActiveAccount() {
+        val currentAccount = owaMailRepository.cachedAccountKey()
+        if (currentAccount == draftAccountKey) return
+        draftWriteJob?.cancel()
+        draftAccountKey = currentAccount
+        val restored = owaMailRepository.cachedDraft() ?: MailDraftSnapshot()
+        _state.update { it.copy(draft = restored.mail, outgoingFiles = restored.files) }
+    }
+
+    private fun releaseFilePermission(uri: Uri) {
+        runCatching {
+            repository.contextForNotifications.contentResolver.releasePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
 
     private fun hydrateSentRecipients(items: List<MailSummary>) {
         sentRecipientJob?.cancel()
@@ -134,6 +166,9 @@ internal class MailViewModel(
     }
 
     init {
+        owaMailRepository.cachedDraft()?.let { saved ->
+            _state.update { it.copy(draft = saved.mail, outgoingFiles = saved.files) }
+        }
         val cached = owaMailRepository.cachedInbox()
         if (cached.isNotEmpty()) {
             _state.update {
@@ -196,6 +231,7 @@ internal class MailViewModel(
                 val items = owaMailRepository.inbox(maxConversations = MAIL_PAGE_SIZE, refreshId = id)
                 if (version != sessionVersion) return@launch
                 repository.credentials.clear()
+                restoreDraftForActiveAccount()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
                 _state.update { old ->
                     val preserved = mergeOwaInboxPages(items, old.items)
@@ -383,7 +419,9 @@ internal class MailViewModel(
                 if (current.selected?.uid != summary.uid ||
                     current.selected?.uidValidity != summary.uidValidity ||
                     current.message != detail
-                ) current else current.copy(localAttachmentUris = current.localAttachmentUris + found)
+                ) current else current.copy(
+                    localAttachmentUris = current.localAttachmentUris + found,
+                )
             }
         }
     }
@@ -503,19 +541,20 @@ internal class MailViewModel(
             activeRecipientField = null, recipientSuggestions = emptyList()) }
     }
 
-    /** Closing retains the unsent in-memory draft and selected file URIs. */
+    /** Closing keeps the encrypted, account-scoped unsent draft. */
     fun closeCompose() {
         if (_state.value.sending) return
         recipientJob?.cancel()
         _state.update { it.copy(composing = false, sendError = null,
             activeRecipientField = null, recipientSuggestions = emptyList(),
             recipientSearching = false) }
+        scheduleDraftSave()
     }
 
     fun editDraft(change: (OutgoingMail) -> OutgoingMail) {
-        _state.update {
-            if (it.sending) it else it.copy(draft = change(it.draft), sendError = null)
-        }
+        if (_state.value.sending) return
+        _state.update { it.copy(draft = change(it.draft), sendError = null) }
+        scheduleDraftSave()
     }
 
     /** Debounced and cancelable: search only the unfinished recipient token. */
@@ -581,12 +620,6 @@ internal class MailViewModel(
         val resolver = repository.contextForNotifications.contentResolver
         val files = uris.distinct().mapNotNull { uri ->
             try {
-                // SAF can persist the original upload's read grant after restart.
-                runCatching {
-                    resolver.takePersistableUriPermission(
-                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                }
                 var name = "attachment"
                 var size = -1L
                 resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
@@ -624,14 +657,40 @@ internal class MailViewModel(
                 )
             }
         }
+        // OpenMultipleDocuments grants persistable read permission. Retain only
+        // accepted attachments; keep them accessible after a process restart.
+        val accepted = _state.value.outgoingFiles.map { it.uri }.toSet()
+        files.filter { it.uri in accepted }.forEach { file ->
+            runCatching {
+                resolver.takePersistableUriPermission(
+                    file.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        scheduleDraftSave()
     }
 
     fun removeOutgoingFile(uri: Uri) {
-        _state.update { old ->
-            if (old.sending) old else old.copy(
-                outgoingFiles = old.outgoingFiles.filterNot { it.uri == uri },
-                sendError = null,
-            )
+        if (_state.value.sending) return
+        _state.update { old -> old.copy(
+            outgoingFiles = old.outgoingFiles.filterNot { it.uri == uri },
+            sendError = null,
+        ) }
+        releaseFilePermission(uri)
+        scheduleDraftSave()
+    }
+
+    fun discardDraft() {
+        if (_state.value.sending) return
+        draftWriteJob?.cancel()
+        val previous = _state.value.outgoingFiles
+        _state.update { it.copy(
+            draft = OutgoingMail(),
+            outgoingFiles = emptyList(),
+            sendError = null,
+        ) }
+        previous.forEach { releaseFilePermission(it.uri) }
+        draftWriteJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) { owaMailRepository.clearDraft() }
         }
     }
 
@@ -646,10 +705,18 @@ internal class MailViewModel(
         _state.update { it.copy(sending = true, sendError = null, sendStage = "Подготовка…") }
         viewModelScope.launch {
             try {
-                owaMailRepository.sendMail(current.draft, current.outgoingFiles) { stage ->
+                val linkedSourceUris = owaMailRepository.sendMail(
+                    current.draft, current.outgoingFiles,
+                ) { stage ->
                     _state.update { old -> old.copy(sendStage = stage) }
                 }
                 if (version != sessionVersion) return@launch
+                draftWriteJob?.cancel()
+                withContext(Dispatchers.IO) { owaMailRepository.clearDraft() }
+                // Keep the original SAF grant for a source confirmed by Exchange,
+                // so the sent message can open it without another download.
+                current.outgoingFiles.filterNot { it.uri in linkedSourceUris }
+                    .forEach { releaseFilePermission(it.uri) }
                 _state.update {
                     it.copy(
                         composing = false, draft = OutgoingMail(), outgoingFiles = emptyList(),
@@ -691,6 +758,8 @@ internal class MailViewModel(
         pendingNotification = null
         recipientJob?.cancel()
         sentRecipientJob?.cancel()
+        draftWriteJob?.cancel()
+        _state.value.outgoingFiles.forEach { releaseFilePermission(it.uri) }
         viewModelScope.coroutineContext.cancelChildren()
         MailNotificationScheduler.stopAndClear(repository.contextForNotifications)
         repository.credentials.clear()
