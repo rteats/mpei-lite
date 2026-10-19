@@ -199,7 +199,17 @@ internal object BarsReportParser {
                 section == "grades" || section == "attendance" -> {
                     val row = numberedRow.matchEntire(text) ?: return@forEach
                     val cells = row.groupValues[1].split(" | ").map(::parseCell)
-                    if (section == "grades") grades.add(cells) else attendance.add(cells)
+                    // Old cached snapshots included BARS's extra responsive
+                    // .summary-header-min row for every discipline (an empty
+                    // leading cell followed by one very wide heading). Drop
+                    // these before resolving rowspan positions.
+                    val responsiveHeading = cells.size <= 3 &&
+                        cells.firstOrNull()?.value.isNullOrBlank() &&
+                        cells.drop(1).any { it.columnSpan >= 5 }
+                    if (!responsiveHeading) {
+                        if (section == "grades") grades.add(cells)
+                        else attendance.add(cells)
+                    }
                 }
             }
         }
