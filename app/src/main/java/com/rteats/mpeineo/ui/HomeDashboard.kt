@@ -158,6 +158,23 @@ internal fun HomeNextLessonCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (upcoming?.lesson?.kind?.isNotBlank() == true) {
+                Surface(
+                    modifier = Modifier.testTag("home-next-lesson-kind"),
+                    shape = MaterialTheme.shapes.medium,
+                    color = lessonContainerColor(upcoming.lesson.kind),
+                ) {
+                    Text(
+                        upcoming.lesson.kind,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             if (upcoming != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
