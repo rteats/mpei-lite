@@ -113,9 +113,12 @@ internal class MailViewModel(
     private fun scheduleDraftSave() {
         draftWriteJob?.cancel()
         val snapshot = MailDraftSnapshot(_state.value.draft, _state.value.outgoingFiles)
+        val accountAtEdit = draftAccountKey
         draftWriteJob = viewModelScope.launch {
             delay(300)
-            withContext(Dispatchers.IO) { owaMailRepository.saveDraft(snapshot) }
+            withContext(Dispatchers.IO) {
+                owaMailRepository.saveDraft(snapshot, expectedAccount = accountAtEdit)
+            }
         }
     }
 
