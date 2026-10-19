@@ -642,6 +642,21 @@ internal class MailViewModel(
         scheduleDraftSave()
     }
 
+    fun discardDraft() {
+        if (_state.value.sending) return
+        draftWriteJob?.cancel()
+        val previous = _state.value.outgoingFiles
+        _state.update { it.copy(
+            draft = OutgoingMail(),
+            outgoingFiles = emptyList(),
+            sendError = null,
+        ) }
+        previous.forEach { releaseFilePermission(it.uri) }
+        draftWriteJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) { owaMailRepository.clearDraft() }
+        }
+    }
+
     fun sendDraft() {
         val current = _state.value
         if (!current.composing || current.sending) return
