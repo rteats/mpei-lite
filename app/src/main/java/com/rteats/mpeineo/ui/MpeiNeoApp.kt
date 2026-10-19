@@ -397,6 +397,14 @@ fun MpeiNeoApp(
         if (currentService != AppTab.BARS) openService(AppTab.BARS)
     }
 
+    fun openCampusResult(building: String) {
+        rememberGlobalQuery()
+        closeGlobalSearch()
+        nextMapFocusId++
+        mapFocus = CampusMapFocus(nextMapFocusId, building, "")
+        if (currentService != AppTab.MAPS) openService(AppTab.MAPS)
+    }
+
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
         openService(AppTab.MAIL)
@@ -744,7 +752,10 @@ fun MpeiNeoApp(
                     mail = mailState,
                     bars = barsState,
                     onSchedule = ::openScheduleResult,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onRenameFavorite = viewModel::renameFavorite,
                     onLesson = ::openLessonResult,
+                    onCampus = ::openCampusResult,
                     onMail = ::openMailResult,
                     onDiscipline = ::openBarsResult,
                     onClose = ::closeGlobalSearch,
