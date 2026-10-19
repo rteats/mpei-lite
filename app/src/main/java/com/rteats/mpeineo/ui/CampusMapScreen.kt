@@ -4,6 +4,7 @@ import android.content.Intent
 import android.app.Application
 import android.os.SystemClock
 import android.graphics.Bitmap
+import java.lang.ref.SoftReference
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint as AndroidPaint
 import android.graphics.RectF
@@ -411,6 +412,46 @@ private data class PreparedCampusScene(
     val places: List<CampusPlace>,
 )
 
+/** A single soft raster entry; it can be reclaimed on memory pressure. */
+internal class SingleEntrySoftCache<K : Any, V : Any> {
+    private var key: K? = null
+    private var value: SoftReference<V>? = null
+
+    @Synchronized fun peek(request: K): V? =
+        if (key == request) value?.get() else null
+
+    @Synchronized fun getOrCreate(request: K, create: () -> V): Pair<V, Boolean> {
+        peek(request)?.let { return it to true }
+        val created = create()
+        key = request
+        value = SoftReference(created)
+        return created to false
+    }
+
+    @Synchronized fun clear() {
+        key = null
+        value?.clear()
+        value = null
+    }
+}
+
+private object CampusRenderCache {
+    @Volatile var scene: PreparedCampusScene? = null
+        private set
+    private val raster = SingleEntrySoftCache<MapPaintColors, CampusRaster>()
+
+    @Synchronized fun keepScene(value: PreparedCampusScene) {
+        scene = value
+    }
+    fun peekRaster(palette: MapPaintColors): CampusRaster? = raster.peek(palette)
+    fun raster(palette: MapPaintColors, create: () -> CampusRaster): Pair<CampusRaster, Boolean> =
+        raster.getOrCreate(palette, create)
+    fun clearRaster() = raster.clear()
+}
+
+/** Called from Application.onTrimMemory; geometry is small and remains reusable. */
+internal fun clearCampusRasterOnLowMemory() = CampusRenderCache.clearRaster()
+
 /** Map view is precomposed as a tab; unlike MapKit it is safe to render offscreen. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -422,8 +463,13 @@ internal fun CampusMapScreen(
 ) {
     val context = LocalContext.current
     var mapLoadFailed by remember(context) { mutableStateOf(false) }
-    val scene by produceState<PreparedCampusScene?>(null, context) {
+    val scene by produceState<PreparedCampusScene?>(CampusRenderCache.scene, context) {
         val started = SystemClock.elapsedRealtime()
+        if (value != null) {
+            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+                ?.container?.diagnostics?.log("PERF", "campus_prepare cache=hit durationMs=0")
+            return@produceState
+        }
         val geometry = withContext(Dispatchers.IO) {
             runCatching {
                 context.assets.open("campus_osm.json").bufferedReader().use { reader ->
@@ -444,6 +490,7 @@ internal fun CampusMapScreen(
                     " places=${result?.places?.size ?: 0}")
         }
         mapLoadFailed = result == null
+        if (result != null) CampusRenderCache.keepScene(result)
         value = result
     }
 
@@ -483,16 +530,26 @@ internal fun CampusMapScreen(
         places.map { it.footprint.id }.toSet() +
             listOfNotNull(buildingVSouth?.id)
     }
-    val raster by produceState<CampusRaster?>(null, prepared, campusIds, palette) {
+    val raster by produceState<CampusRaster?>(
+        CampusRenderCache.peekRaster(palette), prepared, campusIds, palette,
+    ) {
         val started = SystemClock.elapsedRealtime()
-        value = withContext(Dispatchers.Default) {
-            renderCampusRaster(prepared, campusIds, palette)
+        var cacheHit = value != null
+        if (!cacheHit) {
+            val obtained = withContext(Dispatchers.Default) {
+                CampusRenderCache.raster(palette) {
+                    renderCampusRaster(prepared, campusIds, palette)
+                }
+            }
+            value = obtained.first
+            cacheHit = obtained.second
         }
-        (context.applicationContext as? Application)?.let {
-            com.rteats.mpeineo.data.DiagnosticLog(it).log(
-                "PERF", "campus_raster durationMs=${SystemClock.elapsedRealtime() - started}" +
-                    " pixels=${value?.bitmap?.width ?: 0}x${value?.bitmap?.height ?: 0}")
-        }
+        (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+            ?.container?.diagnostics?.log(
+                "PERF", "campus_raster cache=${if (cacheHit) "hit" else "miss"}" +
+                    " durationMs=${SystemClock.elapsedRealtime() - started}" +
+                    " pixels=${value?.bitmap?.width ?: 0}x${value?.bitmap?.height ?: 0}",
+            )
     }
     val flingScope = rememberCoroutineScope()
     val flingDecay = rememberSplineBasedDecay<Offset>()
