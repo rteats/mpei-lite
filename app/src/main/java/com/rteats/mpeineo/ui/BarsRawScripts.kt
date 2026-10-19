@@ -71,9 +71,18 @@ internal val BARS_SUMMARY_RAW_SCRIPT = """
   if (semester) lines.push('Семестр: ' + clean(semester.textContent));
   function dumpTable(table, heading, maxRows) {
     lines.push('=== ' + heading + ' ===');
-    Array.from(table.querySelectorAll('tr')).slice(0, maxRows).forEach((row, index) => {
+    // Official BARS adds an extra narrow-screen heading BEFORE each data
+    // row. It is not a discipline and corrupts native row alignment.
+    const sourceRows = Array.from(table.querySelectorAll('tr'))
+      .filter(row => !row.classList.contains('summary-header-min'))
+      .slice(0, maxRows);
+    sourceRows.forEach((row, index) => {
       const cells = Array.from(row.querySelectorAll('th,td')).map(cell => {
-        const value = clean(cell.textContent).slice(0, 400);
+        // Retain the full desktop label; BARS also nests a shorter mobile
+        // duplicate in some cells ("Дисциплина" / "Дис.").
+        const canonical = cell.cloneNode(true);
+        canonical.querySelectorAll('.d-inline.d-sm-none').forEach(n => n.remove());
+        const value = clean(canonical.textContent).slice(0, 400);
         const metadata = [];
         if (cell.colSpan > 1) metadata.push('colspan=' + cell.colSpan);
         if (cell.rowSpan > 1) metadata.push('rowspan=' + cell.rowSpan);
