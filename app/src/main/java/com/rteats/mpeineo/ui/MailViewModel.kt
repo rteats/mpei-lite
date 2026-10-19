@@ -383,7 +383,7 @@ internal class MailViewModel(
                 if (current.selected?.uid != summary.uid ||
                     current.selected?.uidValidity != summary.uidValidity ||
                     current.message != detail
-                ) current else current.copy(localAttachmentUris = found)
+                ) current else current.copy(localAttachmentUris = current.localAttachmentUris + found)
             }
         }
     }
