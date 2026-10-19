@@ -459,6 +459,7 @@ fun MpeiNeoApp(
                                 showWeekInfo = weekInfoVisible,
                                 expanded = searchExpanded,
                                 onExpandedChange = { searchExpanded = it },
+                                onOpenUnifiedSearch = { openGlobalSearch(SearchScope.SCHEDULE) },
                                 active = active,
                                 modifier = Modifier.fillMaxSize(),
                             )
