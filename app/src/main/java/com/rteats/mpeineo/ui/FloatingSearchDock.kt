@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ internal fun floatingDockAction(tab: AppTab?, mailListReady: Boolean): FloatingD
  * One stationary search affordance and one contextual trailing action.
  * The dock lives above route animations and cannot intercept map/scroll gestures elsewhere.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun FloatingSearchDock(
     context: FloatingSearchContext,
