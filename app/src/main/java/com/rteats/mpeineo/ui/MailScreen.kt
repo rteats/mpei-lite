@@ -103,14 +103,29 @@ internal fun MailScreen(
     val state by viewModel.state.collectAsState()
     // The ViewModel survives navigation. Pause nonessential Sent enrichment
     // immediately when the screen is hidden, then resume cached work on return.
-    DisposableEffect(active, state.mailbox) {
-        viewModel.setSentVisible(active && state.mailbox == OwaMailFolder.SENT)
+    DisposableEffect(active, state.mailbox, state.selected, state.composing) {
+        viewModel.setSentVisible(active && state.mailbox == OwaMailFolder.SENT &&
+            state.selected == null && !state.composing)
         onDispose { viewModel.setSentVisible(false) }
     }
     val context = LocalContext.current
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
+    // Compose list keys contain only stable, opaque IDs; never log or persist
+    // those identifiers. Prioritize rows that are actually on screen.
+    LaunchedEffect(active, state.mailbox, state.selected, state.composing, sentScrollState) {
+        if (active && state.mailbox == OwaMailFolder.SENT &&
+            state.selected == null && !state.composing) {
+            snapshotFlow {
+                sentScrollState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+                    val key = info.key.toString()
+                    if (key.startsWith("SENT-")) key.substringAfterLast('-').toLongOrNull()
+                    else null
+                }.toSet()
+            }.distinctUntilChanged().collect(viewModel::updateVisibleSentUids)
+        }
+    }
     var inboxQuery by rememberSaveable { mutableStateOf("") }
     var mailSearchExpanded by rememberSaveable { mutableStateOf(false) }
     val mailSearchFocus = remember { FocusRequester() }
