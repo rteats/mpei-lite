@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.model.Lesson
+import com.rteats.mpeineo.MpeiNeoApplication
 import java.time.Duration
 import java.time.LocalTime
 import java.util.Locale
@@ -114,6 +116,8 @@ internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, foc
         lesson.startTime, lesson.name, lesson.place, lesson.lecturer, lesson.groups,
     ) { mutableStateOf(false) }
 
+    val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
+        ?.container?.uiFrameProfiler
     val motion = MaterialTheme.motionScheme
     val cornerRadius by animateDpAsState(
         targetValue = if (expanded) 20.dp else 28.dp,
@@ -136,7 +140,10 @@ internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, foc
     )
 
     Surface(
-        onClick = { expanded = !expanded },
+        onClick = {
+            profiler?.markInteraction("LESSON_TOGGLE")
+            expanded = !expanded
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(cornerRadius),
         color = container,
