@@ -298,9 +298,10 @@ internal fun ScheduleAgenda(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationY = visualPull * 0.22f },
                     state = listState,
-                    // The top search overlays the agenda. Keep the first day clear
-                    // and let the last day scroll to the bottom.
-                    contentPadding = PaddingValues(top = 106.dp, bottom = 24.dp),
+                    // The contextual search is docked at the BOTTOM now.
+                    // Bring Monday back to the top and leave room below Sunday
+                    // for the 56dp dock and system gesture area.
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     for (dayIndex in 0..6) {
@@ -340,7 +341,7 @@ internal fun ScheduleAgenda(
                     progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance <= -overscrollThreshold,
                     modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(start = 8.dp, end = 8.dp, bottom = 138.dp),
+                        .padding(start = 8.dp, end = 8.dp, bottom = 96.dp),
                 )
             }
         }
