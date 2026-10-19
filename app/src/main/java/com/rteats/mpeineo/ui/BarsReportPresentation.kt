@@ -1,15 +1,11 @@
 package com.rteats.mpeineo.ui
 
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -17,7 +13,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -321,8 +316,8 @@ internal fun LazyListScope.barsReportEntries(
     section: String,
     report: BarsSummaryReport,
     controls: List<BarsControlScheduleItem>,
-    gradeScroll: ScrollState,
-    attendanceScroll: ScrollState,
+    selectedWeekColumn: Int,
+    onSelectWeek: (Int) -> Unit,
     onOpenDiscipline: (String) -> Unit,
     isSummaryLoading: Boolean,
     summaryError: String?,
@@ -373,10 +368,13 @@ internal fun LazyListScope.barsReportEntries(
 
     val isGrades = section == "grades"
     val rows = if (isGrades) report.gradeRows else report.attendanceRows
-    val scroll = if (isGrades) gradeScroll else attendanceScroll
-    val maxColumns = (rows.maxOfOrNull { row ->
-        row.drop(1).sumOf { it.columnSpan }
-    } ?: 1).coerceIn(1, 120)
+    // The official Summary uses two header rows and up to 19 columns.
+    // Project the complete aligned matrix once, then render native portrait rows.
+    val matrix = barsPortraitMatrix(rows, grades = isGrades)
+    val week = matrix.weekColumns.firstOrNull { it.index == selectedWeekColumn }
+        ?: matrix.weekColumns.firstOrNull { it.isCurrentWeek }
+        ?: matrix.weekColumns.firstOrNull()
+        ?: matrix.columns.firstOrNull()
     item(key = "report-heading") {
         Row(
             modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
@@ -415,8 +413,27 @@ internal fun LazyListScope.barsReportEntries(
             )
         }
     } else {
-        items(count = rows.size, key = { "report-$section-$it" }) { index ->
-            BarsReportTableRow(rows[index], index, maxColumns, scroll)
+        if (isGrades && matrix.weekColumns.isNotEmpty()) {
+            item(key = "report-week-picker") {
+                BarsGradeWeekPicker(
+                    matrix = matrix,
+                    selectedIndex = week?.index ?: -1,
+                    onSelected = onSelectWeek,
+                )
+            }
+        }
+        if (matrix.subjects.isEmpty()) {
+            item(key = "report-no-subjects") {
+                BarsReportEmpty("В таблице БАРС нет строк с дисциплинами.")
+            }
+        }
+        items(count = matrix.subjects.size, key = { "report-$section-$it" }) { index ->
+            val subject = matrix.subjects[index]
+            if (isGrades) {
+                BarsGradeSubjectCard(subject, matrix, week)
+            } else {
+                BarsAttendanceSubjectCard(subject, matrix)
+            }
         }
         if (report.notes.isNotEmpty()) {
             item(key = "report-notes") {
@@ -465,61 +482,3 @@ private fun BarsReportEmpty(message: String) {
     )
 }
 
-@Composable
-private fun BarsReportTableRow(
-    cells: List<BarsReportCell>,
-    index: Int,
-    columns: Int,
-    scroll: ScrollState,
-) {
-    if (cells.isEmpty()) return
-    val heading = index < 3
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 1.dp)
-            .heightIn(min = 50.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BarsReportTableCell(cells.first(), 148, heading)
-        Row(modifier = Modifier.weight(1f).horizontalScroll(scroll)) {
-            Row(modifier = Modifier.width((columns * 94).dp)) {
-                cells.drop(1).forEach { cell ->
-                    BarsReportTableCell(cell, 94 * cell.columnSpan, heading)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BarsReportTableCell(cell: BarsReportCell, widthDp: Int, heading: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.width(widthDp.dp).heightIn(min = 48.dp)
-            .padding(horizontal = 2.dp, vertical = 2.dp),
-        shape = MaterialTheme.shapes.small,
-        color = when {
-            cell.isCurrentWeek -> colors.primaryContainer
-            cell.isEmphasized -> colors.tertiaryContainer
-            heading -> colors.surfaceContainerHigh
-            else -> colors.surfaceContainerLow
-        },
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 10.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(
-                cell.value,
-                style = if (heading) MaterialTheme.typography.labelMedium
-                    else MaterialTheme.typography.bodySmall,
-                color = when {
-                    cell.isCurrentWeek -> colors.onPrimaryContainer
-                    cell.isEmphasized -> colors.onTertiaryContainer
-                    else -> colors.onSurface
-                },
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
