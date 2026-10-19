@@ -53,6 +53,23 @@ class CampusMapGesturesTest {
         assertEquals(.65f, shrunk.zoom, .001f)
     }
 
+    @Test fun releaseVelocityPreservesLastPanDirection() {
+        val velocity = campusFlingVelocity(Offset(-1400f, 750f), 20)
+        assertEquals(-1400f, velocity.x, .001f)
+        assertEquals(750f, velocity.y, .001f)
+    }
+
+    @Test fun slowOrStoppedDragDoesNotFling() {
+        assertEquals(Offset.Zero, campusFlingVelocity(Offset(80f, 0f), 0))
+        assertEquals(Offset.Zero, campusFlingVelocity(Offset(1600f, 0f), 150))
+    }
+
+    @Test fun excessivelyFastFlingIsCapped() {
+        val velocity = campusFlingVelocity(Offset(9000f, 0f), 15)
+        assertEquals(3600f, velocity.x, .001f)
+        assertEquals(0f, velocity.y, .001f)
+    }
+
     @Test fun draggingDoesNotExposeEmptySpaceOnSmallMap() {
         val result = applyCampusGesture(
             1f, Offset.Zero, 1f, Offset(250f, 250f), Offset(500f, 500f),

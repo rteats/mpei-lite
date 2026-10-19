@@ -87,8 +87,10 @@ upgrading users; obsolete JavaMail and TLS transports were removed.
 
 The Campus service in `CampusMapScreen.kt` renders an offline OpenStreetMap
 campus footprint via Compose Canvas with Monet colors. Drag with one finger
-to pan, pinch to zoom around the finger centroid, and double-tap to zoom toward
-a point. Buildings remain tappable; zoom/recenter controls are still available.
+to pan, and release a quick one-finger drag to let the map glide and slow to a stop.
+The fling stops at the map edges or on the next touch. Pinch zoom stays centered
+under the fingers and does not trigger a fling. Buildings remain tappable;
+zoom/recenter controls are still available.
 The map reserves a 96dp-wide left-side strip (excluding the OS's first 24dp)
 between the top and bottom controls for interactive right-swipe navigation.
 Everywhere else, horizontal drags move the map rather than navigate. The
