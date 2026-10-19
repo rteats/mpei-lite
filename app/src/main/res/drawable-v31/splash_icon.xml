@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The system can play an AnimatedVectorDrawable in its own splash window.
+     Older Android versions get the static @drawable/splash_icon instead. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_icon_parts">
+    <target android:name="pediment" android:animation="@animator/splash_roof_enter" />
+    <target android:name="pillar_left" android:animation="@animator/splash_pillar_left" />
+    <target android:name="pillar_middle" android:animation="@animator/splash_pillar_middle" />
+    <target android:name="pillar_right" android:animation="@animator/splash_pillar_right" />
+    <target android:name="plinth" android:animation="@animator/splash_plinth_enter" />
+</animated-vector>
