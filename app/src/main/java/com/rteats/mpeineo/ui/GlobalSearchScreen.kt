@@ -36,7 +36,7 @@ import org.json.JSONArray
 internal enum class SearchScope(val label: String) {
     ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
 
-    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE
+    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE || this == MAPS
     val includesBars: Boolean get() = this == ALL || this == BARS
     val includesMail: Boolean get() = this == ALL || this == MAIL
     val includesMaps: Boolean get() = this == ALL || this == MAPS
@@ -165,7 +165,8 @@ internal fun GlobalSearchScreen(
         else emptyList()
     val lessons = if (scope.includesSchedule && searching && schedule.selected != null)
         GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
-    val buildings = if (scope.includesMaps) campusBuildingHits(trimmed)
+    val buildings = if (scope.includesMaps && (searching || scope == SearchScope.MAPS))
+        campusBuildingHits(trimmed)
         .take(if (searching) 19 else if (scope == SearchScope.MAPS) 19 else 4)
         else emptyList()
 
