@@ -50,6 +50,23 @@ class UiFrameStatsTest {
         assertEquals(12.0, sample.drawP95Ms, 0.001)
         assertEquals(7.0, sample.gpuP95Ms, 0.001)
         assertEquals(3.0, sample.inputP95Ms, 0.001)
+        assertEquals(2, sample.inputSamples)
+        assertEquals(2, sample.layoutSamples)
+        assertEquals(2, sample.drawSamples)
+        assertEquals(2, sample.gpuSamples)
+    }
+
+    @Test fun renderThreadAndUnknownDelayStagesStaySeparateFromDraw() {
+        val stats = UiFrameStats(16_666_667L)
+        stats.record("MAIL/MAIL_OPEN", 41_000_000L,
+            drawNs = 5_000_000L, syncNs = 12_000_000L,
+            swapNs = 7_000_000L, unknownNs = 9_000_000L)
+        val sample = stats.summaries().single()
+        assertEquals(5.0, sample.drawP95Ms, 0.001)
+        assertEquals(12.0, sample.syncP95Ms, 0.001)
+        assertEquals(7.0, sample.swapP95Ms, 0.001)
+        assertEquals(9.0, sample.unknownP95Ms, 0.001)
+        assertEquals(0, sample.gpuSamples)
     }
 
     @Test fun unsupportedStageMetricsRemainZero() {
