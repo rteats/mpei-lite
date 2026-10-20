@@ -18,6 +18,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -222,6 +226,17 @@ fun MpeiNeoApp(
     var widthPx by remember { mutableFloatStateOf(1f) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchOverlayMounted by remember { mutableStateOf(globalSearchOpen) }
+    var searchEntryBounds by remember { mutableStateOf(Rect.Zero) }
+    var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
+    val searchReveal by animateFloatAsState(
+        targetValue = if (globalSearchOpen) 1f else 0f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        finishedListener = { settled ->
+            if (settled == 0f) searchOverlayMounted = false
+        },
+        label = "search-anchored-container-reveal",
+    )
     var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
     var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
@@ -357,7 +372,9 @@ fun MpeiNeoApp(
     }
 
     fun openGlobalSearch(scope: SearchScope = SearchScope.ALL) {
+        if (globalSearchOpen) return
         searchScope = scope
+        searchOverlayMounted = true
         globalSearchOpen = true
         globalQuery = ""
         viewModel.updateSearchQuery("")
@@ -563,14 +580,21 @@ fun MpeiNeoApp(
             )
         }
 
+    // Keep the underlying app bar mounted while Search expands. Removing it
+    // during activation would remeasure the entire scaffold and visibly jump.
+    Box(
+        modifier = Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
+            val newBounds = coordinates.boundsInRoot()
+            if (newBounds != searchHostBounds) searchHostBounds = newBounds
+        },
+    ) {
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             // The native search app bar reserves space rather than floating
             // over controls, scrollable content, maps, or WebViews.
-            if (!globalSearchOpen) {
-                ContextSearchAppBar(
+            ContextSearchAppBar(
                     context = searchAppBarContext(currentService),
                     onSearch = {
                         if (!isTransitioning) {
@@ -588,6 +612,9 @@ fun MpeiNeoApp(
                         ) == SearchAppBarAction.COMPOSE_MAIL
                     ) mailViewModel::startCompose else null,
                     homeEditing = homeEditing,
+                    onSearchBoundsChanged = { bounds ->
+                        if (bounds != searchEntryBounds) searchEntryBounds = bounds
+                    },
                     onHomeEditToggle = if (currentService == null) ({
                         if (!isTransitioning) {
                             homeEditing = !homeEditing
@@ -601,7 +628,6 @@ fun MpeiNeoApp(
                         }
                     }) else null,
                 )
-            }
         },
     ) { innerPadding ->
         Box(
@@ -719,42 +745,54 @@ fun MpeiNeoApp(
                 }
             }
 
-            AnimatedVisibility(
-                visible = globalSearchOpen,
-                modifier = Modifier.align(Alignment.TopCenter).fillMaxSize(),
-                enter = slideInVertically(
-                    initialOffsetY = { -it / 6 },
-                    animationSpec = tween(270, easing = FastOutSlowInEasing),
-                ) + fadeIn(tween(180)),
-                exit = slideOutVertically(
-                    targetOffsetY = { -it / 6 },
-                    animationSpec = tween(210, easing = FastOutSlowInEasing),
-                ) + fadeOut(tween(120)),
-            ) {
-                GlobalSearchScreen(
-                    query = globalQuery,
-                    scope = searchScope,
-                    onScopeChange = ::updateSearchScope,
-                    onScheduleTypeChange = viewModel::setSearchType,
-                    onQueryChange = ::updateGlobalQuery,
-                    history = recentQueries,
-                    onHistorySelected = ::updateGlobalQuery,
-                    onRemoveHistory = { recentQueries = searchHistory.remove(it) },
-                    onClearHistory = { recentQueries = searchHistory.clear() },
-                    schedule = scheduleState,
-                    mail = mailState,
-                    bars = barsState,
-                    onSchedule = ::openScheduleResult,
-                    onToggleFavorite = viewModel::toggleFavorite,
-                    onRenameFavorite = viewModel::renameFavorite,
-                    onLesson = ::openLessonResult,
-                    onCampus = ::openCampusResult,
-                    onMail = ::openMailResult,
-                    onDiscipline = ::openBarsResult,
-                    onClose = ::closeGlobalSearch,
-                    onSubmit = ::rememberGlobalQuery,
-                )
-            }
         }
+    }
+    // Positioned above Scaffold and its top bar, not inside Scaffold's content
+    // padding. Clip starts at the actual tapped field and grows to the screen.
+    if (searchOverlayMounted) {
+        val measured = searchEntryBounds
+        val relativeBounds = if (measured.width > 0f && measured.height > 0f) {
+            Rect(
+                measured.left - searchHostBounds.left,
+                measured.top - searchHostBounds.top,
+                measured.right - searchHostBounds.left,
+                measured.bottom - searchHostBounds.top,
+            )
+        } else Rect.Zero
+        Box(
+            modifier = Modifier.fillMaxSize().imePadding()
+                .graphicsLayer {
+                    clip = true
+                    shape = SearchRevealShape(relativeBounds, searchReveal)
+                }
+                .testTag("search-anchored-overlay"),
+        ) {
+            GlobalSearchScreen(
+                query = globalQuery,
+                scope = searchScope,
+                onScopeChange = ::updateSearchScope,
+                onScheduleTypeChange = viewModel::setSearchType,
+                onQueryChange = ::updateGlobalQuery,
+                history = recentQueries,
+                onHistorySelected = ::updateGlobalQuery,
+                onRemoveHistory = { recentQueries = searchHistory.remove(it) },
+                onClearHistory = { recentQueries = searchHistory.clear() },
+                schedule = scheduleState,
+                mail = mailState,
+                bars = barsState,
+                onSchedule = ::openScheduleResult,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onRenameFavorite = viewModel::renameFavorite,
+                onLesson = ::openLessonResult,
+                onCampus = ::openCampusResult,
+                onMail = ::openMailResult,
+                onDiscipline = ::openBarsResult,
+                onClose = ::closeGlobalSearch,
+                onSubmit = ::rememberGlobalQuery,
+                revealProgress = searchReveal,
+                focusWhenReady = globalSearchOpen && searchReveal >= 0.98f,
+            )
+        }
+    }
     }
 }
