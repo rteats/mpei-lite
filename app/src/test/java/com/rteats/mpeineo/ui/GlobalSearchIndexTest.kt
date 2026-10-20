@@ -42,9 +42,10 @@ class GlobalSearchIndexTest {
         assertTrue(!SearchScope.SCHEDULE.includesBars)
         assertTrue(!SearchScope.BARS.includesMail)
         assertTrue(!SearchScope.MAIL.includesSchedule)
-        // The map searches buildings; timetable favorites belong to Schedule.
+        // The map may search auditorium schedules, but no unrelated
+        // favorite timetable should leak into its results.
         assertTrue(SearchScope.MAPS.includesMaps)
-        assertTrue(!SearchScope.MAPS.includesSchedule)
+        assertTrue(SearchScope.MAPS.includesSchedule)
         assertTrue(!SearchScope.MAPS.includesBars)
         assertTrue(!SearchScope.MAPS.includesMail)
     }
@@ -95,6 +96,27 @@ class GlobalSearchIndexTest {
             GlobalSearchIndex.targets("мой", state, ScheduleTargetType.PERSON))
         assertTrue(GlobalSearchIndex.targets("мой", state, ScheduleTargetType.GROUP).isEmpty())
         assertEquals(3, GlobalSearchIndex.targets("", state).size)
+    }
+
+    @Test fun mapShowsRoomSchedulesOnlyForTypedQueries() {
+        val group = ScheduleTarget(1L, "А-12", type = ScheduleTargetType.GROUP)
+        val teacher = ScheduleTarget(2L, "Иванов", type = ScheduleTargetType.PERSON)
+        val room = ScheduleTarget(3L, "В-206", type = ScheduleTargetType.ROOM)
+        val state = MainUiState(
+            favorites = listOf(group, teacher, room),
+            searchType = ScheduleTargetType.PERSON,
+        )
+
+        assertTrue(!SearchScope.MAPS.showScheduleTargets(""))
+        assertTrue(SearchScope.MAPS.showScheduleTargets("В-206"))
+        assertEquals(ScheduleTargetType.ROOM,
+            SearchScope.MAPS.scheduleTargetTypeFilter(state.searchType))
+        assertEquals(listOf(room), GlobalSearchIndex.targets(
+            "", state, SearchScope.MAPS.scheduleTargetTypeFilter(state.searchType)))
+        assertEquals(emptyList<ScheduleTarget>(), GlobalSearchIndex.targets(
+            "иванов", state, SearchScope.MAPS.scheduleTargetTypeFilter(state.searchType)))
+        assertTrue(SearchScope.ALL.showScheduleTargets(""))
+        assertEquals(null, SearchScope.ALL.scheduleTargetTypeFilter(state.searchType))
     }
 
     @Test fun scopeTypeFilterCannotLeakToAllServices() {
