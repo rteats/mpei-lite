@@ -4,7 +4,6 @@ import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
-import com.rteats.mpeineo.model.favoriteKey
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.ScheduleDay
 import com.rteats.mpeineo.model.ScheduleWeek
@@ -83,7 +82,7 @@ class GlobalSearchIndexTest {
             favorites = listOf(favoriteGroup, favoriteTeacher),
             searchResults = listOf(favoriteTeacher, savedRoom),
             selected = savedRoom,
-            favoriteNames = mapOf(favoriteTeacher.favoriteKey() to "Мой преподаватель"),
+            favoriteNames = mapOf("person:42" to "Мой преподаватель"),
         )
 
         assertEquals(listOf(favoriteGroup),
