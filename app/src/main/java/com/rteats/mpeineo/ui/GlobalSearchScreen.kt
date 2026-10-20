@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
@@ -163,6 +165,8 @@ internal fun GlobalSearchScreen(
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
     onSubmit: () -> Unit,
+    revealProgress: Float = 1f,
+    focusWhenReady: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
@@ -170,9 +174,13 @@ internal fun GlobalSearchScreen(
     val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
     val keyboard = LocalSoftwareKeyboardController.current
     BackHandler(onBack = onClose)
-    LaunchedEffect(Unit) {
-        focus.requestFocus()
-        keyboard?.show()
+    // Opening the keyboard before the container expansion has completed
+    // causes a layout resize in the middle of the transition.
+    LaunchedEffect(focusWhenReady) {
+        if (focusWhenReady) {
+            focus.requestFocus()
+            keyboard?.show()
+        }
     }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
@@ -197,9 +205,17 @@ internal fun GlobalSearchScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize().testTag("global-search-screen"),
-        color = MaterialTheme.colorScheme.background,
+        color = lerp(
+            MaterialTheme.colorScheme.surfaceContainerHigh,
+            MaterialTheme.colorScheme.background,
+            revealProgress.coerceIn(0f, 1f),
+        ),
     ) {
-        Column {
+        Column(
+            modifier = Modifier.statusBarsPadding().graphicsLayer {
+                alpha = ((revealProgress - 0.12f) / 0.48f).coerceIn(0f, 1f)
+            },
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
