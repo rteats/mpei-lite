@@ -2,10 +2,10 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Super-app home | SuperAppHome.kt | Root launcher with four large service cards (Schedule, BARS, Mail, Campus), cached metadata, and a Settings action. No permanent navbar. |
+| Super-app home | SuperAppHome.kt | Root launcher with four large service cards (Schedule, BARS, Mail, Campus) and cached metadata. Edit/Done and Settings controls live in the shared top app bar. No permanent navbar. |
 | Service push/pop | MpeiNeoApp.kt | Opening a service slides it in from the right; Android Back and full-width right-swipes pop toward Home (or the contextual Schedule origin). Native service page follows the finger, with a 20% threshold and a settling animation; the Android OS owns system-back edge zones. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
-| Shared search app bar | SearchAppBar.kt | Native Material 3 `AppBarWithSearch` in the root Scaffold top bar on every service; opens unified search with a contextual hint/scope. Schedule refresh and Mail compose live in trailing app-bar actions, not in a bottom dock. |
+| Shared search app bar | SearchAppBar.kt | Native Material 3 `AppBarWithSearch` in the root Scaffold top bar on every service; opens unified search with a contextual hint/scope. The search has consistent 16dp leading/trailing screen margins. Home Edit/Done and Settings, Schedule refresh, and Mail compose occupy trailing app-bar slots. Context actions slide in/out through the right viewport edge, not from the search field corner. |
 | Unified results | GlobalSearchScreen.kt | Top-aligned input and scope chips (Все / Пары / БАРС / Почта / Корпуса) filter cached and remote results. BARS disciplines, Inbox and Sent headers are searched locally; timetable suggestions continue using the existing debounced schedule lookup. |
 | Schedule target picker | ScheduleDockedSearch.kt | A separate favorites button opens the existing specialized timetable picker, including favorites, rename and category filters. The normal search bar opens unified scoped search; week-refresh button remains. |
 | Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
@@ -29,7 +29,7 @@ and refreshed from the network; the user can also pull down in the agenda for
 an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
-Navigation uses a service launcher as its root instead of a bottom navigation bar. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and initial search scope with the current service and opens the shared full-screen search view. Schedule favorites and target selection live in that search view.
+Navigation uses a service launcher as its root instead of a bottom navigation bar. Home tile edit mode is held by the root and controlled from the same app bar as Search. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and initial search scope with the current service and opens the shared full-screen search view. Schedule favorites and target selection live in that search view.
 
 ## Service navigation, back swipes and WebViews
 
