@@ -18,6 +18,8 @@ internal data class BarsRawSnapshot(
     val summary: String = "",
     val updatedAtMillis: Long = 0L,
     val accountKey: String = "",
+    val mainUpdatedAtMillis: Long = 0L,
+    val summaryUpdatedAtMillis: Long = 0L,
 )
 
 /** Identifies a BARS student's snapshots without storing their name in metadata. */
@@ -75,14 +77,32 @@ internal class BarsSnapshotStore(context: Context) {
     }.getOrNull()
 
     @Synchronized
-    fun writeRaw(source: String, text: String, accountKey: String) {
+    fun writeRaw(
+        source: String,
+        text: String,
+        accountKey: String,
+        capturedAtMillis: Long = System.currentTimeMillis(),
+    ) {
         if (text.length > 380_000 || source !in setOf("MAIN", "SUMMARY") ||
-            accountKey.isBlank()) return
+            accountKey.isBlank() || capturedAtMillis <= 0L) return
         // Never combine Summary/grades from different authenticated students.
         val previous = readRaw(accountKey) ?: BarsRawSnapshot(accountKey = accountKey)
+        // Reject delayed writes from a previous request without discarding the
+        // other report. The two captures have independent verification times.
+        val sourceTime = if (source == "MAIN") previous.mainUpdatedAtMillis
+            else previous.summaryUpdatedAtMillis
+        if (sourceTime > capturedAtMillis) return
         val next = when (source) {
-            "MAIN" -> previous.copy(main = text, updatedAtMillis = System.currentTimeMillis())
-            else -> previous.copy(summary = text, updatedAtMillis = System.currentTimeMillis())
+            "MAIN" -> previous.copy(
+                main = text,
+                mainUpdatedAtMillis = capturedAtMillis,
+                updatedAtMillis = maxOf(previous.updatedAtMillis, capturedAtMillis),
+            )
+            else -> previous.copy(
+                summary = text,
+                summaryUpdatedAtMillis = capturedAtMillis,
+                updatedAtMillis = maxOf(previous.updatedAtMillis, capturedAtMillis),
+            )
         }
         val bytes = gson.toJson(next).toByteArray(Charsets.UTF_8)
         if (bytes.size > 900_000) return

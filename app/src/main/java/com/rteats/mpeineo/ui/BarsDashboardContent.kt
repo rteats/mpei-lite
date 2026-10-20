@@ -304,6 +304,19 @@ internal fun BarsNativeDashboard(
             )
           }
 
+          if (selectedSection != "subjects" && state.lastSummaryCapturedAtMillis > 0L) {
+            item(key = "summary-last-verified") {
+              Text(
+                text = "Сводка · проверена " +
+                  DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                    .format(Date(state.lastSummaryCapturedAtMillis)),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            }
+          }
+
           if (selectedSection != "subjects") {
             barsReportEntries(
               section = selectedSection,

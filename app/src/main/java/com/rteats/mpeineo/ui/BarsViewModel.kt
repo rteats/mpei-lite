@@ -44,6 +44,8 @@ internal data class BarsUiState(
     val rawMain: String = "",
     val rawSummary: String = "",
     val rawCapturedAtMillis: Long = 0L,
+    val lastMainCapturedAtMillis: Long = 0L,
+    val lastSummaryCapturedAtMillis: Long = 0L,
     val rawStatus: String = "",
     val isSummaryLoading: Boolean = false,
     val summaryError: String? = null,
@@ -201,6 +203,10 @@ internal object BarsPayloadParser {
     }
 }
 
+internal fun isCompleteBarsSummarySnapshot(text: String): Boolean =
+    text.contains("=== Матрица оценок по неделям") &&
+        text.contains("=== Посещаемость по журналу")
+
 internal class BarsViewModel(
     private val diagnostics: DiagnosticLog,
     private val network: BarsNetworkDiagnostics,
@@ -225,12 +231,16 @@ internal class BarsViewModel(
                 rawMain = cachedRaw?.main.orEmpty(),
                 rawSummary = cachedRaw?.summary.orEmpty(),
                 rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
+                lastMainCapturedAtMillis = cachedRaw?.mainUpdatedAtMillis ?: 0L,
+                lastSummaryCapturedAtMillis = cachedRaw?.summaryUpdatedAtMillis ?: 0L,
                 isLoading = true,
             )
         } ?: BarsUiState(
             rawMain = cachedRaw?.main.orEmpty(),
             rawSummary = cachedRaw?.summary.orEmpty(),
             rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
+            lastMainCapturedAtMillis = cachedRaw?.mainUpdatedAtMillis ?: 0L,
+            lastSummaryCapturedAtMillis = cachedRaw?.summaryUpdatedAtMillis ?: 0L,
         )
     )
     val state: StateFlow<BarsUiState> = _state.asStateFlow()
@@ -364,6 +374,8 @@ internal class BarsViewModel(
                         rawMain = if (accountChanged) "" else it.rawMain,
                         rawSummary = if (accountChanged) "" else it.rawSummary,
                         rawCapturedAtMillis = if (accountChanged) 0L else it.rawCapturedAtMillis,
+                        lastMainCapturedAtMillis = if (accountChanged) 0L else it.lastMainCapturedAtMillis,
+                        lastSummaryCapturedAtMillis = if (accountChanged) 0L else it.lastSummaryCapturedAtMillis,
                         isSummaryLoading = if (accountChanged) false else it.isSummaryLoading,
                         summaryError = if (accountChanged) null else it.summaryError,
                         gradeChanges = if (sameAccount) it.gradeChanges + changed else changed,
@@ -398,11 +410,18 @@ internal class BarsViewModel(
     fun rawSnapshotReceived(source: String, text: String) {
         if (source !in setOf("MAIN", "SUMMARY") || text.isBlank() ||
             text.length > 380_000) return
+        // Never report an incomplete response as a successful Summary refresh.
+        if (source == "SUMMARY" && !isCompleteBarsSummarySnapshot(text)) {
+            summaryCaptureFailed("БАРС вернул неполную Сводку. Сохранённые данные не изменены.")
+            return
+        }
+        val capturedAt = System.currentTimeMillis()
         _state.update {
             when (source) {
-                "MAIN" -> it.copy(rawMain = text, rawCapturedAtMillis = System.currentTimeMillis(),
-                    rawStatus = "")
-                else -> it.copy(rawSummary = text, rawCapturedAtMillis = System.currentTimeMillis(),
+                "MAIN" -> it.copy(rawMain = text, rawCapturedAtMillis = capturedAt,
+                    lastMainCapturedAtMillis = capturedAt, rawStatus = "")
+                else -> it.copy(rawSummary = text, rawCapturedAtMillis = capturedAt,
+                    lastSummaryCapturedAtMillis = capturedAt,
                     isSummaryLoading = false, summaryError = null, rawStatus = "")
             }
         }
@@ -410,7 +429,7 @@ internal class BarsViewModel(
         val accountKey = barsSnapshotAccountKey(_state.value.profileName, _state.value.profileGroup)
         if (accountKey != null) {
             viewModelScope.launch(Dispatchers.IO) {
-                snapshots.writeRaw(source, text, accountKey)
+                snapshots.writeRaw(source, text, accountKey, capturedAt)
             }
         }
     }
