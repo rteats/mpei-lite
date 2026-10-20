@@ -175,6 +175,81 @@ internal fun GlobalSearchScreen(
         color = MaterialTheme.colorScheme.background,
     ) {
         Column {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onClose) {
+                    AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
+                }
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    modifier = Modifier.weight(1f).focusRequester(focus)
+                        .testTag("global-search-input"),
+                    placeholder = { Text(when (scope) {
+                        SearchScope.ALL -> "Поиск по МЭИ"
+                        SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
+                        SearchScope.BARS -> "Поиск дисциплины в БАРС"
+                        SearchScope.MAIL -> "Поиск по почте"
+                        SearchScope.MAPS -> "Корпус или аудитория"
+                    }) },
+                    shape = MaterialTheme.shapes.extraLarge,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        onSubmit()
+                        keyboard?.hide()
+                    }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                    trailingIcon = if (query.isNotBlank()) {{
+                        IconButton(onClick = { onQueryChange("") }) {
+                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
+                        }
+                    }} else null,
+                )
+            }
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(SearchScope.entries) { option ->
+                    FilterChip(
+                        selected = scope == option,
+                        onClick = { onScopeChange(option) },
+                        label = { Text(option.label) },
+                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
+                    )
+                }
+            }
+            if (scope == SearchScope.SCHEDULE) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(
+                            selected = schedule.searchType == null,
+                            onClick = { onScheduleTypeChange(null) },
+                            label = { Text("Все расписания") },
+                        )
+                    }
+                    items(ScheduleTargetType.entries) { type ->
+                        FilterChip(
+                            selected = schedule.searchType == type,
+                            onClick = { onScheduleTypeChange(type) },
+                            label = { Text(type.displayName) },
+                        )
+                    }
+                }
+            }
+            HorizontalDivider()
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 24.dp),
@@ -318,80 +393,6 @@ internal fun GlobalSearchScreen(
                 }
             }
             HorizontalDivider()
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(SearchScope.entries) { option ->
-                    FilterChip(
-                        selected = scope == option,
-                        onClick = { onScopeChange(option) },
-                        label = { Text(option.label) },
-                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
-                    )
-                }
-            }
-            if (scope == SearchScope.SCHEDULE) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        FilterChip(
-                            selected = schedule.searchType == null,
-                            onClick = { onScheduleTypeChange(null) },
-                            label = { Text("Все расписания") },
-                        )
-                    }
-                    items(ScheduleTargetType.entries) { type ->
-                        FilterChip(
-                            selected = schedule.searchType == type,
-                            onClick = { onScheduleTypeChange(type) },
-                            label = { Text(type.displayName) },
-                        )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onClose) {
-                    AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
-                }
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).focusRequester(focus)
-                        .testTag("global-search-input"),
-                    placeholder = { Text(when (scope) {
-                        SearchScope.ALL -> "Поиск по МЭИ"
-                        SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
-                        SearchScope.BARS -> "Поиск дисциплины в БАРС"
-                        SearchScope.MAIL -> "Поиск по почте"
-                        SearchScope.MAPS -> "Корпус или аудитория"
-                    }) },
-                    shape = MaterialTheme.shapes.extraLarge,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        onSubmit()
-                        keyboard?.hide()
-                    }),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    ),
-                    trailingIcon = if (query.isNotBlank()) {{
-                        IconButton(onClick = { onQueryChange("") }) {
-                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
-                        }
-                    }} else null,
-                )
-            }
             renameTarget?.let { target ->
                 AlertDialog(
                     onDismissRequest = { renameTarget = null },
