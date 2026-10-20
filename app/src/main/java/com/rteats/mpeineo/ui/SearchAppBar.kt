@@ -99,7 +99,11 @@ internal fun ContextSearchAppBar(
         animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
         label = "search-app-bar-edge-padding",
     )
-    val slideBeyondScreen = with(LocalDensity.current) { SEARCH_APP_BAR_EDGE.roundToPx() }
+    // Home has two 48dp buttons. One-button replacements must start past the
+    // viewport even while the outgoing two-button cluster still has its width.
+    val slideBeyondScreen = with(LocalDensity.current) {
+        (SEARCH_APP_BAR_EDGE + 96.dp).roundToPx()
+    }
 
     AppBarWithSearch(
         state = searchBarState,
