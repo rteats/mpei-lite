@@ -1,5 +1,6 @@
 package com.rteats.mpeineo
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +17,8 @@ import com.rteats.mpeineo.ui.AppTab
 import com.rteats.mpeineo.ui.HomeTileLayout
 import com.rteats.mpeineo.ui.HomeTileSize
 import com.rteats.mpeineo.ui.SuperAppHome
+import com.rteats.mpeineo.ui.ContextSearchAppBar
+import com.rteats.mpeineo.ui.searchAppBarContext
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -28,20 +31,30 @@ class HomeLayoutUiTest {
 
     @Test fun homeEditorChangesSizeAndOrderWithoutOpeningServices() {
         var layout by mutableStateOf(HomeTileLayout.defaults)
+        var editing by mutableStateOf(false)
         var opens = 0
         rule.setContent {
             MpeiNeoTheme {
-                SuperAppHome(
-                    schedule = MainUiState(),
-                    bars = BarsUiState(),
-                    mail = MailUiState(),
-                    onOpenBarsDiscipline = {},
-                    onOpenMailMessage = {},
-                    tiles = layout,
-                    onChangeLayout = { layout = it },
-                    onOpen = { opens++ },
-                    onSearch = {},
-                )
+                Column {
+                    ContextSearchAppBar(
+                        context = searchAppBarContext(null),
+                        onSearch = {},
+                        homeEditing = editing,
+                        onHomeEditToggle = { editing = !editing },
+                        onHomeSettings = {},
+                    )
+                    SuperAppHome(
+                        schedule = MainUiState(),
+                        bars = BarsUiState(),
+                        mail = MailUiState(),
+                        onOpenBarsDiscipline = {},
+                        onOpenMailMessage = {},
+                        tiles = layout,
+                        onChangeLayout = { layout = it },
+                        onOpen = { opens++ },
+                        editing = editing,
+                    )
+                }
             }
         }
 
