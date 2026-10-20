@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,15 +18,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -47,49 +41,19 @@ internal fun SuperAppHome(
     tiles: List<HomeTile>,
     onChangeLayout: (List<HomeTile>) -> Unit,
     onOpen: (AppTab) -> Unit,
-    onSearch: () -> Unit,
     onOpenBarsDiscipline: (String) -> Unit,
     onOpenMailMessage: (MailSummary) -> Unit,
-    onEditModeChange: (Boolean) -> Unit = {},
+    editing: Boolean = false,
 ) {
-    var editing by rememberSaveable { mutableStateOf(false) }
     val entries = HomeTileLayout.normalize(tiles)
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         modifier = Modifier.fillMaxSize().testTag("superapp-home"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Spacer(Modifier.weight(1f))
-                IconButton(
-                    onClick = {
-                        editing = !editing
-                        onEditModeChange(editing)
-                    },
-                    modifier = Modifier.testTag("superapp-edit"),
-                ) {
-                    AppIcon(
-                        if (editing) AppIcons.Confirm else AppIcons.Edit,
-                        contentDescription = if (editing) "Готово" else "Настроить кнопки",
-                    )
-                }
-                IconButton(
-                    onClick = { onOpen(AppTab.SETTINGS) },
-                    modifier = Modifier.testTag("superapp-settings"),
-                ) {
-                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
-                }
-            }
-        }
-
         items(
             items = entries,
             key = { it.tab.name },
