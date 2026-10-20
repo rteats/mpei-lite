@@ -47,9 +47,9 @@ class SearchAppBarTest {
         assertEquals(campusSearchSymbols, campusBuildingHits(""))
     }
 
-    @Test fun mapScopeIncludesScheduleSearchButNotMailOrBars() {
+    @Test fun mapScopeIncludesBuildingsOnly() {
         assertTrue(SearchScope.MAPS.includesMaps)
-        assertTrue(SearchScope.MAPS.includesSchedule)
+        assertFalse(SearchScope.MAPS.includesSchedule)
         assertFalse(SearchScope.MAPS.includesMail)
         assertFalse(SearchScope.MAPS.includesBars)
         assertTrue(SearchScope.ALL.includesMaps)
