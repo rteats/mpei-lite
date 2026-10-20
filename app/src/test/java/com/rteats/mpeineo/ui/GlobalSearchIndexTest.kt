@@ -42,6 +42,11 @@ class GlobalSearchIndexTest {
         assertTrue(!SearchScope.SCHEDULE.includesBars)
         assertTrue(!SearchScope.BARS.includesMail)
         assertTrue(!SearchScope.MAIL.includesSchedule)
+        // The map searches buildings; timetable favorites belong to Schedule.
+        assertTrue(SearchScope.MAPS.includesMaps)
+        assertTrue(!SearchScope.MAPS.includesSchedule)
+        assertTrue(!SearchScope.MAPS.includesBars)
+        assertTrue(!SearchScope.MAPS.includesMail)
     }
 
     @Test fun scopedMailSearchIncludesInboxSentAndRecipientMatches() {
@@ -64,6 +69,48 @@ class GlobalSearchIndexTest {
         )
         assertEquals("Физика", GlobalSearchIndex.disciplines("иванов", grades).single().disciplineName)
         assertEquals("Математика", GlobalSearchIndex.disciplines("матем", grades).single().disciplineName)
+    }
+
+    @Test fun scheduleTypeFiltersFavoritesRemoteResultsAndSelectedTimetable() {
+        val favoriteGroup = ScheduleTarget(42L, "А-12",
+            type = ScheduleTargetType.GROUP)
+        val favoriteTeacher = ScheduleTarget(42L, "Иванов",
+            type = ScheduleTargetType.PERSON)
+        val savedRoom = ScheduleTarget(8L, "В-206",
+            type = ScheduleTargetType.ROOM)
+        val state = MainUiState(
+            favorites = listOf(favoriteGroup, favoriteTeacher),
+            searchResults = listOf(favoriteTeacher, savedRoom),
+            selected = savedRoom,
+            favoriteNames = mapOf(favoriteTeacher.favoriteKey() to "Мой преподаватель"),
+        )
+
+        assertEquals(listOf(favoriteGroup),
+            GlobalSearchIndex.targets("", state, ScheduleTargetType.GROUP))
+        assertEquals(listOf(favoriteTeacher),
+            GlobalSearchIndex.targets("", state, ScheduleTargetType.PERSON))
+        assertEquals(listOf(savedRoom),
+            GlobalSearchIndex.targets("", state, ScheduleTargetType.ROOM))
+        assertEquals(listOf(favoriteTeacher),
+            GlobalSearchIndex.targets("мой", state, ScheduleTargetType.PERSON))
+        assertTrue(GlobalSearchIndex.targets("мой", state, ScheduleTargetType.GROUP).isEmpty())
+        assertEquals(3, GlobalSearchIndex.targets("", state).size)
+    }
+
+    @Test fun scopeTypeFilterCannotLeakToAllServices() {
+        val group = ScheduleTarget(1L, "А-12", type = ScheduleTargetType.GROUP)
+        val teacher = ScheduleTarget(2L, "Иванов",
+            type = ScheduleTargetType.PERSON)
+        val state = MainUiState(
+            favorites = listOf(group, teacher),
+            searchType = ScheduleTargetType.GROUP,
+        )
+        // Schedule filter narrows the current Schedule category, while
+        // the cross-service "Все" scope should show both types.
+        assertEquals(listOf(group),
+            GlobalSearchIndex.targets("", state, state.searchType))
+        assertEquals(listOf(group, teacher),
+            GlobalSearchIndex.targets("", state))
     }
 
     @Test fun mergesFavoriteAndRemoteScheduleWithoutDuplicates() {
