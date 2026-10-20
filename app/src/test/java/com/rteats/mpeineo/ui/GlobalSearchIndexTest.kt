@@ -4,6 +4,7 @@ import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
+import com.rteats.mpeineo.model.favoriteKey
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.ScheduleDay
 import com.rteats.mpeineo.model.ScheduleWeek
