@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +86,8 @@ internal fun nextHomeLesson(
 internal fun HomeNextLessonCard(
     state: MainUiState,
     onClick: () -> Unit,
+    barsDisciplines: List<BarsDiscipline> = emptyList(),
+    onOpenBarsDiscipline: (String) -> Unit = {},
 ) {
     var now by remember { mutableStateOf(LocalDateTime.now(moscowZone)) }
     LaunchedEffect(Unit) {
@@ -95,6 +98,9 @@ internal fun HomeNextLessonCard(
     }
     val upcoming = remember(state.agendaWeeks, now) {
         nextHomeLesson(listOfNotNull(state.agendaWeeks[0], state.agendaWeeks[1]), now)
+    }
+    val matchedSubject = remember(upcoming?.lesson?.name, barsDisciplines) {
+        upcoming?.let { findBarsSubject(it.lesson.name, barsDisciplines) }
     }
     val heading = when {
         upcoming?.isOngoing == true -> "СЕЙЧАС ИДЁТ"
@@ -209,6 +215,19 @@ internal fun HomeNextLessonCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (matchedSubject != null) {
+                TextButton(
+                    onClick = { onOpenBarsDiscipline(matchedSubject.disciplineName) },
+                    modifier = Modifier.testTag("home-lesson-bars-link"),
+                ) {
+                    AppIcon(AppIcons.Bars, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                    Text(
+                        "Оценки в БАРС",
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
         }
     }
 }
