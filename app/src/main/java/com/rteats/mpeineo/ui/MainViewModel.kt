@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import androidx.lifecycle.ViewModel
+import com.rteats.mpeineo.widget.NextLessonWidgetProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.AppContainer
@@ -141,6 +142,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             container.preferences.setSelected(target)
+            NextLessonWidgetProvider.requestRefresh(container.appContext)
         }
         ensureAgendaWeek(0)
     }
@@ -199,6 +201,9 @@ class MainViewModel(
                         _state.update {
                             it.copy(agendaWeeks = it.agendaWeeks + (offset to cached.week))
                         }
+                        if (offset in 0..1) {
+                            NextLessonWidgetProvider.requestRefresh(container.appContext)
+                        }
                     }
                 }
                 val result = container.repository.loadWeek(
@@ -212,6 +217,9 @@ class MainViewModel(
                             agendaWeeks = it.agendaWeeks + (offset to result.week),
                             agendaFailedOffsets = it.agendaFailedOffsets - offset,
                         )
+                    }
+                    if (offset in 0..1) {
+                        NextLessonWidgetProvider.requestRefresh(container.appContext)
                     }
                 }
             } catch (error: CancellationException) {
