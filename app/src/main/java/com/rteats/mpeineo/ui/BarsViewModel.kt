@@ -203,6 +203,10 @@ internal object BarsPayloadParser {
     }
 }
 
+internal fun isCompleteBarsSummarySnapshot(text: String): Boolean =
+    text.contains("=== Матрица оценок по неделям") &&
+        text.contains("=== Посещаемость по журналу")
+
 internal class BarsViewModel(
     private val diagnostics: DiagnosticLog,
     private val network: BarsNetworkDiagnostics,
@@ -407,9 +411,7 @@ internal class BarsViewModel(
         if (source !in setOf("MAIN", "SUMMARY") || text.isBlank() ||
             text.length > 380_000) return
         // Never report an incomplete response as a successful Summary refresh.
-        if (source == "SUMMARY" &&
-            (!text.contains("=== Матрица оценок по неделям") ||
-                !text.contains("=== Посещаемость по журналу"))) {
+        if (source == "SUMMARY" && !isCompleteBarsSummarySnapshot(text)) {
             summaryCaptureFailed("БАРС вернул неполную Сводку. Сохранённые данные не изменены.")
             return
         }
