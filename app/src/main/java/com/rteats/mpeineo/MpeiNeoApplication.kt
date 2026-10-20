@@ -90,6 +90,7 @@ class MpeiNeoApplication : Application() {
 }
 
 class AppContainer(application: Application) {
+    val appContext = application.applicationContext
     private val gson = GsonBuilder().create()
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
