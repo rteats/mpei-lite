@@ -8,9 +8,9 @@ class SubjectLinksTest {
     @Test fun sameSubjectWithCaseAndTypographyLinks() {
         val bars = BarsDiscipline(disciplineName = "Электрические цепи (теория)")
         assertEquals(
-            bars, findBarsSubject("  ЭЛЕКТРИЧЕСКИЕ  ЦЕПИ — теория", listOf(bars))
-                // An em dash is not removed, so this stays conservative.
+            bars, findBarsSubject("  ЭЛЕКТРИЧЕСКИЕ  ЦЕПИ (ТЕОРИЯ)", listOf(bars))
         )
+        assertNull(findBarsSubject("Электрические цепи — теория", listOf(bars)))
     }
 
     @Test fun unrelatedAndPartialMatchesAreNotLinked() {
