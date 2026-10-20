@@ -47,9 +47,13 @@ class SearchAppBarTest {
         assertEquals(campusSearchSymbols, campusBuildingHits(""))
     }
 
-    @Test fun mapScopeIncludesBuildingsOnly() {
+    @Test fun mapScopeIncludesBuildingsAndRoomTargetsOnlyWhenSearching() {
         assertTrue(SearchScope.MAPS.includesMaps)
-        assertFalse(SearchScope.MAPS.includesSchedule)
+        assertTrue(SearchScope.MAPS.includesSchedule)
+        assertEquals(com.rteats.mpeineo.model.ScheduleTargetType.ROOM,
+            SearchScope.MAPS.scheduleTargetTypeFilter(null))
+        assertFalse(SearchScope.MAPS.showScheduleTargets(""))
+        assertTrue(SearchScope.MAPS.showScheduleTargets("В-206"))
         assertFalse(SearchScope.MAPS.includesMail)
         assertFalse(SearchScope.MAPS.includesBars)
         assertTrue(SearchScope.ALL.includesMaps)
