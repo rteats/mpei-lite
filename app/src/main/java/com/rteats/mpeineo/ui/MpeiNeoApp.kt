@@ -565,6 +565,30 @@ fun MpeiNeoApp(
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            // The native search app bar reserves space rather than floating
+            // over controls, scrollable content, maps, or WebViews.
+            if (!globalSearchOpen) {
+                ContextSearchAppBar(
+                    context = searchAppBarContext(currentService),
+                    onSearch = {
+                        if (!isTransitioning) {
+                            openGlobalSearch(searchAppBarContext(currentService).scope)
+                        }
+                    },
+                    onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
+                        ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
+                    scheduleRefreshing =
+                        viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
+                    onMailCompose = if (searchAppBarAction(
+                            currentService,
+                            mailListReady = mailState.configured && !mailState.composing &&
+                                mailState.selected == null && !mailWebVisible,
+                        ) == SearchAppBarAction.COMPOSE_MAIL
+                    ) mailViewModel::startCompose else null,
+                )
+            }
+        },
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
@@ -686,48 +710,15 @@ fun MpeiNeoApp(
                 }
             }
 
-            // One stationary search surface over Home, native pages and portals.
-            // The actual results/keyboard view replaces this trigger while expanded.
-            AnimatedVisibility(
-                visible = !globalSearchOpen && !imeVisible,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(
-                    initialOffsetY = { it / 2 },
-                    animationSpec = tween(280, easing = FastOutSlowInEasing),
-                ) + fadeIn(tween(180)),
-                exit = slideOutVertically(
-                    targetOffsetY = { it / 3 },
-                    animationSpec = tween(170, easing = FastOutSlowInEasing),
-                ) + fadeOut(tween(130)),
-            ) {
-                FloatingSearchDock(
-                    context = floatingSearchContext(currentService),
-                    onSearch = {
-                        if (!isTransitioning) {
-                            openGlobalSearch(floatingSearchContext(currentService).scope)
-                        }
-                    },
-                    onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
-                        ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
-                    scheduleRefreshing = viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
-                    onMailCompose = if (floatingDockAction(
-                            currentService,
-                            mailListReady = mailState.configured && !mailState.composing &&
-                                mailState.selected == null && !mailWebVisible,
-                        ) == FloatingDockAction.COMPOSE_MAIL
-                    ) mailViewModel::startCompose else null,
-                )
-            }
-
             AnimatedVisibility(
                 visible = globalSearchOpen,
                 modifier = Modifier.align(Alignment.TopCenter).fillMaxSize(),
                 enter = slideInVertically(
-                    initialOffsetY = { it / 4 },
+                    initialOffsetY = { -it / 6 },
                     animationSpec = tween(270, easing = FastOutSlowInEasing),
                 ) + fadeIn(tween(180)),
                 exit = slideOutVertically(
-                    targetOffsetY = { it / 4 },
+                    targetOffsetY = { -it / 6 },
                     animationSpec = tween(210, easing = FastOutSlowInEasing),
                 ) + fadeOut(tween(120)),
             ) {
