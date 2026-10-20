@@ -45,6 +45,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.State
 import androidx.compose.ui.platform.LocalContext
 import com.rteats.mpeineo.MpeiNeoApplication
 import androidx.compose.runtime.snapshotFlow
@@ -67,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.model.ScheduleDay
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.DayOfWeek
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
@@ -100,7 +102,8 @@ internal fun ScheduleAgenda(
     focusLesson: ScheduleLessonFocus? = null,
     modifier: Modifier = Modifier,
 ) {
-    val today = remember { LocalDate.now() }
+    val clock = rememberMpeiNow()
+    val today = remember { LocalDate.now(mpeiTimeZone) }
     val monday = remember(today) {
         today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     }
@@ -313,6 +316,7 @@ internal fun ScheduleAgenda(
                             AgendaDayCard(
                                 date = date,
                                 today = today,
+                                clock = clock,
                                 day = dayData,
                                 loading = displayedWeek in state.agendaLoadingOffsets,
                                 failed = displayedWeek in state.agendaFailedOffsets,
@@ -430,6 +434,8 @@ private fun WeekPullIndicator(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AgendaDaySection(
+    date: LocalDate,
+    clock: State<LocalDateTime>,
     day: ScheduleDay?,
     loading: Boolean,
     failed: Boolean,
@@ -457,10 +463,15 @@ private fun AgendaDaySection(
                     if (index in oneHourBreaks) {
                         Spacer(Modifier.height(18.dp))
                     }
-                    LessonCard(lesson, onLocateRoom,
+                    LessonCard(
+                        lesson = lesson,
+                        onLocateRoom = onLocateRoom,
                         focused = focusLesson?.let {
                             it.name == lesson.name && it.startTime == lesson.startTime
-                        } == true)
+                        } == true,
+                        date = date,
+                        now = clock.value,
+                    )
                 }
             }
             failed -> {
@@ -497,6 +508,7 @@ private fun AgendaDaySection(
 private fun AgendaDayCard(
     date: LocalDate,
     today: LocalDate,
+    clock: State<LocalDateTime>,
     day: ScheduleDay?,
     loading: Boolean,
     failed: Boolean,
@@ -521,6 +533,8 @@ private fun AgendaDayCard(
             AgendaDayHeader(date, today)
             Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
                 AgendaDaySection(
+                    date = date,
+                    clock = clock,
                     day = day,
                     loading = loading,
                     failed = failed,
