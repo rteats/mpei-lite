@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,12 +34,9 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.delay
 
-private val moscowZone = ZoneId.of("Europe/Moscow")
 private val lessonClock = DateTimeFormatter.ofPattern("H:mm")
 private val shortRussianDate = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("ru"))
 
@@ -89,16 +87,15 @@ internal fun HomeNextLessonCard(
     barsDisciplines: List<BarsDiscipline> = emptyList(),
     onOpenBarsDiscipline: (String) -> Unit = {},
 ) {
-    var now by remember { mutableStateOf(LocalDateTime.now(moscowZone)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = LocalDateTime.now(moscowZone)
-            delay(60_000L)
-        }
-    }
+    val now by rememberMpeiNow()
     val upcoming = remember(state.agendaWeeks, now) {
         nextHomeLesson(listOfNotNull(state.agendaWeeks[0], state.agendaWeeks[1]), now)
     }
+    val elapsedFraction = if (upcoming?.isOngoing == true) {
+        lessonElapsedFraction(
+            upcoming.date, upcoming.lesson.startTime, upcoming.lesson.endTime, now,
+        )
+    } else null
     val matchedSubject = remember(upcoming?.lesson?.name, barsDisciplines) {
         upcoming?.let { findBarsSubject(it.lesson.name, barsDisciplines) }
     }
@@ -141,11 +138,20 @@ internal fun HomeNextLessonCard(
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (elapsedFraction != null) {
+                LessonElapsedBackdrop(
+                    progress = elapsedFraction,
+                    fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    modifier = Modifier.matchParentSize()
+                        .testTag("home-lesson-elapsed-background"),
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
@@ -227,6 +233,7 @@ internal fun HomeNextLessonCard(
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
+            }
             }
         }
     }

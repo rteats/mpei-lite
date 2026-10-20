@@ -35,6 +35,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +46,9 @@ import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.MpeiNeoApplication
 import java.time.Duration
+import java.time.LocalDate
+import java.time.LocalDateTime
+import kotlin.math.roundToInt
 import java.time.LocalTime
 import java.util.Locale
 
@@ -111,11 +117,21 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, focused: Boolean = false) {
+internal fun LessonCard(
+    lesson: Lesson,
+    onLocateRoom: (String) -> Unit = {},
+    focused: Boolean = false,
+    date: LocalDate? = null,
+    now: LocalDateTime? = null,
+) {
     var expanded by rememberSaveable(
         lesson.startTime, lesson.name, lesson.place, lesson.lecturer, lesson.groups,
     ) { mutableStateOf(false) }
 
+    val elapsedFraction = if (date != null && now != null) {
+        lessonElapsedFraction(date, lesson.startTime, lesson.endTime, now)
+    } else null
+    val progressColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
     val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
         ?.container?.uiFrameProfiler
     val motion = MaterialTheme.motionScheme
@@ -148,10 +164,25 @@ internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, foc
         shape = RoundedCornerShape(cornerRadius),
         color = container,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = verticalPadding),
-        ) {
-            Row(
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (elapsedFraction != null) {
+                LessonElapsedBackdrop(
+                    progress = elapsedFraction,
+                    fillColor = progressColor,
+                    modifier = Modifier.matchParentSize()
+                        .testTag("schedule-lesson-elapsed-background"),
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .then(if (elapsedFraction != null) Modifier.semantics {
+                        stateDescription = "Прошло " +
+                            (elapsedFraction * 100).roundToInt() +
+                            "% времени пары"
+                    } else Modifier)
+                    .padding(horizontal = 14.dp, vertical = verticalPadding),
+            ) {
+                Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -250,6 +281,7 @@ internal fun LessonCard(lesson: Lesson, onLocateRoom: (String) -> Unit = {}, foc
                         )
                     }
                 }
+            }
             }
         }
     }
