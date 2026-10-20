@@ -36,7 +36,7 @@ import org.json.JSONArray
 internal enum class SearchScope(val label: String) {
     ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
 
-    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE || this == MAPS
+    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE
     val includesBars: Boolean get() = this == ALL || this == BARS
     val includesMail: Boolean get() = this == ALL || this == MAIL
     val includesMaps: Boolean get() = this == ALL || this == MAPS
@@ -83,12 +83,20 @@ internal object GlobalSearchIndex {
             }
         }.distinctBy { Triple(it.date, it.lesson.name, it.lesson.startTime) }.take(8).toList()
 
-    fun targets(query: String, state: MainUiState): List<ScheduleTarget> =
+    fun targets(
+        query: String,
+        state: MainUiState,
+        type: ScheduleTargetType? = null,
+    ): List<ScheduleTarget> =
         (state.favorites + state.searchResults + listOfNotNull(state.selected))
             .distinctBy { it.favoriteKey() }
-            .filter {
-                it.name.contains(query, true) || it.description.contains(query, true) ||
-                    it.displayName(state.favoriteNames).contains(query, true)
+            // The remote lookup is type-filtered, but cached favorites and
+            // the selected timetable are added locally. Filter ALL sources.
+            .filter { target ->
+                (type == null || target.type == type) &&
+                    (target.name.contains(query, true) ||
+                        target.description.contains(query, true) ||
+                        target.displayName(state.favoriteNames).contains(query, true))
             }.take(20)
 }
 
@@ -155,9 +163,13 @@ internal fun GlobalSearchScreen(
     }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
+    // Schedule's GROUP/PERSON/ROOM chips apply to favorites and cached
+    // selections too. "Все" ignores the Schedule-only type selection.
+    val scheduleType = if (scope == SearchScope.SCHEDULE) schedule.searchType else null
     val targets = if (!scope.includesSchedule) emptyList()
-        else if (searching) GlobalSearchIndex.targets(trimmed, schedule)
-        else schedule.favorites.take(5)
+        else if (searching) GlobalSearchIndex.targets(trimmed, schedule, scheduleType)
+        else schedule.favorites.filter { scheduleType == null || it.type == scheduleType }
+            .take(5)
     val disciplines = if (!scope.includesBars) emptyList()
         else if (searching) GlobalSearchIndex.disciplines(trimmed, bars.disciplines)
         else bars.disciplines.take(4)
