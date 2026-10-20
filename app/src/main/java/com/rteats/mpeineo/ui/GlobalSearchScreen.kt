@@ -42,6 +42,19 @@ internal enum class SearchScope(val label: String) {
     val includesMaps: Boolean get() = this == ALL || this == MAPS
 }
 
+/** The Map can search room timetables, but cannot show group/teacher favorites. */
+internal fun SearchScope.scheduleTargetTypeFilter(
+    selectedType: ScheduleTargetType?,
+): ScheduleTargetType? = when (this) {
+    SearchScope.SCHEDULE -> selectedType
+    SearchScope.MAPS -> ScheduleTargetType.ROOM
+    else -> null
+}
+
+/** In the Map, blank search must show only buildings, not saved timetables. */
+internal fun SearchScope.showScheduleTargets(query: String): Boolean =
+    includesSchedule && (this != SearchScope.MAPS || query.isNotBlank())
+
 internal data class SearchMailHit(val folder: OwaMailFolder, val message: MailSummary)
 
 /** The actual lesson and its week/day, rather than only its parent schedule. */
@@ -83,12 +96,20 @@ internal object GlobalSearchIndex {
             }
         }.distinctBy { Triple(it.date, it.lesson.name, it.lesson.startTime) }.take(8).toList()
 
-    fun targets(query: String, state: MainUiState): List<ScheduleTarget> =
+    fun targets(
+        query: String,
+        state: MainUiState,
+        type: ScheduleTargetType? = null,
+    ): List<ScheduleTarget> =
         (state.favorites + state.searchResults + listOfNotNull(state.selected))
             .distinctBy { it.favoriteKey() }
-            .filter {
-                it.name.contains(query, true) || it.description.contains(query, true) ||
-                    it.displayName(state.favoriteNames).contains(query, true)
+            // The remote lookup is type-filtered, but cached favorites and
+            // the selected timetable are added locally. Filter ALL sources.
+            .filter { target ->
+                (type == null || target.type == type) &&
+                    (target.name.contains(query, true) ||
+                        target.description.contains(query, true) ||
+                        target.displayName(state.favoriteNames).contains(query, true))
             }.take(20)
 }
 
@@ -155,15 +176,19 @@ internal fun GlobalSearchScreen(
     }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
-    val targets = if (!scope.includesSchedule) emptyList()
-        else if (searching) GlobalSearchIndex.targets(trimmed, schedule)
-        else schedule.favorites.take(5)
+    // Schedule honors selected target type; Map only includes matching
+    // classroom timetables for a typed query; All ignores Schedule's type chip.
+    val scheduleType = scope.scheduleTargetTypeFilter(schedule.searchType)
+    val targets = if (!scope.showScheduleTargets(trimmed)) emptyList()
+        else if (searching) GlobalSearchIndex.targets(trimmed, schedule, scheduleType)
+        else schedule.favorites.filter { scheduleType == null || it.type == scheduleType }
+            .take(5)
     val disciplines = if (!scope.includesBars) emptyList()
         else if (searching) GlobalSearchIndex.disciplines(trimmed, bars.disciplines)
         else bars.disciplines.take(4)
     val messages = if (scope.includesMail) GlobalSearchIndex.mailHits(trimmed, mail)
         else emptyList()
-    val lessons = if (scope.includesSchedule && searching && schedule.selected != null)
+    val lessons = if (scope != SearchScope.MAPS && scope.includesSchedule && searching && schedule.selected != null)
         GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
     val buildings = if (scope.includesMaps && (searching || scope == SearchScope.MAPS))
         campusBuildingHits(trimmed)
@@ -270,7 +295,12 @@ internal fun GlobalSearchScreen(
                     }
                 }
                 if (targets.isNotEmpty()) {
-                    item { SearchSection(if (searching) "Расписание" else "Избранные расписания") }
+                    item {
+                        SearchSection(
+                            if (scope == SearchScope.MAPS) "Расписание аудиторий"
+                            else if (searching) "Расписание" else "Избранные расписания",
+                        )
+                    }
                     items(targets, key = { "schedule-" + it.favoriteKey() }) { target ->
                         ListItem(
                             modifier = Modifier.fillMaxWidth().clickable { onSchedule(target) },
