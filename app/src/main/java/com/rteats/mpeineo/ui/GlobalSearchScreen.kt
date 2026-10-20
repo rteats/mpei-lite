@@ -36,11 +36,24 @@ import org.json.JSONArray
 internal enum class SearchScope(val label: String) {
     ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
 
-    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE
+    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE || this == MAPS
     val includesBars: Boolean get() = this == ALL || this == BARS
     val includesMail: Boolean get() = this == ALL || this == MAIL
     val includesMaps: Boolean get() = this == ALL || this == MAPS
 }
+
+/** The Map can search room timetables, but cannot show group/teacher favorites. */
+internal fun SearchScope.scheduleTargetTypeFilter(
+    selectedType: ScheduleTargetType?,
+): ScheduleTargetType? = when (this) {
+    SearchScope.SCHEDULE -> selectedType
+    SearchScope.MAPS -> ScheduleTargetType.ROOM
+    else -> null
+}
+
+/** In the Map, blank search must show only buildings, not saved timetables. */
+internal fun SearchScope.showScheduleTargets(query: String): Boolean =
+    includesSchedule && (this != SearchScope.MAPS || query.isNotBlank())
 
 internal data class SearchMailHit(val folder: OwaMailFolder, val message: MailSummary)
 
@@ -163,10 +176,10 @@ internal fun GlobalSearchScreen(
     }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
-    // Schedule's GROUP/PERSON/ROOM chips apply to favorites and cached
-    // selections too. "Все" ignores the Schedule-only type selection.
-    val scheduleType = if (scope == SearchScope.SCHEDULE) schedule.searchType else null
-    val targets = if (!scope.includesSchedule) emptyList()
+    // Schedule honors selected target type; Map only includes matching
+    // classroom timetables for a typed query; All ignores Schedule's type chip.
+    val scheduleType = scope.scheduleTargetTypeFilter(schedule.searchType)
+    val targets = if (!scope.showScheduleTargets(trimmed)) emptyList()
         else if (searching) GlobalSearchIndex.targets(trimmed, schedule, scheduleType)
         else schedule.favorites.filter { scheduleType == null || it.type == scheduleType }
             .take(5)
@@ -175,7 +188,7 @@ internal fun GlobalSearchScreen(
         else bars.disciplines.take(4)
     val messages = if (scope.includesMail) GlobalSearchIndex.mailHits(trimmed, mail)
         else emptyList()
-    val lessons = if (scope.includesSchedule && searching && schedule.selected != null)
+    val lessons = if (scope != SearchScope.MAPS && scope.includesSchedule && searching && schedule.selected != null)
         GlobalSearchIndex.lessons(trimmed, schedule) else emptyList()
     val buildings = if (scope.includesMaps && (searching || scope == SearchScope.MAPS))
         campusBuildingHits(trimmed)
@@ -282,7 +295,12 @@ internal fun GlobalSearchScreen(
                     }
                 }
                 if (targets.isNotEmpty()) {
-                    item { SearchSection(if (searching) "Расписание" else "Избранные расписания") }
+                    item {
+                        SearchSection(
+                            if (scope == SearchScope.MAPS) "Расписание аудиторий"
+                            else if (searching) "Расписание" else "Избранные расписания",
+                        )
+                    }
                     items(targets, key = { "schedule-" + it.favoriteKey() }) { target ->
                         ListItem(
                             modifier = Modifier.fillMaxWidth().clickable { onSchedule(target) },
