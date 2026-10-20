@@ -129,6 +129,7 @@ fun MpeiNeoApp(
     val hapticFeedback = LocalHapticFeedback.current
     val homePrefs = remember(application) { HomeLayoutPreferences(application) }
     var homeTiles by remember(homePrefs) { mutableStateOf(homePrefs.read()) }
+    var homeEditing by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(homePrefs) {
         diagnostics.log("HOME_LAYOUT", "restored=" + HomeTileLayout.encode(homeTiles))
     }
@@ -586,6 +587,19 @@ fun MpeiNeoApp(
                                 mailState.selected == null && !mailWebVisible,
                         ) == SearchAppBarAction.COMPOSE_MAIL
                     ) mailViewModel::startCompose else null,
+                    homeEditing = homeEditing,
+                    onHomeEditToggle = if (currentService == null) ({
+                        if (!isTransitioning) {
+                            homeEditing = !homeEditing
+                            diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
+                        }
+                    }) else null,
+                    onHomeSettings = if (currentService == null) ({
+                        if (!isTransitioning) {
+                            homeEditing = false
+                            openService(AppTab.SETTINGS)
+                        }
+                    }) else null,
                 )
             }
         },
@@ -605,16 +619,11 @@ fun MpeiNeoApp(
                         mail = mailState,
                         tiles = homeTiles,
                         onChangeLayout = ::changeHomeLayout,
-                        onEditModeChange = { editing ->
-                            diagnostics.log("HOME_LAYOUT", "edit_mode=" + editing)
-                        },
+                        editing = homeEditing,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
                             }
-                        },
-                        onSearch = {
-                            if (currentService == null && !isTransitioning) openGlobalSearch(SearchScope.ALL)
                         },
                         onOpenBarsDiscipline = { discipline ->
                             if (currentService == null && !isTransitioning) {

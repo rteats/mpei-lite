@@ -176,7 +176,7 @@ internal fun GlobalSearchScreen(
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onClose) {
@@ -215,7 +215,7 @@ internal fun GlobalSearchScreen(
                 )
             }
             androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(SearchScope.entries) { option ->
@@ -230,7 +230,7 @@ internal fun GlobalSearchScreen(
             if (scope == SearchScope.SCHEDULE) {
                 androidx.compose.foundation.lazy.LazyRow(
                     modifier = Modifier.fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item {

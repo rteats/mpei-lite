@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import org.junit.Assert.assertEquals
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,7 +24,7 @@ class SearchAppBarTest {
         assertEquals(SearchScope.ALL, searchAppBarContext(AppTab.SETTINGS).scope)
     }
 
-    @Test fun contextualAppBarKeepsExactlyOneTrailingAction() {
+    @Test fun contextualAppBarUsesHomeAndServiceActions() {
         assertEquals(SearchAppBarAction.REFRESH_WEEK,
             searchAppBarAction(AppTab.SCHEDULE, mailListReady = true))
         assertEquals(SearchAppBarAction.COMPOSE_MAIL,
@@ -32,8 +33,17 @@ class SearchAppBarTest {
             searchAppBarAction(AppTab.MAIL, mailListReady = false))
         assertEquals(SearchAppBarAction.NONE,
             searchAppBarAction(AppTab.MAPS, mailListReady = true))
-        assertEquals(SearchAppBarAction.NONE,
+        assertEquals(SearchAppBarAction.HOME,
             searchAppBarAction(null, mailListReady = true))
+    }
+
+    @Test fun appBarHasConsistentSixteenDpSideMargins() {
+        // AppBarWithSearch adds 8dp around its search field, and 4dp
+        // after its trailing action row. Account for both internal offsets.
+        assertEquals(SEARCH_APP_BAR_EDGE, SEARCH_APP_BAR_START_PADDING + 8.dp)
+        assertEquals(SEARCH_APP_BAR_EDGE, SEARCH_APP_BAR_END_WITH_ACTION + 4.dp)
+        assertEquals(SEARCH_APP_BAR_EDGE,
+            SEARCH_APP_BAR_END_WITHOUT_ACTION + 4.dp + 8.dp)
     }
 
     @Test fun campusSearchRecognizesKnownCyrillicBuildingsAndRooms() {
