@@ -27,6 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
@@ -82,6 +85,7 @@ internal fun ContextSearchAppBar(
     homeEditing: Boolean = false,
     onHomeEditToggle: (() -> Unit)? = null,
     onHomeSettings: (() -> Unit)? = null,
+    onSearchBoundsChanged: (Rect) -> Unit = {},
 ) {
     val searchBarState = rememberSearchBarState()
     val action = when {
@@ -118,7 +122,8 @@ internal fun ContextSearchAppBar(
                 leadingIcon = {
                     AppIcon(AppIcons.Search, contentDescription = null)
                 },
-                modifier = Modifier.testTag("search-app-bar-entry"),
+                modifier = Modifier.testTag("search-app-bar-entry")
+                    .onGloballyPositioned { onSearchBoundsChanged(it.boundsInRoot()) },
             )
         },
         modifier = modifier.fillMaxWidth().testTag("search-app-bar"),
