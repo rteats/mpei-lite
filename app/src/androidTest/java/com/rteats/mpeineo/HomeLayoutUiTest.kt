@@ -21,6 +21,7 @@ import com.rteats.mpeineo.ui.ContextSearchAppBar
 import com.rteats.mpeineo.ui.searchAppBarContext
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +58,18 @@ class HomeLayoutUiTest {
                 }
             }
         }
+
+        rule.waitForIdle()
+        // Home actions share one toolbar row, not the scrolling tile grid.
+        val searchRect = rule.onNodeWithTag("search-app-bar-entry")
+            .fetchSemanticsNode().boundsInRoot
+        val editRect = rule.onNodeWithTag("superapp-edit")
+            .fetchSemanticsNode().boundsInRoot
+        val settingsRect = rule.onNodeWithTag("superapp-settings")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(searchRect.right <= editRect.left + 1f)
+        assertTrue(editRect.right <= settingsRect.left + 1f)
+        assertEquals(searchRect.center.y, editRect.center.y, 6f)
 
         rule.onNodeWithContentDescription("Настроить кнопки").performClick()
         rule.onNodeWithTag("home-edit-schedule").assertIsDisplayed()
