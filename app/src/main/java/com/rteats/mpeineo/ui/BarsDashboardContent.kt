@@ -246,7 +246,7 @@ internal fun BarsNativeDashboard(
           state = dashboardListState,
           modifier = Modifier.fillMaxSize(),
           contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            bottom = 112.dp,
+            bottom = 32.dp,
           ),
           verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -904,8 +904,7 @@ private fun DisciplineExpandedCard(
         }
       }
 
-      // Keep the bottom content above the shared floating portal action.
-      Spacer(Modifier.height(96.dp))
+      Spacer(Modifier.height(24.dp))
     }
   }
 }

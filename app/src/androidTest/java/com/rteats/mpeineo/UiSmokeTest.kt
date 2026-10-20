@@ -30,7 +30,7 @@ class UiSmokeTest {
     @Test
     fun primaryDestinationsRender() {
         composeRule
-            .onNodeWithTag("floating-search-entry")
+            .onNodeWithTag("search-app-bar-entry")
             .performClick()
 
         composeRule

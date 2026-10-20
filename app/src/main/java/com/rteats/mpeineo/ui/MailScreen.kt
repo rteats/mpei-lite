@@ -299,7 +299,7 @@ internal fun MailScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
                                     start = 12.dp, end = 12.dp,
-                                    top = 12.dp, bottom = 100.dp,
+                                    top = 12.dp, bottom = 28.dp,
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
