@@ -228,7 +228,12 @@ internal fun SuperAppHome(
         }
         if (!editing) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                HomeNextLessonCard(schedule, onClick = { onOpen(AppTab.SCHEDULE) })
+                HomeNextLessonCard(
+                    state = schedule,
+                    onClick = { onOpen(AppTab.SCHEDULE) },
+                    barsDisciplines = bars.disciplines,
+                    onOpenBarsDiscipline = onOpenBarsDiscipline,
+                )
             }
             // Previews are actionable events, not duplicate service launchers.
             if (bars.gradeChanges.values.any { it.isNotEmpty() } || bars.loginRequired) {
