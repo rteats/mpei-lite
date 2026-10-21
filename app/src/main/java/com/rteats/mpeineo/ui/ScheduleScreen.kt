@@ -12,6 +12,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +56,7 @@ import java.time.LocalDateTime
 import kotlin.math.roundToInt
 import java.time.LocalTime
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun ScheduleScreen(
@@ -120,7 +126,7 @@ internal fun isOneHourBreak(previous: Lesson, next: Lesson): Boolean =
 internal fun LessonCard(
     lesson: Lesson,
     onLocateRoom: (String) -> Unit = {},
-    focused: Boolean = false,
+    focusRequestId: Int? = null,
     date: LocalDate? = null,
     now: LocalDateTime? = null,
 ) {
@@ -132,6 +138,16 @@ internal fun LessonCard(
         lessonElapsedFraction(date, lesson.startTime, lesson.endTime, now)
     } else null
     val progressColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+    val focusPulse = rememberDestinationFocusPulse(focusRequestId)
+    val bringIntoView = remember { BringIntoViewRequester() }
+    LaunchedEffect(focusRequestId) {
+        if (focusRequestId != null) {
+            // The week/day LazyColumn settles first, then the exact class
+            // is brought into the viewport rather than merely its day header.
+            delay(260L)
+            bringIntoView.bringIntoView()
+        }
+    }
     val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
         ?.container?.uiFrameProfiler
     val motion = MaterialTheme.motionScheme
@@ -144,7 +160,8 @@ internal fun LessonCard(
         targetValue = lerp(
             lessonContainerColor(lesson.kind),
             MaterialTheme.colorScheme.primaryContainer,
-            if (focused) 0.40f else if (expanded) 0.12f else 0f,
+            if (focusPulse > 0f) 0.12f + focusPulse * 0.35f
+            else if (expanded) 0.12f else 0f,
         ),
         animationSpec = motion.defaultEffectsSpec(),
         label = "lesson-container",
@@ -160,7 +177,14 @@ internal fun LessonCard(
             profiler?.markInteraction("LESSON_TOGGLE")
             expanded = !expanded
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .bringIntoViewRequester(bringIntoView)
+            .border(
+                2.dp,
+                MaterialTheme.colorScheme.primary.copy(alpha = focusPulse),
+                RoundedCornerShape(cornerRadius),
+            )
+            .testTag(if (focusRequestId != null) "schedule-lesson-focus" else "schedule-lesson"),
         shape = RoundedCornerShape(cornerRadius),
         color = container,
     ) {
