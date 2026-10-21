@@ -86,156 +86,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 
-/**
- * EasyNotes-inspired surface rows, circular accent badges and trailing
- * switches/actions. Original Compose implementation using Material You colors.
- */
-@Composable
-private fun SettingsBadge(iconRes: Int) {
-    Surface(
-        modifier = Modifier.size(44.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.primary,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            AppIcon(iconRes, contentDescription = null,
-                modifier = Modifier.size(23.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsExpansion(
-    title: String,
-    subtitle: String,
-    iconRes: Int,
-    expanded: Boolean,
-    onExpand: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand)
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                SettingsBadge(iconRes)
-                AppIcon(
-                    if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
-                    contentDescription = if (expanded) "Свернуть" else "Развернуть",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(animationSpec = tween(165, easing = FastOutSlowInEasing)) +
-                    fadeIn(animationSpec = tween(100)),
-                exit = shrinkVertically(animationSpec = tween(125, easing = FastOutSlowInEasing)) +
-                    fadeOut(animationSpec = tween(90)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    content()
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun SettingsAction(
-    title: String,
-    detail: String,
-    iconRes: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    busy: Boolean = false,
-    downloading: Boolean = false,
-    progressPercent: Int? = null,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SettingsBadge(iconRes)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(title, fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.bodyLarge)
-            Text(detail, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (downloading) {
-                if (progressPercent != null) {
-                    LinearProgressIndicator(
-                        progress = { (progressPercent / 100f).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                }
-            }
-        }
-        if (busy) {
-            ContainedLoadingIndicator(modifier = Modifier.size(28.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsSwitchRow(
-    title: String,
-    description: String,
-    iconRes: Int,
-    checked: Boolean,
-    enabled: Boolean,
-    onChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled) { onChange(!checked) }
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SettingsBadge(iconRes)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold)
-            Text(description, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
-    }
-}
-
 @Composable
 internal fun SettingsScreen(
     updateViewModel: UpdateViewModel,
@@ -278,6 +128,8 @@ internal fun SettingsScreen(
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
     var logsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("logs", false)) }
     var aboutExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("about", false)) }
+    // Technical probes stay off the normal diagnostic path until requested.
+    var advancedDiagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
     fun changeSection(key: String, next: Boolean) {
         sectionPrefs.edit().putBoolean(key, next).apply()
         when (key) {
@@ -619,64 +471,72 @@ internal fun SettingsScreen(
                 AppIcons.Diagnostics,
                 logsExpanded, { changeSection("logs", !logsExpanded) },
             ) {
-                SettingsAction(
-                    title = if (uiProfiler.active) "Завершить замер плавности"
-                        else "Замерить плавность интерфейса",
-                    detail = if (uiProfiler.active) {
-                        "Сбор кадров идёт. Перейдите в нужный раздел; автостоп через 60 секунд."
-                    } else {
-                        "60 секунд · задержки кадров по разделам · результат в журнале"
-                    },
-                    iconRes = AppIcons.Analytics,
-                    enabled = uiProfiler.active || hostActivity != null,
-                    onClick = {
-                        if (uiProfiler.active) uiProfiler.stop()
-                        else hostActivity?.let { uiProfiler.start(it.window) }
-                    },
-                )
-                SettingsAction(
-                    title = "Проверить сессию ОСЭП",
-                    detail = owaAuthSummary
-                        ?: "Однократная проверка без отправки или изменения писем",
-                    iconRes = AppIcons.Confirm,
-                    enabled = !owaAuthBusy,
-                    busy = owaAuthBusy,
-                    onClick = {
-                        owaAuthBusy = true
-                        owaAuthScope.launch {
-                            try {
-                                owaAuthSummary = application.container.owaAuthProbe.check().summary
-                            } finally {
-                                owaAuthBusy = false
-                            }
-                        }
-                    },
-                )
-                SettingsAction(
-                    title = "Проверить входящие через OWA",
-                    detail = owaInboxSummary
-                        ?: "Проверка списка входящих без изменения состояния писем",
-                    iconRes = AppIcons.Mail,
-                    enabled = !owaInboxBusy && !owaAuthBusy,
-                    busy = owaInboxBusy,
-                    onClick = {
-                        owaInboxBusy = true
-                        owaAuthScope.launch {
-                            try {
-                                owaInboxSummary = application.container.owaInboxProbe.check().summary
-                            } finally {
-                                owaInboxBusy = false
-                            }
-                        }
-                    },
-                )
-                if (notificationsEnabled && mailState.configured) {
+                SettingsExpansion(
+                    "Дополнительные проверки",
+                    "Замеры плавности, ОСЭП и уведомления",
+                    AppIcons.Diagnostics,
+                    advancedDiagnosticsExpanded,
+                    { advancedDiagnosticsExpanded = !advancedDiagnosticsExpanded },
+                ) {
                     SettingsAction(
-                        title = "Проверить фоновые уведомления",
-                        detail = "Запустить однократную проверку через WorkManager",
-                        iconRes = AppIcons.Notifications,
-                        onClick = { MailNotificationScheduler.diagnosticCheckNow(context) },
+                        title = if (uiProfiler.active) "Завершить замер плавности"
+                            else "Замерить плавность интерфейса",
+                        detail = if (uiProfiler.active) {
+                            "Сбор кадров идёт. Перейдите в нужный раздел; автостоп через 60 секунд."
+                        } else {
+                            "60 секунд · задержки кадров по разделам · результат в журнале"
+                        },
+                        iconRes = AppIcons.Analytics,
+                        enabled = uiProfiler.active || hostActivity != null,
+                        onClick = {
+                            if (uiProfiler.active) uiProfiler.stop()
+                            else hostActivity?.let { uiProfiler.start(it.window) }
+                        },
                     )
+                    SettingsAction(
+                        title = "Проверить сессию ОСЭП",
+                        detail = owaAuthSummary
+                            ?: "Однократная проверка без отправки или изменения писем",
+                        iconRes = AppIcons.Confirm,
+                        enabled = !owaAuthBusy,
+                        busy = owaAuthBusy,
+                        onClick = {
+                            owaAuthBusy = true
+                            owaAuthScope.launch {
+                                try {
+                                    owaAuthSummary = application.container.owaAuthProbe.check().summary
+                                } finally {
+                                    owaAuthBusy = false
+                                }
+                            }
+                        },
+                    )
+                    SettingsAction(
+                        title = "Проверить входящие через OWA",
+                        detail = owaInboxSummary
+                            ?: "Проверка списка входящих без изменения состояния писем",
+                        iconRes = AppIcons.Mail,
+                        enabled = !owaInboxBusy && !owaAuthBusy,
+                        busy = owaInboxBusy,
+                        onClick = {
+                            owaInboxBusy = true
+                            owaAuthScope.launch {
+                                try {
+                                    owaInboxSummary = application.container.owaInboxProbe.check().summary
+                                } finally {
+                                    owaInboxBusy = false
+                                }
+                            }
+                        },
+                    )
+                    if (notificationsEnabled && mailState.configured) {
+                        SettingsAction(
+                            title = "Проверить фоновые уведомления",
+                            detail = "Запустить однократную проверку через WorkManager",
+                            iconRes = AppIcons.Notifications,
+                            onClick = { MailNotificationScheduler.diagnosticCheckNow(context) },
+                        )
+                    }
                 }
                 SettingsAction(
                     title = "Экспортировать ZIP",
