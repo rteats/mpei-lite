@@ -2,11 +2,11 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Super-app home | SuperAppHome.kt | Root launcher with four large service cards (Schedule, BARS, Mail, Campus) and cached metadata. Edit/Done and Settings controls live in the shared top app bar. No permanent navbar. |
+| Super-app home | SuperAppHome.kt | Root launcher with four customizable service tiles (Schedule, BARS, Mail, Campus), one prominent next-lesson card and concise sign-in/notification hints. Edit/Done and Settings controls live in the shared top app bar. No permanent navbar. |
 | Service push/pop | MpeiNeoApp.kt | Opening a service slides it in from the right; Android Back and full-width right-swipes pop toward Home (or the contextual Schedule origin). Native service page follows the finger, with a 20% threshold and a settling animation; the Android OS owns system-back edge zones. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
-| Shared search app bar | SearchAppBar.kt | Native Material 3 `AppBarWithSearch` in the root Scaffold top bar on every service; opens unified search with a contextual hint/scope. The search has consistent 16dp leading/trailing screen margins. Home Edit/Done and Settings, Schedule refresh, and Mail compose occupy trailing app-bar slots. Context actions slide in/out through the right viewport edge, not from the search field corner. |
-| Unified results | GlobalSearchScreen.kt | Top-aligned input and scope chips (Все / Пары / БАРС / Почта / Корпуса) filter cached and remote results. BARS disciplines, Inbox and Sent headers are searched locally; timetable suggestions continue using the existing debounced schedule lookup. |
+| Shared search app bar | SearchAppBar.kt | Native Material 3 `AppBarWithSearch` in the root Scaffold top bar on every service; opens the current service's search with a contextual hint. The search has consistent 16dp leading/trailing screen margins. Home Edit/Done and Settings, Schedule refresh, and Mail compose occupy trailing app-bar slots. Context actions slide in/out through the right viewport edge, not from the search field corner. |
+| Unified results | GlobalSearchScreen.kt | Top-aligned input searches within the active service. Home defaults to timetable targets; BARS disciplines and Inbox/Sent headers are searched locally. Timetable suggestions continue using the existing debounced lookup. |
 | Schedule target picker | ScheduleDockedSearch.kt | A separate favorites button opens the existing specialized timetable picker, including favorites, rename and category filters. The normal search bar opens unified scoped search; week-refresh button remains. |
 | Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
 | Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
@@ -29,7 +29,7 @@ and refreshed from the network; the user can also pull down in the agenda for
 an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
-Navigation uses a service launcher as its root instead of a bottom navigation bar. Home tile edit mode is held by the root and controlled from the same app bar as Search. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and initial search scope with the current service and opens the shared full-screen search view. Schedule favorites and target selection live in that search view.
+Navigation uses a service launcher as its root instead of a bottom navigation bar. One next-lesson card appears above the service tiles; other services show concise tile status instead of duplicate preview cards. Home tile edit mode is held by the root and controlled from the same app bar as Search. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and search provider with the current service and opens a shared full-screen search view. Schedule favorites and target selection live in that search view.
 
 ## Linked destination focus
 
@@ -113,27 +113,36 @@ OSM attribution remains visible.
 See `docs/OFFLINE_CAMPUS_MAP.md`.
 
 
-## Unified search model
+## Contextual search model
 
-Home opens the common full-screen search in **Все**. Schedule, BARS and
-Mail open that same screen with their own filter already selected; switching
-to **Все** searches across services, without a second bar appearing inside
-the results. Back closes search without changing the currently open service.
+Search stays in the current service. Home opens timetable search (not a
+cross-service mixer); Schedule opens the same schedule provider with timetable
+target-type chips; BARS opens discipline lookup; Mail searches both cached
+Inbox and Sent headers; Campus searches building identifiers and classroom
+targets. Back closes search without changing the active service.
 
-The Schedule header keeps a separate favorites/target-picker affordance because
-it also supports renaming favorites and changing the current timetable. This
-is not presented as an alternative global search field. Mail keeps its
-Inbox/Sent folder chips in the inbox, while search includes **both cached**
-folders and shows which folder each result belongs to. Opening a Sent result
-switches to Sent first. No mail-body indexing or server-side mailbox search
-was added, and cached BARS disciplines remain the only BARS search source.
-The campus alphabet keyboard is a spatial building navigator, not text search.
+There is no service-scope chip bar and no stored global query history.
+Schedules still support favorite toggles and aliases in the search results,
+and their category filtering applies to favorites, remote results, and the
+selected timetable. Mail result navigation selects Inbox or Sent before
+opening the message. The Campus alphabetic building keyboard remains a
+separate spatial control.
 
-QA: open search from each native service; test scope chip switching and Back.
-Verify Schedule's favorites and week refresh still work, BARS discipline
-results open the correct detail, and both Inbox and Sent results open within
-the correct mail folder. Test narrow screens and IME in light/dark Monet themes.
+The source search field animates into the destination field; the IME opens
+after the expansion to avoid layout jumps. Verify search activation/reversal
+on narrow screens in light/dark Monet themes, including navigation and
+WebView keyboard transitions.
 
+## Maintainer boundaries
+
+`MpeiNeoApp.kt` hosts Compose presentation and common transitions.
+`ServiceRouteStack.kt` owns route identity, stack and gesture decisions;
+`ServiceRouteSnapshot` derives the foreground and beneath destinations.
+BARS extraction-related flags share one `BarsWebFlowState`, while
+`BarsViewModel` remains responsible for authenticated data and cached grades.
+Settings rows/cards are defined in `SettingsComponents.kt`. Advanced
+performance/OWA tests are hidden under an optional diagnostics subsection;
+the ZIP exporter and log copy commands remain immediately accessible.
 
 ## BARS contextual information pattern
 

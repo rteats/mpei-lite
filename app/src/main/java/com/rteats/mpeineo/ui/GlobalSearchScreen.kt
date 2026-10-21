@@ -1,6 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,16 +36,15 @@ import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.Lesson
 import com.rteats.mpeineo.model.displayName
 import com.rteats.mpeineo.model.favoriteKey
-import org.json.JSONArray
 
-/** Search opens on the current service, but every surface can switch to All. */
+/** Search stays within its current service; Home defaults to Schedule. */
 internal enum class SearchScope(val label: String) {
-    ALL("Все"), SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
+    SCHEDULE("Пары"), BARS("БАРС"), MAIL("Почта"), MAPS("Корпуса");
 
-    val includesSchedule: Boolean get() = this == ALL || this == SCHEDULE || this == MAPS
-    val includesBars: Boolean get() = this == ALL || this == BARS
-    val includesMail: Boolean get() = this == ALL || this == MAIL
-    val includesMaps: Boolean get() = this == ALL || this == MAPS
+    val includesSchedule: Boolean get() = this == SCHEDULE || this == MAPS
+    val includesBars: Boolean get() = this == BARS
+    val includesMail: Boolean get() = this == MAIL
+    val includesMaps: Boolean get() = this == MAPS
 }
 
 /** The Map can search room timetables, but cannot show group/teacher favorites. */
@@ -120,43 +118,12 @@ internal object GlobalSearchIndex {
             }.take(20)
 }
 
-/** Clearable local query history. Does not index or persist mail bodies. */
-internal class GlobalSearchHistory(context: Context) {
-    private val prefs = context.getSharedPreferences("superapp_search_v1", Context.MODE_PRIVATE)
-
-    fun load(): List<String> = runCatching {
-        val json = JSONArray(prefs.getString("queries", "[]") ?: "[]")
-        (0 until json.length()).mapNotNull {
-            json.optString(it).takeIf(String::isNotBlank)
-        }.distinct().take(12)
-    }.getOrDefault(emptyList())
-
-    fun record(query: String): List<String> {
-        val text = query.trim().take(100)
-        if (text.isEmpty()) return load()
-        return save(listOf(text) + load().filterNot { it.equals(text, true) })
-    }
-    fun remove(query: String): List<String> = save(load().filterNot { it == query })
-    fun clear(): List<String> = save(emptyList())
-    private fun save(values: List<String>): List<String> {
-        val next = values.take(12)
-        val json = JSONArray()
-        next.forEach { json.put(it) }
-        prefs.edit().putString("queries", json.toString()).apply()
-        return next
-    }
-}
-
 @Composable
 internal fun GlobalSearchScreen(
     query: String,
     scope: SearchScope,
     onScheduleTypeChange: (ScheduleTargetType?) -> Unit,
     onQueryChange: (String) -> Unit,
-    history: List<String>,
-    onHistorySelected: (String) -> Unit,
-    onRemoveHistory: (String) -> Unit,
-    onClearHistory: () -> Unit,
     schedule: MainUiState,
     mail: MailUiState,
     bars: BarsUiState,
@@ -168,7 +135,6 @@ internal fun GlobalSearchScreen(
     onMail: (SearchMailHit) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
-    onSubmit: () -> Unit,
     revealProgress: Float = 1f,
     sourceFieldBounds: Rect = Rect.Zero,
     focusWhenReady: Boolean = true,
@@ -255,7 +221,6 @@ internal fun GlobalSearchScreen(
                                 scaleY = motion.scaleY
                             },
                         placeholder = { Text(when (scope) {
-                            SearchScope.ALL -> "Поиск по МЭИ"
                             SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
                             SearchScope.BARS -> "Поиск дисциплины в БАРС"
                             SearchScope.MAIL -> "Поиск по почте"
@@ -265,7 +230,6 @@ internal fun GlobalSearchScreen(
                         shape = MaterialTheme.shapes.extraLarge,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
-                            onSubmit()
                             keyboard?.hide()
                         }),
                         colors = TextFieldDefaults.colors(
@@ -325,21 +289,6 @@ internal fun GlobalSearchScreen(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                if (!searching && scope == SearchScope.ALL && history.isNotEmpty()) {
-                    item { SearchSection("Недавние запросы", "Очистить", onClearHistory) }
-                    items(history, key = { "history-" + it }) { entry ->
-                        ListItem(
-                            modifier = Modifier.clickable { onHistorySelected(entry) },
-                            leadingContent = { AppIcon(AppIcons.Refresh, null) },
-                            headlineContent = { Text(entry, maxLines = 1) },
-                            trailingContent = {
-                                IconButton(onClick = { onRemoveHistory(entry) }) {
-                                    AppIcon(AppIcons.ClearLog, "Удалить запрос")
-                                }
-                            },
-                        )
-                    }
-                }
                 if (targets.isNotEmpty()) {
                     item {
                         SearchSection(
@@ -446,14 +395,14 @@ internal fun GlobalSearchScreen(
                             if (scope == SearchScope.MAIL) "Нет совпадений среди загруженных писем."
                             else if (scope == SearchScope.MAPS) "Корпус не найден."
                             else if (scope == SearchScope.BARS) "Нет совпадений среди загруженных дисциплин."
-                            else "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
+                            else "Совпадений нет.",
                             modifier = Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
                 if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
-                    messages.isEmpty() && buildings.isEmpty() && history.isEmpty()) {
+                    messages.isEmpty() && buildings.isEmpty()) {
                     item {
                         Text(
                             when (scope) {
@@ -461,7 +410,6 @@ internal fun GlobalSearchScreen(
                                 SearchScope.BARS -> "Загрузите дисциплины БАРС для поиска."
                                 SearchScope.SCHEDULE -> "Найдите группу, преподавателя или аудиторию."
                                 SearchScope.MAPS -> "Найдите корпус или аудиторию на карте."
-                                SearchScope.ALL -> "Найдите группу, преподавателя, аудиторию, дисциплину или письмо."
                             },
                             Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)

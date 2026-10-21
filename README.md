@@ -1,81 +1,73 @@
 # MPEI Neo
 
-Lightweight native Android timetable client for MPEI, written with Jetpack Compose and Material 3.
+An unofficial MPEI Android client built with Jetpack Compose and Material 3. Its main
+services are **Schedule**, **BARS**, **Mail**, and **Campus map**.
 
-## Current scope
+## Everyday navigation
 
-- Search lesson schedules by **group**, **teacher**, or **classroom**.
-- Open any search result and browse its schedule week by week.
-- Swipe between weekdays; swipe the week-range header to move between weeks.
-- Save schedules to **Quick access** and switch between them without searching again.
-- Offline-first file cache for already loaded weeks.
-- Setting to either refresh the selected schedule on every app launch or stay cache-first.
-- Pull down on a loaded schedule to refresh it manually.
-- Dynamic Material You / Monet color scheme on Android 12+; system light/dark mode is respected.
-- No BARS credentials, Firebase, analytics, advertising SDKs, or account requirement.
+- **Home**: four customizable service tiles and one actionable next-lesson
+  preview. New-grade, unread-mail, and sign-in states are shown as short tile
+  hints instead of additional Home dashboards.
+- **Schedule**: cached agendas, group/teacher/classroom favorites, week
+  refresh, and direct lesson-to-room navigation.
+- **BARS**: cached semester grades, per-discipline controls, optional 4.2
+  planning, and attendance/weekly/Summary reports. The official BARS WebView
+  handles authentication. The numeric forecast is not an official promise of
+  an automatic exam grade.
+- **Mail**: native Inbox/Sent, attachments, replies/composition, notification
+  polling, and an embedded official OWA browser.
+- **Campus**: offline Canvas-based map with building selection, pan, zoom, and
+  inertial dragging.
 
-## Data source
+Search opens inside the active service. Home search defaults to timetable
+targets. A shared search app bar provides a consistent entry point, but no
+cross-service result mixer or scope selector is shown. Schedule retains
+favorite/target selection and category filters; Campus also provides its own
+alphabetic building selector.
 
-The app talks directly to the public MPEI timetable API used by the MpeiX backend:
+Settings provide theme, app update, mail, and BARS preferences. Diagnostic
+export and logs are available separately; advanced OWA and performance probes
+are collapsed unless requested.
 
-- `GET http://ts.mpei.ru/api/search?term=...&type=group|person|room`
-- `GET http://ts.mpei.ru/api/schedule/{type}/{id}?start=yyyy.MM.dd&finish=yyyy.MM.dd&lng=1`
+## Data and architecture
 
-The upstream timetable API is currently HTTP-only. Android cleartext traffic is therefore disabled globally and explicitly allowed only for `ts.mpei.ru` in `network_security_config.xml`.
+The app uses one Android module, Compose Material 3, a manual application
+container, DataStore/preferences, internal caches, and platform WebViews.
+No dependency-injection framework is required.
 
-Transient timetable I/O failures are retried once automatically. Superseded schedule/search calls are cancelled.
+- Timetable data comes from the public MPEI timetable API on `ts.mpei.ru`.
+  The endpoint currently requires cleartext HTTP, permitted only for this host
+  in Android network security configuration.
+- BARS credentials and 2FA codes are entered on the university web pages, not
+  stored by MPEI Neo. Grades and BARS reports use the existing authenticated
+  session and local snapshots.
+- Mail uses the authenticated university OWA session and the OWA
+  `service.svc` protocol. Headers and bodies use an encrypted per-account
+  cache. Notifications use WorkManager.
+- Service stack/gesture decisions live in `ServiceRouteStack.kt`; the main
+  Compose shell owns transition presentation. BARS WebView extraction flags
+  live in `BarsWebFlowState.kt` and persist while its WebView remains mounted.
+- The offline map needs no external MapKit SDK.
 
-## Architecture
+See [UI components](docs/UI_COMPONENTS.md) for service behavior and
+[offline map details](docs/OFFLINE_CAMPUS_MAP.md).
 
-- Single lightweight Android app module.
-- Compose + Material 3 UI.
-- Manual application container instead of a DI framework.
-- OkHttp + Gson for the small timetable API.
-- Preferences DataStore for favorites, selected schedule, and refresh policy.
-- JSON files under internal app storage for week cache; no Room database.
+## Verification and builds
 
-## Tests
-
-- JVM tests validate typed API search, classroom schedule loading, transient network retry, cache-first behavior, forced refresh, cache writes, cancellation, and offline fallback.
-- Instrumented Compose smoke test validates navigation.
-- LeakCanary instrumentation test closes `MainActivity` and fails if application leaks are retained.
-
-## CI / releases
-
-`.github/workflows/android.yml` runs on pushes and pull requests:
-
-1. Unit tests + Android lint.
-2. Feature branches/PRs build a **release APK** signed with an ephemeral test key, so UI smoothness can be tested without debug-build overhead.
-3. Emulator UI tests + LeakCanary heap assertion, followed by installing and launching the release APK as a runtime smoke test.
-4. A successful push to `main` builds a **release APK**, assigns a monotonically increasing CI `versionCode`, signs it using GitHub Actions secrets, and publishes it as a GitHub prerelease.
-
-Main builds use versions such as `0.2.<GitHub run number>`. With one persistent release key in GitHub Actions secrets, future GitHub Release APKs update in place.
-
-Required repository Actions secrets:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-The signing key must never be committed to the repository. Keep a secure backup: losing it means future APKs cannot update installations signed by that key.
-
-Because older CI debug APKs were signed by runner-specific debug keys, moving from an already-installed old debug APK to the first stable-signed main release requires one uninstall/reinstall. After that transition, release-to-release updates can install over the existing app.
-
-## Local build
-
-Use Android Studio Rabbit 1 / AGP 9.4 compatible tooling, JDK 17, Android SDK 36, and Gradle 9.6:
+The project uses JDK 17, Android SDK 37, and Gradle 9.6. Local checks:
 
 ```bash
-gradle testDebugUnitTest lintDebug assembleDebug
+gradle testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease
 ```
 
-For an optimized local test build signed with the local debug key:
+Pull requests to `main` trigger the **PR APK** workflow, which runs unit
+tests, compiles Android UI tests, runs lint, and builds an installable
+`com.rteats.mpeineo.dev` APK.
 
-```bash
-gradle assembleRelease -PTEST_RELEASE_SIGNING=true -PVERSION_CODE=2 -PVERSION_NAME=0.2.2-test
-```
+Every successful push to `main` triggers **Dev APK**, which runs unit tests,
+builds an R8-minified signed Dev APK, and publishes it to the rolling
+[Dev release](https://github.com/rteats/mpei-neo/releases/tag/dev).
+The Dev app uses its own application ID and a public disposable test key;
+its installation is independent of a stable release.
 
-## Status
-
-Schedule-focused prerelease. BARS, maps, mail, QR attendance, and other large features from MpeiX / MpeiApp are intentionally outside the current lightweight scope.
+The release signing key and other private secrets must never be committed.
