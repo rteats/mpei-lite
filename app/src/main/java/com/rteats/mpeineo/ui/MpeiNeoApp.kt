@@ -83,6 +83,10 @@ import kotlin.math.roundToInt
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
+/** Destination used by AppBar actions at the beginning of a back transition. */
+internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
+    serviceRouteAfterBack(routes).lastOrNull()?.let(AppTab::valueOf)
+
 /** Preserve the existing pager-policy unit tests while using stack navigation. */
 internal fun lockedBrowserTab(
     intended: AppTab,
@@ -237,7 +241,10 @@ fun MpeiNeoApp(
         targetValue = if (globalSearchOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
         finishedListener = { settled ->
-            if (settled == 0f) searchOverlayMounted = false
+            if (settled == 0f) {
+                searchOverlayMounted = false
+                globalQuery = ""
+            }
         },
         label = "search-anchored-container-reveal",
     )
@@ -339,7 +346,7 @@ fun MpeiNeoApp(
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
-        appBarService = serviceRouteAfterBack(routeNames).lastOrNull()?.let(AppTab::valueOf)
+        appBarService = searchAppBarDestinationAfterBack(routeNames)
         animateReveal(0f) {
             routeNames = serviceRouteAfterBack(routeNames)
             // The underlying service is already fully rendered, at rest.
@@ -373,7 +380,7 @@ fun MpeiNeoApp(
         globalSearchOpen = false
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        globalQuery = ""
+        // Preserve visible results until the reverse reveal has fully closed.
         viewModel.updateSearchQuery("")
     }
 
@@ -608,11 +615,11 @@ fun MpeiNeoApp(
                             openGlobalSearch(searchAppBarContext(currentService).scope)
                         }
                     },
-                    onScheduleRefresh = if (appBarService == AppTab.SCHEDULE)
+                    onScheduleRefresh = if (!globalSearchOpen && appBarService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
                         viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
-                    onMailCompose = if (searchAppBarAction(
+                    onMailCompose = if (!globalSearchOpen && searchAppBarAction(
                             appBarService,
                             mailListReady = mailState.configured && !mailState.composing &&
                                 mailState.selected == null && !mailWebVisible,
@@ -622,13 +629,13 @@ fun MpeiNeoApp(
                     onSearchBoundsChanged = { bounds ->
                         if (bounds != searchEntryBounds) searchEntryBounds = bounds
                     },
-                    onHomeEditToggle = if (appBarService == null) ({
+                    onHomeEditToggle = if (!globalSearchOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = !homeEditing
                             diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
                         }
                     }) else null,
-                    onHomeSettings = if (appBarService == null) ({
+                    onHomeSettings = if (!globalSearchOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
                             openService(AppTab.SETTINGS)
