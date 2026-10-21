@@ -121,3 +121,37 @@ QA: open search from each native service; test scope chip switching and Back.
 Verify Schedule's favorites and week refresh still work, BARS discipline
 results open the correct detail, and both Inbox and Sent results open within
 the correct mail folder. Test narrow screens and IME in light/dark Monet themes.
+
+
+## BARS contextual information pattern
+
+The BARS overview, cross-course **Фокус на автомат**, per-discipline **План на автомат**,
+and Summary reports share `BarsInfoButton`: a 48dp accessible info icon opening a
+scrollable Material 3 dialog. Back, outside-tap or **Понятно** dismisses the dialog
+without changing any BARS state.
+
+The normal view displays only the values and controls needed to make a decision:
+current target/status, progress, remaining KM mark selectors, week/weight and
+recommendation presets. The dialog contains the explanation of calculation
+bounds, weights, incomplete BARS data, the recommendation heuristic and the
+important distinction between a hypothetical 4.2 forecast and an official
+automatic exam grade. It is never an automatic grade guarantee.
+
+Secondary student-profile facts and original Summary notes, including the
+last successful verification timestamp, remain accessible from their respective
+info buttons rather than consuming long scrolling sections. Genuine errors,
+loading state and no-data guidance **remain inline**, because they affect the
+next user action; actual grade activities and planning inputs are not hidden.
+
+### Device test
+
+- BARS overview: open the profile info and focus info, close via Back and tap
+  outside; confirm profile facts and priority explanations remain accessible.
+- Open a discipline with weighted future KM: tap info, check bounds, missing
+  weights and guarantee explanation, then change grades 3/4/5. Ensure only the
+  preview changes and selection remains after closing the dialog.
+- Open **По неделям**, **Посещаемость** and **Контрольные**: open info to read
+  source notes, verification time and reading instructions. Data cards should
+  remain scannable with no duplicated explanatory footer.
+- Check narrow portrait layout, system font scaling, dark/light Monet colors
+  and screen-reader descriptions. The dialogs scroll for long notes.
