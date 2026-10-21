@@ -39,6 +39,59 @@ internal fun BarsAutoPlanner(
     modifier: Modifier = Modifier,
 ) {
     val plan = remember(discipline) { buildAutoPlan(discipline) }
+    val explanations = when (plan) {
+        is AutoPlanResult.Unavailable -> listOf(
+            BarsInfoSection(
+                "Почему нет плана",
+                plan.explanation,
+            ),
+            BarsInfoSection(
+                "Что такое автомат",
+                "Цель 4,20 используется для ориентировочного планирования оценок. " +
+                    "Официальное решение зависит от правил дисциплины и преподавателя.",
+            ),
+        )
+        is AutoPlanResult.Available -> listOf(
+            BarsInfoSection(
+                "Расчёт по весам БАРС",
+                "Уже получено: ${formatBarsWeightedSum(plan.earned)}. " +
+                    "Если все оставшиеся оценки — 3: ${formatBarsWeightedSum(plan.lowerBound)}. " +
+                    "Если все — 5: ${formatBarsWeightedSum(plan.upperBound)}. " +
+                    "Полученные оценки нельзя менять в сценарии.",
+            ),
+            BarsInfoSection(
+                "Как работает рекомендация",
+                if (plan.canReachTarget)
+                    "План подбирает минимум повышений относительно троек, " +
+                        "чтобы достичь 4,20. Работы с большим весом сильнее влияют " +
+                        "на результат. ${plan.upcoming.size} КМ доступны для моделирования."
+                else
+                    "Даже максимальные оставшиеся оценки не позволяют набрать 4,20 " +
+                        "по известным весам. Можно проверить возможный результат вручную.",
+            ),
+            BarsInfoSection(
+                "Что означает вес",
+                "Вес показывает вклад КМ в итоговую взвешенную сумму. " +
+                    "Изменение оценки на один балл добавляет ровно вес этого КМ. " +
+                    "Список отсортирован по влиянию; неделя помогает выбрать время подготовки.",
+            ),
+            BarsInfoSection(
+                "Полнота данных",
+                if (plan.totalWeight < 0.9999)
+                    "Сумма известных весов: ${(plan.totalWeight * 100).roundToInt()}%. " +
+                        "Недостающие веса не выдумываются и не включаются в прогноз."
+                else
+                    "Все предусмотренные расчётом веса учтены. " +
+                        "Это не гарантирует соответствие правилам выставления автомата.",
+            ),
+            BarsInfoSection(
+                "Важно",
+                "Это лишь прогноз на основе данных БАРС, а не официальная оценка. " +
+                    "Фактические условия автомата устанавливают дисциплина и преподаватель. " +
+                    "Нажатие на 3/4/5 изменяет только ваш сценарий, а не оценки в БАРС.",
+            ),
+        )
+    }
     Column(
         modifier = modifier.fillMaxWidth().testTag("bars-auto-planner"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -63,6 +116,11 @@ internal fun BarsAutoPlanner(
                 "Цель 4,20",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            BarsInfoButton(
+                title = "Как работает «Автомат»",
+                sections = explanations,
+                tag = "bars-auto-info",
             )
         }
 
@@ -124,38 +182,16 @@ internal fun BarsAutoPlanner(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Text(
-                    "Уже получено: ${formatBarsWeightedSum(plan.earned)} · " +
-                        "если все 3: ${formatBarsWeightedSum(plan.lowerBound)} · " +
-                        "максимум: ${formatBarsWeightedSum(plan.upperBound)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
-                if (plan.totalWeight < 0.9999) {
-                    Text(
-                        "Веса КМ суммарно составляют " +
-                            "${(plan.totalWeight * 100).roundToInt()}%. " +
-                            "Недостающий вес не придуман и в прогноз не включён.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
-
                 if (plan.upcoming.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Сценарий для оставшихся КМ",
+                            "Оставшиеся КМ",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            "${scenario.stepsAboveThree} шагов выше 3",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant,
                         )
                     }
                     Row(
@@ -184,29 +220,6 @@ internal fun BarsAutoPlanner(
                             },
                         ) { Text("Все 5") }
                     }
-                    Text(
-                        if (plan.canReachTarget)
-                            "Рекомендация просит минимум повышений оценок относительно троек. " +
-                                "Больше всего влияет КМ с наибольшим весом."
-                        else
-                            "Расставьте предполагаемые оценки, чтобы оценить лучший " +
-                                "возможный результат. Все полученные оценки фиксированы.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-
-                    Text(
-                        "Приоритеты по влиянию",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        "Наиболее весомые работы сверху. Неделя помогает выбрать, " +
-                            "к чему готовиться сначала.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-
                     autoPriorities(plan).forEachIndexed { rank, slot ->
                         val index = plan.upcoming.indexOf(slot)
                         HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.45f))
@@ -232,7 +245,6 @@ internal fun BarsAutoPlanner(
                                     buildList {
                                         add("Вес ${(slot.weight * 100).roundToInt()}%")
                                         slot.week?.let { add("Неделя ${it}") }
-                                        add("+${formatBarsWeightedSum(slot.weight)} за балл")
                                     }.joinToString(" · "),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = colors.onSurfaceVariant,
@@ -267,12 +279,6 @@ internal fun BarsAutoPlanner(
                         color = colors.onSurfaceVariant,
                     )
                 }
-                Text(
-                    "Прогноз по весам БАРС, не гарантия автомата: решение " +
-                        "зависит от правил дисциплины и преподавателя.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
             }
         }
     }
