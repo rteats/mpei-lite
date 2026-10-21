@@ -7,6 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SearchAppBarTest {
+    @Test fun barActionsStartChangingBeforeTheOutgoingPageHasClosed() {
+        assertEquals(null, searchAppBarDestinationAfterBack(listOf(AppTab.BARS.name)))
+        assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(
+            listOf(AppTab.SCHEDULE.name, AppTab.MAPS.name),
+        ))
+        assertEquals(null, searchAppBarDestinationAfterBack(emptyList()))
+    }
+
     @Test fun searchHintFollowsActualNavigationDestination() {
         assertEquals(SearchScope.ALL, searchAppBarContext(null).scope)
         assertEquals("Поиск по МЭИ", searchAppBarContext(null).placeholder)

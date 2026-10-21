@@ -83,6 +83,10 @@ import kotlin.math.roundToInt
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
+/** Destination used by AppBar actions at the beginning of a back transition. */
+internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
+    serviceRouteAfterBack(routes).lastOrNull()?.let(AppTab::valueOf)
+
 /** Preserve the existing pager-policy unit tests while using stack navigation. */
 internal fun lockedBrowserTab(
     intended: AppTab,
@@ -249,17 +253,24 @@ fun MpeiNeoApp(
     var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
     var searchOverlayMounted by remember { mutableStateOf(globalSearchOpen) }
     var searchEntryBounds by remember { mutableStateOf(Rect.Zero) }
+    // Freeze the tapped field bounds before AppBar actions change their width.
+    var activatedSearchBounds by remember { mutableStateOf(Rect.Zero) }
+    // The bar switches context when navigation begins, not when its slide ends.
+    var appBarService by remember { mutableStateOf(currentService) }
     var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
+    var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchReveal by animateFloatAsState(
         targetValue = if (globalSearchOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
         finishedListener = { settled ->
-            if (settled == 0f) searchOverlayMounted = false
+            if (settled == 0f) {
+                searchOverlayMounted = false
+                globalQuery = ""
+            }
         },
         label = "search-anchored-container-reveal",
     )
     var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
-    var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
     var recentQueries by remember { mutableStateOf(searchHistory.load()) }
     var nextLessonFocusId by remember { mutableIntStateOf(0) }
@@ -336,6 +347,7 @@ fun MpeiNeoApp(
         }
         barsBrowserJustClosed = false
         barsDetailOpen = false
+        appBarService = target
         routeNames = serviceRouteAfterOpen(routeNames, target, viaClassroom)
         reveal = 0f
         logNavigation("superapp push " + target.name +
@@ -355,6 +367,7 @@ fun MpeiNeoApp(
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
+        appBarService = searchAppBarDestinationAfterBack(routeNames)
         animateReveal(0f) {
             routeNames = serviceRouteAfterBack(routeNames)
             // The underlying service is already fully rendered, at rest.
@@ -388,13 +401,14 @@ fun MpeiNeoApp(
         globalSearchOpen = false
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        globalQuery = ""
+        // Preserve visible results until the reverse reveal has fully closed.
         viewModel.updateSearchQuery("")
     }
 
     fun openGlobalSearch(scope: SearchScope = SearchScope.ALL) {
         if (globalSearchOpen) return
         searchScope = scope
+        activatedSearchBounds = searchEntryBounds
         searchOverlayMounted = true
         globalSearchOpen = true
         globalQuery = ""
@@ -618,18 +632,18 @@ fun MpeiNeoApp(
             // The native search app bar reserves space rather than floating
             // over controls, scrollable content, maps, or WebViews.
             ContextSearchAppBar(
-                    context = searchAppBarContext(currentService),
+                    context = searchAppBarContext(appBarService),
                     onSearch = {
                         if (!isTransitioning) {
                             openGlobalSearch(searchAppBarContext(currentService).scope)
                         }
                     },
-                    onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
+                    onScheduleRefresh = if (!globalSearchOpen && appBarService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
                         viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
-                    onMailCompose = if (searchAppBarAction(
-                            currentService,
+                    onMailCompose = if (!globalSearchOpen && searchAppBarAction(
+                            appBarService,
                             mailListReady = mailState.configured && !mailState.composing &&
                                 mailState.selected == null && !mailWebVisible,
                         ) == SearchAppBarAction.COMPOSE_MAIL
@@ -638,13 +652,13 @@ fun MpeiNeoApp(
                     onSearchBoundsChanged = { bounds ->
                         if (bounds != searchEntryBounds) searchEntryBounds = bounds
                     },
-                    onHomeEditToggle = if (currentService == null) ({
+                    onHomeEditToggle = if (!globalSearchOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = !homeEditing
                             diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
                         }
                     }) else null,
-                    onHomeSettings = if (currentService == null) ({
+                    onHomeSettings = if (!globalSearchOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
                             openService(AppTab.SETTINGS)
@@ -831,6 +845,7 @@ fun MpeiNeoApp(
                 onClose = ::closeGlobalSearch,
                 onSubmit = ::rememberGlobalQuery,
                 revealProgress = searchReveal,
+                sourceFieldBounds = if (activatedSearchBounds.width > 0f) activatedSearchBounds else searchEntryBounds,
                 focusWhenReady = globalSearchOpen && searchReveal >= 0.98f,
             )
         }

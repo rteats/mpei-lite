@@ -13,7 +13,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Material-style container reveal. The surface's bounds interpolate from the
  * measured collapsed search field, not an arbitrary offscreen start position.
- * The content never scales, so text and icons do not distort.
+ * The result content never scales. Only the transitioning search input has a
+ * small scale adjustment to match the original search field bounds.
  */
 internal fun searchRevealRect(field: Rect, viewport: Size, progress: Float): Rect {
     if (field.width <= 0f || field.height <= 0f) {
@@ -26,6 +27,27 @@ internal fun searchRevealRect(field: Rect, viewport: Size, progress: Float): Rec
         lerp(field.top, 0f),
         lerp(field.right, viewport.width),
         lerp(field.bottom, viewport.height),
+    )
+}
+
+internal data class SearchFieldTransform(
+    val translationX: Float = 0f,
+    val translationY: Float = 0f,
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
+)
+
+/** Move the expanded input from its real collapsed bounds without moving layout siblings. */
+internal fun searchFieldTransform(source: Rect, destination: Rect, progress: Float): SearchFieldTransform {
+    if (source.width <= 0f || source.height <= 0f ||
+        destination.width <= 0f || destination.height <= 0f) return SearchFieldTransform()
+    val remaining = 1f - progress.coerceIn(0f, 1f)
+    if (remaining == 0f) return SearchFieldTransform()
+    return SearchFieldTransform(
+        translationX = (source.center.x - destination.center.x) * remaining,
+        translationY = (source.center.y - destination.center.y) * remaining,
+        scaleX = 1f + (source.width / destination.width - 1f) * remaining,
+        scaleY = 1f + (source.height / destination.height - 1f) * remaining,
     )
 }
 
