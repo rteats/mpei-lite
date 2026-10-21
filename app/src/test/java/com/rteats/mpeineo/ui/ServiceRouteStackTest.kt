@@ -24,4 +24,16 @@ class ServiceRouteStackTest {
         assertEquals(listOf(AppTab.MAPS.name),
             serviceRouteAfterOpen(listOf(AppTab.MAIL.name), AppTab.MAPS, true))
     }
+    @Test fun snapshotKeepsCurrentAndPreviousDestinationsConsistent() {
+        val home = ServiceRouteSnapshot(emptyList())
+        assertEquals(null, home.current)
+        assertEquals(null, home.beneath)
+        val schedule = ServiceRouteSnapshot(home.open(AppTab.SCHEDULE))
+        assertEquals(AppTab.SCHEDULE, schedule.current)
+        val map = ServiceRouteSnapshot(schedule.open(AppTab.MAPS, viaClassroom = true))
+        assertEquals(AppTab.MAPS, map.current)
+        assertEquals(AppTab.SCHEDULE, map.beneath)
+        assertEquals(listOf(AppTab.SCHEDULE.name), map.back())
+        assertEquals(emptyList<String>(), ServiceRouteSnapshot(map.back()).back())
+    }
 }
