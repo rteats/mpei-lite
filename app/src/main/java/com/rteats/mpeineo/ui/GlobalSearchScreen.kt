@@ -151,7 +151,6 @@ internal class GlobalSearchHistory(context: Context) {
 internal fun GlobalSearchScreen(
     query: String,
     scope: SearchScope,
-    onScopeChange: (SearchScope) -> Unit,
     onScheduleTypeChange: (ScheduleTargetType?) -> Unit,
     onQueryChange: (String) -> Unit,
     history: List<String>,
@@ -297,19 +296,8 @@ internal fun GlobalSearchScreen(
                         alpha = ((motionProgress - 0.05f) / 0.60f).coerceIn(0f, 1f)
                     },
                 ) {
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(SearchScope.entries) { option ->
-                    FilterChip(
-                        selected = scope == option,
-                        onClick = { onScopeChange(option) },
-                        label = { Text(option.label) },
-                        modifier = Modifier.testTag("search-scope-" + option.name.lowercase()),
-                    )
-                }
-            }
+            // Search is contextual: selecting another service happens through Home.
+            // Schedule alone exposes target-type filters.
             if (scope == SearchScope.SCHEDULE) {
                 androidx.compose.foundation.lazy.LazyRow(
                     modifier = Modifier.fillMaxWidth()

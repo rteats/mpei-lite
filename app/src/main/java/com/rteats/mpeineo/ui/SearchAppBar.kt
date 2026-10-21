@@ -42,14 +42,14 @@ internal data class SearchAppBarContext(
 )
 
 internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab) {
-    null -> SearchAppBarContext(SearchScope.ALL, "Поиск по МЭИ")
+    null -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
     AppTab.SCHEDULE -> SearchAppBarContext(
         SearchScope.SCHEDULE, "Группа, преподаватель, аудитория",
     )
     AppTab.BARS -> SearchAppBarContext(SearchScope.BARS, "Поиск дисциплины в БАРС")
     AppTab.MAIL -> SearchAppBarContext(SearchScope.MAIL, "Поиск по почте")
     AppTab.MAPS -> SearchAppBarContext(SearchScope.MAPS, "Корпус или аудитория")
-    AppTab.SETTINGS -> SearchAppBarContext(SearchScope.ALL, "Поиск по МЭИ")
+    AppTab.SETTINGS -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
 }
 
 internal enum class SearchAppBarAction { NONE, HOME, REFRESH_WEEK, COMPOSE_MAIL }

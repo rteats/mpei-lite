@@ -270,7 +270,7 @@ fun MpeiNeoApp(
         },
         label = "search-anchored-container-reveal",
     )
-    var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
+    var searchScope by rememberSaveable { mutableStateOf(SearchScope.SCHEDULE) }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
     var recentQueries by remember { mutableStateOf(searchHistory.load()) }
     var nextLessonFocusId by remember { mutableIntStateOf(0) }
@@ -388,11 +388,6 @@ fun MpeiNeoApp(
         viewModel.updateSearchQuery(if (searchScope.includesSchedule) value else "")
     }
 
-    fun updateSearchScope(next: SearchScope) {
-        searchScope = next
-        viewModel.updateSearchQuery(if (next.includesSchedule) globalQuery else "")
-    }
-
     fun rememberGlobalQuery() {
         if (globalQuery.isNotBlank()) recentQueries = searchHistory.record(globalQuery)
     }
@@ -405,7 +400,7 @@ fun MpeiNeoApp(
         viewModel.updateSearchQuery("")
     }
 
-    fun openGlobalSearch(scope: SearchScope = SearchScope.ALL) {
+    fun openGlobalSearch(scope: SearchScope = SearchScope.SCHEDULE) {
         if (globalSearchOpen) return
         searchScope = scope
         activatedSearchBounds = searchEntryBounds
@@ -825,7 +820,6 @@ fun MpeiNeoApp(
             GlobalSearchScreen(
                 query = globalQuery,
                 scope = searchScope,
-                onScopeChange = ::updateSearchScope,
                 onScheduleTypeChange = viewModel::setSearchType,
                 onQueryChange = ::updateGlobalQuery,
                 history = recentQueries,
