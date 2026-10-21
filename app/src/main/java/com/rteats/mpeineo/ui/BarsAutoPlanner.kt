@@ -108,10 +108,12 @@ internal fun BarsAutoPlanner(
             )
             Text(
                 "План на автомат",
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.weight(1f))
             Text(
                 "Цель 4,20",
                 style = MaterialTheme.typography.labelMedium,
