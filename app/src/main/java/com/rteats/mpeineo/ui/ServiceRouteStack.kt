@@ -75,13 +75,6 @@ internal fun acceptsServiceBackStart(
     mapEdgeZone: Boolean,
 ): Boolean = x >= systemEdge && (mapEdgeZone || x <= width - systemEdge)
 
-/**
- * A single composited foreground page over a permanently mounted background.
- *
- * Both drag progress and automatic push/pop operate on the SAME reveal value.
- * The outgoing route is removed only after its foreground is entirely offscreen:
- * no AnimatedContent outgoing slot or delayed translation reset can flash it back.
- */
 /** Derive all visible route destinations from one route snapshot. */
 internal data class ServiceRouteSnapshot(val names: List<String>) {
     val current: AppTab? get() = names.lastOrNull()?.let(AppTab::valueOf)
