@@ -42,6 +42,7 @@ internal fun SuperAppHome(
     tiles: List<HomeTile>,
     onChangeLayout: (List<HomeTile>) -> Unit,
     onOpen: (AppTab) -> Unit,
+    onOpenNextLesson: (HomeLessonHighlight) -> Unit = { onOpen(AppTab.SCHEDULE) },
     onOpenBarsDiscipline: (String) -> Unit,
     onOpenMailMessage: (MailSummary) -> Unit,
     editing: Boolean = false,
@@ -195,7 +196,10 @@ internal fun SuperAppHome(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 HomeNextLessonCard(
                     state = schedule,
-                    onClick = { onOpen(AppTab.SCHEDULE) },
+                    onClick = { highlight ->
+                        if (highlight != null) onOpenNextLesson(highlight)
+                        else onOpen(AppTab.SCHEDULE)
+                    },
                     barsDisciplines = bars.disciplines,
                     onOpenBarsDiscipline = onOpenBarsDiscipline,
                 )
