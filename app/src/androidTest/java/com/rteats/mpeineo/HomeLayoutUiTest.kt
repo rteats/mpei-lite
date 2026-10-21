@@ -49,7 +49,6 @@ class HomeLayoutUiTest {
                         bars = BarsUiState(),
                         mail = MailUiState(),
                         onOpenBarsDiscipline = {},
-                        onOpenMailMessage = {},
                         tiles = layout,
                         onChangeLayout = { layout = it },
                         onOpen = { opens++ },
