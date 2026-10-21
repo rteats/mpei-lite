@@ -228,6 +228,10 @@ fun MpeiNeoApp(
     var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
     var searchOverlayMounted by remember { mutableStateOf(globalSearchOpen) }
     var searchEntryBounds by remember { mutableStateOf(Rect.Zero) }
+    // Freeze the tapped field bounds before AppBar actions change their width.
+    var activatedSearchBounds by remember { mutableStateOf(Rect.Zero) }
+    // The bar switches context when navigation begins, not when its slide ends.
+    var appBarService by remember { mutableStateOf(currentService) }
     var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
     val searchReveal by animateFloatAsState(
         targetValue = if (globalSearchOpen) 1f else 0f,
@@ -315,6 +319,7 @@ fun MpeiNeoApp(
         }
         barsBrowserJustClosed = false
         barsDetailOpen = false
+        appBarService = target
         routeNames = serviceRouteAfterOpen(routeNames, target, viaClassroom)
         reveal = 0f
         logNavigation("superapp push " + target.name +
@@ -334,6 +339,7 @@ fun MpeiNeoApp(
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
+        appBarService = serviceRouteAfterBack(routeNames).lastOrNull()?.let(AppTab::valueOf)
         animateReveal(0f) {
             routeNames = serviceRouteAfterBack(routeNames)
             // The underlying service is already fully rendered, at rest.
@@ -374,6 +380,7 @@ fun MpeiNeoApp(
     fun openGlobalSearch(scope: SearchScope = SearchScope.ALL) {
         if (globalSearchOpen) return
         searchScope = scope
+        activatedSearchBounds = searchEntryBounds
         searchOverlayMounted = true
         globalSearchOpen = true
         globalQuery = ""
@@ -595,18 +602,18 @@ fun MpeiNeoApp(
             // The native search app bar reserves space rather than floating
             // over controls, scrollable content, maps, or WebViews.
             ContextSearchAppBar(
-                    context = searchAppBarContext(currentService),
+                    context = searchAppBarContext(appBarService),
                     onSearch = {
                         if (!isTransitioning) {
                             openGlobalSearch(searchAppBarContext(currentService).scope)
                         }
                     },
-                    onScheduleRefresh = if (currentService == AppTab.SCHEDULE)
+                    onScheduleRefresh = if (appBarService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
                         viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
                     onMailCompose = if (searchAppBarAction(
-                            currentService,
+                            appBarService,
                             mailListReady = mailState.configured && !mailState.composing &&
                                 mailState.selected == null && !mailWebVisible,
                         ) == SearchAppBarAction.COMPOSE_MAIL
@@ -615,13 +622,13 @@ fun MpeiNeoApp(
                     onSearchBoundsChanged = { bounds ->
                         if (bounds != searchEntryBounds) searchEntryBounds = bounds
                     },
-                    onHomeEditToggle = if (currentService == null) ({
+                    onHomeEditToggle = if (appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = !homeEditing
                             diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
                         }
                     }) else null,
-                    onHomeSettings = if (currentService == null) ({
+                    onHomeSettings = if (appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
                             openService(AppTab.SETTINGS)
@@ -790,6 +797,7 @@ fun MpeiNeoApp(
                 onClose = ::closeGlobalSearch,
                 onSubmit = ::rememberGlobalQuery,
                 revealProgress = searchReveal,
+                sourceFieldBounds = if (activatedSearchBounds.width > 0f) activatedSearchBounds else searchEntryBounds,
                 focusWhenReady = globalSearchOpen && searchReveal >= 0.98f,
             )
         }

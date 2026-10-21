@@ -12,6 +12,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -166,6 +171,7 @@ internal fun GlobalSearchScreen(
     onClose: () -> Unit,
     onSubmit: () -> Unit,
     revealProgress: Float = 1f,
+    sourceFieldBounds: Rect = Rect.Zero,
     focusWhenReady: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
@@ -173,6 +179,11 @@ internal fun GlobalSearchScreen(
     var renameText by remember { mutableStateOf("") }
     val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
     val keyboard = LocalSoftwareKeyboardController.current
+    var targetFieldBounds by remember { mutableStateOf(Rect.Zero) }
+    val motion = searchFieldTransform(sourceFieldBounds, targetFieldBounds, revealProgress)
+    val buttonTravel = with(LocalDensity.current) { 72.dp.toPx() }
+    val contentTravel = with(LocalDensity.current) { 88.dp.toPx() }
+    val motionProgress = revealProgress.coerceIn(0f, 1f)
     BackHandler(onBack = onClose)
     // Opening the keyboard before the container expansion has completed
     // causes a layout resize in the middle of the transition.
@@ -211,50 +222,81 @@ internal fun GlobalSearchScreen(
             revealProgress.coerceIn(0f, 1f),
         ),
     ) {
-        Column(
-            modifier = Modifier.statusBarsPadding().graphicsLayer {
-                alpha = ((revealProgress - 0.12f) / 0.48f).coerceIn(0f, 1f)
-            },
-        ) {
+        Column(modifier = Modifier.statusBarsPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onClose) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.graphicsLayer {
+                        translationX = -buttonTravel * (1f - motionProgress)
+                    },
+                ) {
                     AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
                 }
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).focusRequester(focus)
-                        .testTag("global-search-input"),
-                    placeholder = { Text(when (scope) {
-                        SearchScope.ALL -> "Поиск по МЭИ"
-                        SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
-                        SearchScope.BARS -> "Поиск дисциплины в БАРС"
-                        SearchScope.MAIL -> "Поиск по почте"
-                        SearchScope.MAPS -> "Корпус или аудитория"
-                    }) },
-                    shape = MaterialTheme.shapes.extraLarge,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        onSubmit()
-                        keyboard?.hide()
-                    }),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    ),
-                    trailingIcon = if (query.isNotBlank()) {{
-                        IconButton(onClick = { onQueryChange("") }) {
-                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
-                        }
-                    }} else null,
-                )
+                // Measure the final slot, not the transformed input, to avoid
+                // a feedback loop during the movement between the two bounds.
+                Box(
+                    modifier = Modifier.weight(1f).onGloballyPositioned { coordinates ->
+                        val bounds = coordinates.boundsInRoot()
+                        if (targetFieldBounds != bounds) targetFieldBounds = bounds
+                    },
+                ) {
+                    TextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().focusRequester(focus)
+                            .testTag("global-search-input")
+                            .graphicsLayer {
+                                translationX = motion.translationX
+                                translationY = motion.translationY
+                                scaleX = motion.scaleX
+                                scaleY = motion.scaleY
+                            },
+                        placeholder = { Text(when (scope) {
+                            SearchScope.ALL -> "Поиск по МЭИ"
+                            SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
+                            SearchScope.BARS -> "Поиск дисциплины в БАРС"
+                            SearchScope.MAIL -> "Поиск по почте"
+                            SearchScope.MAPS -> "Корпус или аудитория"
+                        }) },
+                        leadingIcon = { AppIcon(AppIcons.Search, contentDescription = null) },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {
+                            onSubmit()
+                            keyboard?.hide()
+                        }),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        ),
+                        trailingIcon = if (query.isNotBlank()) {{
+                            IconButton(
+                                onClick = { onQueryChange("") },
+                                modifier = Modifier.graphicsLayer {
+                                    translationX = buttonTravel * (1f - motionProgress)
+                                },
+                            ) {
+                                AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
+                            }
+                        }} else null,
+                    )
+                }
             }
+            // Search chips and results start behind the field and slide into
+            // view. Clipping the body prevents drawing through the header.
+            Box(modifier = Modifier.weight(1f).clipToBounds()) {
+                Column(
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        translationY = -contentTravel * (1f - motionProgress)
+                        alpha = ((motionProgress - 0.05f) / 0.60f).coerceIn(0f, 1f)
+                    },
+                ) {
             androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -461,6 +503,8 @@ internal fun GlobalSearchScreen(
                         TextButton(onClick = { renameTarget = null }) { Text("Отмена") }
                     },
                 )
+            }
+                }
             }
         }
     }

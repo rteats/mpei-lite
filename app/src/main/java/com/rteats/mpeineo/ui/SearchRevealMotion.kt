@@ -29,6 +29,26 @@ internal fun searchRevealRect(field: Rect, viewport: Size, progress: Float): Rec
     )
 }
 
+internal data class SearchFieldTransform(
+    val translationX: Float = 0f,
+    val translationY: Float = 0f,
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
+)
+
+/** Move the expanded input from its real collapsed bounds without moving layout siblings. */
+internal fun searchFieldTransform(source: Rect, destination: Rect, progress: Float): SearchFieldTransform {
+    if (source.width <= 0f || source.height <= 0f ||
+        destination.width <= 0f || destination.height <= 0f) return SearchFieldTransform()
+    val remaining = 1f - progress.coerceIn(0f, 1f)
+    return SearchFieldTransform(
+        translationX = (source.center.x - destination.center.x) * remaining,
+        translationY = (source.center.y - destination.center.y) * remaining,
+        scaleX = 1f + (source.width / destination.width - 1f) * remaining,
+        scaleY = 1f + (source.height / destination.height - 1f) * remaining,
+    )
+}
+
 internal class SearchRevealShape(
     private val entry: Rect,
     private val progress: Float,
