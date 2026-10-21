@@ -42,6 +42,7 @@ internal fun searchFieldTransform(source: Rect, destination: Rect, progress: Flo
     if (source.width <= 0f || source.height <= 0f ||
         destination.width <= 0f || destination.height <= 0f) return SearchFieldTransform()
     val remaining = 1f - progress.coerceIn(0f, 1f)
+    if (remaining == 0f) return SearchFieldTransform()
     return SearchFieldTransform(
         translationX = (source.center.x - destination.center.x) * remaining,
         translationY = (source.center.y - destination.center.y) * remaining,
