@@ -34,10 +34,7 @@ class GlobalSearchIndexTest {
         assertEquals(2L, GlobalSearchIndex.mail("PROFESSOR", messages).single().uid)
     }
 
-    @Test fun scopesKeepServiceResultsSeparateWithoutLosingCrossSearch() {
-        assertTrue(SearchScope.ALL.includesSchedule)
-        assertTrue(SearchScope.ALL.includesBars)
-        assertTrue(SearchScope.ALL.includesMail)
+    @Test fun scopesKeepServiceResultsSeparate() {
         assertTrue(SearchScope.SCHEDULE.includesSchedule)
         assertTrue(!SearchScope.SCHEDULE.includesBars)
         assertTrue(!SearchScope.BARS.includesMail)
@@ -115,8 +112,9 @@ class GlobalSearchIndexTest {
             "", state, SearchScope.MAPS.scheduleTargetTypeFilter(state.searchType)))
         assertEquals(emptyList<ScheduleTarget>(), GlobalSearchIndex.targets(
             "иванов", state, SearchScope.MAPS.scheduleTargetTypeFilter(state.searchType)))
-        assertTrue(SearchScope.ALL.showScheduleTargets(""))
-        assertEquals(null, SearchScope.ALL.scheduleTargetTypeFilter(state.searchType))
+        assertTrue(SearchScope.SCHEDULE.showScheduleTargets(""))
+        assertEquals(ScheduleTargetType.PERSON,
+            SearchScope.SCHEDULE.scheduleTargetTypeFilter(state.searchType))
     }
 
     @Test fun scopeTypeFilterCannotLeakToAllServices() {
@@ -127,8 +125,7 @@ class GlobalSearchIndexTest {
             favorites = listOf(group, teacher),
             searchType = ScheduleTargetType.GROUP,
         )
-        // Schedule filter narrows the current Schedule category, while
-        // the cross-service "Все" scope should show both types.
+        // Schedule type filtering must not affect the unfiltered index API.
         assertEquals(listOf(group),
             GlobalSearchIndex.targets("", state, state.searchType))
         assertEquals(listOf(group, teacher),
