@@ -80,10 +80,40 @@ internal fun nextHomeLesson(
     }
     .minByOrNull { it.startsAt }
 
+/**
+ * The home preview can come from either cached week. Resolve that exact
+ * source week instead of assuming the lesson belongs to the current week.
+ * Missing or changed cache must never highlight an unrelated class.
+ */
+internal fun homeLessonFocus(
+    highlight: HomeLessonHighlight,
+    weeks: Map<Int, ScheduleWeek>,
+    requestId: Int,
+): ScheduleLessonFocus? {
+    val date = highlight.date.toString()
+    val offset = weeks.entries.firstOrNull { (_, week) ->
+        week.days.any { day ->
+            day.date == date && day.lessons.any { lesson ->
+                lesson.name == highlight.lesson.name &&
+                    lesson.startTime == highlight.lesson.startTime &&
+                    lesson.place == highlight.lesson.place
+            }
+        }
+    }?.key ?: return null
+    return ScheduleLessonFocus(
+        requestId = requestId,
+        weekOffset = offset,
+        date = date,
+        name = highlight.lesson.name,
+        startTime = highlight.lesson.startTime,
+        place = highlight.lesson.place,
+    )
+}
+
 @Composable
 internal fun HomeNextLessonCard(
     state: MainUiState,
-    onClick: () -> Unit,
+    onClick: (HomeLessonHighlight?) -> Unit,
     barsDisciplines: List<BarsDiscipline> = emptyList(),
     onOpenBarsDiscipline: (String) -> Unit = {},
 ) {
@@ -132,7 +162,7 @@ internal fun HomeNextLessonCard(
     }
 
     Surface(
-        onClick = onClick,
+        onClick = { onClick(upcoming) },
         modifier = Modifier.fillMaxWidth().testTag("home-next-lesson"),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.secondaryContainer,
