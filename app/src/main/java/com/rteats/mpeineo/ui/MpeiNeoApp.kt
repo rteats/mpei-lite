@@ -394,6 +394,7 @@ fun MpeiNeoApp(
         scheduleLessonFocus = ScheduleLessonFocus(
             requestId = nextLessonFocusId, weekOffset = hit.weekOffset,
             date = hit.date, name = hit.lesson.name, startTime = hit.lesson.startTime,
+            place = hit.lesson.place,
         )
         // The hit belongs to the selected timetable. Do not re-select that
         // timetable: doing so clears its loaded weeks and loses the result.
@@ -649,6 +650,15 @@ fun MpeiNeoApp(
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
                                 openService(target)
+                            }
+                        },
+                        onOpenNextLesson = { highlight ->
+                            if (currentService == null && !isTransitioning) {
+                                nextLessonFocusId++
+                                scheduleLessonFocus = homeLessonFocus(
+                                    highlight, scheduleState.agendaWeeks, nextLessonFocusId,
+                                )
+                                openService(AppTab.SCHEDULE)
                             }
                         },
                         onOpenBarsDiscipline = { discipline ->
