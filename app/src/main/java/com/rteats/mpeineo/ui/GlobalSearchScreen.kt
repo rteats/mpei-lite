@@ -395,14 +395,14 @@ internal fun GlobalSearchScreen(
                             if (scope == SearchScope.MAIL) "Нет совпадений среди загруженных писем."
                             else if (scope == SearchScope.MAPS) "Корпус не найден."
                             else if (scope == SearchScope.BARS) "Нет совпадений среди загруженных дисциплин."
-                            else "Совпадений нет. Почта и БАРС ищутся среди сохранённых данных.",
+                            else "Совпадений нет.",
                             modifier = Modifier.padding(24.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
                 if (!searching && targets.isEmpty() && disciplines.isEmpty() &&
-                    messages.isEmpty() && buildings.isEmpty() && history.isEmpty()) {
+                    messages.isEmpty() && buildings.isEmpty()) {
                     item {
                         Text(
                             when (scope) {
