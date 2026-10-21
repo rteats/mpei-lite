@@ -24,6 +24,51 @@ class SuperAppBackSwipeTest {
         assertFalse(acceptsServiceBackStart(1070f, 1080f, 24f, mapEdgeZone = false))
     }
 
+    @Test fun barsDisciplineSwipeReturnsToOverviewInsteadOfHome() {
+        assertTrue(
+            barsSwipeTarget(
+                foreground = true, isTransitioning = false, imeVisible = false,
+                browserVisible = false, authenticated = true, detailOpen = true,
+            ) == BarsSwipeTarget.DISCIPLINE_OVERVIEW,
+        )
+        assertTrue(
+            barsSwipeTarget(
+                foreground = true, isTransitioning = false, imeVisible = false,
+                browserVisible = false, authenticated = true, detailOpen = false,
+            ) == BarsSwipeTarget.HOME,
+        )
+    }
+
+    @Test fun barsGestureNeverInterceptsPortalImeTransitionOrBackground() {
+        fun target(
+            foreground: Boolean = true,
+            transitioning: Boolean = false,
+            keyboard: Boolean = false,
+            browser: Boolean = false,
+            authenticated: Boolean = true,
+        ): BarsSwipeTarget = barsSwipeTarget(
+            foreground = foreground,
+            isTransitioning = transitioning,
+            imeVisible = keyboard,
+            browserVisible = browser,
+            authenticated = authenticated,
+            detailOpen = true,
+        )
+        assertTrue(target(foreground = false) == BarsSwipeTarget.DISABLED)
+        assertTrue(target(transitioning = true) == BarsSwipeTarget.DISABLED)
+        assertTrue(target(keyboard = true) == BarsSwipeTarget.DISABLED)
+        assertTrue(target(browser = true) == BarsSwipeTarget.DISABLED)
+        assertTrue(target(authenticated = false) == BarsSwipeTarget.DISABLED)
+    }
+
+    @Test fun nestedBarsBackUsesNormalFullWidthGestureThreshold() {
+        assertTrue(acceptsServiceBackStart(
+            540f, 1080f, 24f, mapEdgeZone = false,
+        ))
+        assertTrue(shouldCommitServiceBackSwipe(216f, 1080f))
+        assertFalse(shouldCommitServiceBackSwipe(215f, 1080f))
+    }
+
     @Test fun invalidWidthCannotTriggerNavigation() {
         assertFalse(shouldCommitServiceBackSwipe(300f, 0f))
     }
