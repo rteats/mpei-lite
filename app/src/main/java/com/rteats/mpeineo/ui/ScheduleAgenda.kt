@@ -177,6 +177,9 @@ internal fun ScheduleAgenda(
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
+        // Publish focus only after the day itself has finished scrolling.
+        // The lesson card then brings its own bounds into view.
+        var readyFocusId by remember(displayedWeek) { mutableIntStateOf(-1) }
         LaunchedEffect(displayedWeek, visibleWeek, listState) {
             if (displayedWeek == visibleWeek) {
                 snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
@@ -185,12 +188,14 @@ internal fun ScheduleAgenda(
             }
         }
         LaunchedEffect(focusLesson?.requestId, displayedWeek, state.agendaWeeks[displayedWeek]) {
+            readyFocusId = -1
             val request = focusLesson ?: return@LaunchedEffect
             if (request.weekOffset != displayedWeek ||
                 state.agendaWeeks[displayedWeek] == null) return@LaunchedEffect
             val index = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
                 .getOrDefault(0).coerceIn(0, 6)
             listState.animateScrollToItem(index)
+            readyFocusId = request.requestId
         }
         // Only this distance determines both the week switch and visual feedback.
         var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
@@ -324,7 +329,9 @@ internal fun ScheduleAgenda(
                                 onRetry = { onRetryWeek(displayedWeek) },
                                 onLocateRoom = onLocateRoom,
                                 focusLesson = focusLesson?.takeIf {
-                                    it.weekOffset == displayedWeek && it.date == date.toString()
+                                    it.weekOffset == displayedWeek &&
+                                        it.date == date.toString() &&
+                                        it.requestId == readyFocusId
                                 },
                             )
                         }
