@@ -60,6 +60,40 @@ class HomeDashboardTest {
     }
 
     @Test
+    fun linkedNextLessonResolvesExactCachedWeekAndClassroom() {
+        val a = lesson("Circuits", "09:20", "10:55")
+        val alternate = a.copy(place = "В-312")
+        val current = week(ScheduleDay("2026-10-15", listOf(a)))
+        val next = week(ScheduleDay("2026-10-22", listOf(alternate)))
+            .copy(weekStart = "2026-10-19")
+        val preview = nextHomeLesson(
+            listOf(current, next), LocalDateTime.of(2026, 10, 22, 8, 0),
+        )!!
+        val focus = homeLessonFocus(preview, mapOf(0 to current, 1 to next), 42)
+        assertEquals(1, focus?.weekOffset)
+        assertEquals(42, focus?.requestId)
+        assertEquals("2026-10-22", focus?.date)
+        assertEquals("09:20", focus?.startTime)
+        assertEquals("В-312", focus?.place)
+    }
+
+    @Test
+    fun removedOrChangedLessonMustNotFocusAnotherRow() {
+        val day = ScheduleDay("2026-10-15", listOf(lesson("A", "09:20", "10:55")))
+        val preview = nextHomeLesson(
+            listOf(week(day)), LocalDateTime.of(2026, 10, 15, 8, 0),
+        )!!
+        assertNull(homeLessonFocus(preview, emptyMap(), 2))
+        assertNull(homeLessonFocus(
+            preview,
+            mapOf(0 to week(day.copy(lessons = listOf(
+                lesson("A", "09:20", "10:55").copy(place = "Д-101")
+            )))),
+            3,
+        ))
+    }
+
+    @Test
     fun malformedCachedRecordsAreIgnored() {
         val malformed = ScheduleDay("bad-date", listOf(lesson("Invalid date", "09:20", "10:55")))
         val times = ScheduleDay(
