@@ -12,7 +12,7 @@
 | Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
-| Class card | LessonCard / ScheduleScreen.kt | Collapsed by default: number pill, single-line ellipsized subject, classroom at right. Tap anywhere to expand full time, kind, multiline name and icon-led room, lecturer and groups, then tap again to collapse. |
+| Class card | LessonCard / ScheduleScreen.kt | Collapsed by default: number pill, single-line ellipsized subject, classroom at right. Tap anywhere to expand; exact linked lessons (Home preview and search results) scroll into view and briefly show a Monet focus outline. |
 | BARS «Автомат» plan | BarsAutoPlanner / BarsAutoPlan.kt / BarsAutoFocus.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, bounds and a compact cross-course focus panel. Actual BARS grades stay fixed. |
 | Settings | SettingsScreen.kt | Update, diagnostics and cache; refresh-on-launch toggle removed. |
 
@@ -30,6 +30,18 @@ an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
 Navigation uses a service launcher as its root instead of a bottom navigation bar. Home tile edit mode is held by the root and controlled from the same app bar as Search. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and initial search scope with the current service and opens the shared full-screen search view. Schedule favorites and target selection live in that search view.
+
+## Linked destination focus
+
+Navigation from Home's next-lesson card resolves the cached lesson's real week
+offset, date, start time and classroom. Schedule first enters that week, scrolls
+to its day and finally brings the exact lesson card into view. The same
+short-lived Monet outline is used for links from search results, BARS subject
+links (Home previews, cross-subject controls and search), and mail message
+links (Home preview, inbox/sent, search and notification). Normal service
+launches do not inherit a previous lesson target. The Campus map continues
+using its existing building centering and footprint highlight. Do not add
+fake links when a cached target is missing; open Schedule normally instead.
 
 ## Service navigation, back swipes and WebViews
 
