@@ -383,6 +383,7 @@ fun MpeiNeoApp(
     fun openScheduleResult(target: ScheduleTarget) {
         rememberGlobalQuery()
         closeGlobalSearch()
+        scheduleLessonFocus = null
         viewModel.selectTarget(target)
         if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
     }
@@ -649,6 +650,7 @@ fun MpeiNeoApp(
                         editing = homeEditing,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
+                                if (target == AppTab.SCHEDULE) scheduleLessonFocus = null
                                 openService(target)
                             }
                         },
