@@ -81,6 +81,7 @@ internal data class ScheduleLessonFocus(
     val date: String,
     val name: String,
     val startTime: String,
+    val place: String? = null,
 )
 
 /**
@@ -466,9 +467,11 @@ private fun AgendaDaySection(
                     LessonCard(
                         lesson = lesson,
                         onLocateRoom = onLocateRoom,
-                        focused = focusLesson?.let {
-                            it.name == lesson.name && it.startTime == lesson.startTime
-                        } == true,
+                        focusRequestId = focusLesson?.takeIf {
+                            it.name == lesson.name &&
+                                it.startTime == lesson.startTime &&
+                                (it.place == null || it.place == lesson.place)
+                        }?.requestId,
                         date = date,
                         now = clock.value,
                     )
