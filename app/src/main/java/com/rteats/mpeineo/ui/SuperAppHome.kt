@@ -56,6 +56,20 @@ internal fun SuperAppHome(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (!editing) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                HomeNextLessonCard(
+                    state = schedule,
+                    onClick = { highlight ->
+                        if (highlight != null) onOpenNextLesson(highlight)
+                        else onOpen(AppTab.SCHEDULE)
+                    },
+                    barsDisciplines = bars.disciplines,
+                    onOpenBarsDiscipline = onOpenBarsDiscipline,
+                )
+            }
+
+        }
         items(
             items = entries,
             key = { it.tab.name },
@@ -76,6 +90,21 @@ internal fun SuperAppHome(
                 AppTab.MAIL -> AppIcons.Mail
                 AppTab.MAPS -> AppIcons.Location
                 AppTab.SETTINGS -> AppIcons.Settings
+            }
+
+            // Home shows only short status hints, not full service previews.
+            val status = when (tile.tab) {
+                AppTab.BARS -> when {
+                    bars.loginRequired -> "Требуется вход"
+                    bars.gradeChanges.values.any { it.isNotEmpty() } -> "Есть новые оценки"
+                    else -> null
+                }
+                AppTab.MAIL -> when {
+                    mail.loginRequired -> "Требуется вход"
+                    mail.items.any { it.unread } -> "Есть непрочитанные"
+                    else -> null
+                }
+                else -> null
             }
 
             if (editing) {
@@ -172,6 +201,16 @@ internal fun SuperAppHome(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            if (status != null) {
+                                Box(modifier = Modifier.size(8.dp)
+                                    .testTag("home-status-" + tile.tab.name.lowercase())) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxSize(),
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    ) {}
+                                }
+                            }
                         }
                     } else {
                         Column(
@@ -179,48 +218,27 @@ internal fun SuperAppHome(
                             verticalArrangement = Arrangement.SpaceBetween,
                         ) {
                             HomeTileIcon(icon, if (tile.size == HomeTileSize.EXPANDED) 56 else 48)
-                            Text(
-                                label,
-                                style = if (tile.size == HomeTileSize.EXPANDED)
-                                    MaterialTheme.typography.headlineSmall
-                                else MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    label,
+                                    style = if (tile.size == HomeTileSize.EXPANDED)
+                                        MaterialTheme.typography.headlineSmall
+                                    else MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                if (status != null) {
+                                    Text(
+                                        status,
+                                        modifier = Modifier.testTag("home-status-" + tile.tab.name.lowercase()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-        if (!editing) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                HomeNextLessonCard(
-                    state = schedule,
-                    onClick = { highlight ->
-                        if (highlight != null) onOpenNextLesson(highlight)
-                        else onOpen(AppTab.SCHEDULE)
-                    },
-                    barsDisciplines = bars.disciplines,
-                    onOpenBarsDiscipline = onOpenBarsDiscipline,
-                )
-            }
-            // Previews are actionable events, not duplicate service launchers.
-            if (bars.gradeChanges.values.any { it.isNotEmpty() } || bars.loginRequired) {
-                item {
-                    HomeBarsPreview(
-                        state = bars,
-                        onOpen = { onOpen(AppTab.BARS) },
-                        onOpenDiscipline = onOpenBarsDiscipline,
-                    )
-                }
-            }
-            if (mail.items.any { it.unread } || mail.loginRequired) {
-                item {
-                    HomeMailPreview(
-                        state = mail,
-                        onOpen = { onOpen(AppTab.MAIL) },
-                        onOpenMessage = onOpenMailMessage,
-                    )
                 }
             }
         }
