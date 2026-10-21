@@ -237,6 +237,7 @@ fun MpeiNeoApp(
     // The bar switches context when navigation begins, not when its slide ends.
     var appBarService by remember { mutableStateOf(currentService) }
     var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
+    var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchReveal by animateFloatAsState(
         targetValue = if (globalSearchOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
@@ -249,7 +250,6 @@ fun MpeiNeoApp(
         label = "search-anchored-container-reveal",
     )
     var searchScope by rememberSaveable { mutableStateOf(SearchScope.ALL) }
-    var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchHistory = remember(application) { GlobalSearchHistory(application) }
     var recentQueries by remember { mutableStateOf(searchHistory.load()) }
     var nextLessonFocusId by remember { mutableIntStateOf(0) }
