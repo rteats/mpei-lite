@@ -66,8 +66,31 @@ internal fun BarsAutoFocus(
                 )
                 Text(
                     "Фокус на автомат",
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                )
+                BarsInfoButton(
+                    title = "Как выбираются приоритеты",
+                    sections = listOf(
+                        BarsInfoSection(
+                            "По влиянию",
+                            "Первыми показаны контрольные мероприятия, где повышение " +
+                                "предполагаемой оценки сильнее увеличивает взвешенную сумму. " +
+                                "Учитываются доступные оценки и веса БАРС.",
+                        ),
+                        BarsInfoSection(
+                            "По неделям",
+                            "Сначала ближайшие КМ с указанной учебной неделей. " +
+                                "КМ без номера недели располагаются в конце.",
+                        ),
+                        BarsInfoSection(
+                            "Ограничения",
+                            "Это рекомендации для планирования, а не назначенные " +
+                                "преподавателем оценки и не гарантия автомата.",
+                        ),
+                    ),
+                    tag = "bars-auto-focus-info",
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -82,13 +105,6 @@ internal fun BarsAutoFocus(
                     label = { Text("По неделям") },
                 )
             }
-            Text(
-                if (orderByWeek) "Показаны КМ с известной ближайшей неделей. " +
-                    "Без указания недели — в конце списка."
-                else "КМ, где более высокая оценка сильнее поможет достичь 4,20.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             priorities.forEachIndexed { index, item ->
                 if (index > 0) {
                     HorizontalDivider(

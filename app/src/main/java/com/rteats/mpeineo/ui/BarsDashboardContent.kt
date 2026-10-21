@@ -319,19 +319,6 @@ internal fun BarsNativeDashboard(
             )
           }
 
-          if (selectedSection != "subjects" && state.lastSummaryCapturedAtMillis > 0L) {
-            item(key = "summary-last-verified") {
-              Text(
-                text = "Сводка · проверена " +
-                  DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                    .format(Date(state.lastSummaryCapturedAtMillis)),
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
-            }
-          }
-
           if (selectedSection != "subjects") {
             barsReportEntries(
               section = selectedSection,
@@ -343,6 +330,7 @@ internal fun BarsNativeDashboard(
               isSummaryLoading = state.isSummaryLoading,
               summaryError = state.summaryError,
               onRetrySummary = onRefreshSummary,
+              lastVerifiedAtMillis = state.lastSummaryCapturedAtMillis,
             )
           } else if (state.disciplines.isEmpty() && !state.isLoading) {
             item(key = "empty") {
@@ -388,7 +376,6 @@ private fun BarsUserHeader(
   state: BarsUiState,
   onOpenBrowser: () -> Unit,
 ) {
-  var showMore by rememberSaveable { mutableStateOf(false) }
   val extras = remember(state.rawMain) { BarsReportParser.parseMain(state.rawMain) }
   val facts = remember(extras, state.studentDetails) {
     barsProfileFacts(extras, state.studentDetails)
@@ -432,6 +419,13 @@ private fun BarsUserHeader(
             color = colors.onSurfaceVariant,
           )
         }
+      }
+      if (secondary.isNotEmpty()) {
+        BarsInfoButton(
+          title = "Сведения об обучении",
+          sections = secondary.map { BarsInfoSection(it.label, it.value) },
+          tag = "bars-profile-info",
+        )
       }
       PortalHeaderAction(label = "БАРС", onClick = onOpenBrowser)
     }
@@ -480,68 +474,7 @@ private fun BarsUserHeader(
       }
     }
 
-    if (secondary.isNotEmpty()) {
-      TextButton(
-        onClick = { showMore = !showMore },
-        modifier = Modifier.padding(start = 0.dp),
-      ) {
-        AppIcon(
-          AppIcons.Person,
-          contentDescription = null,
-          modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("Сведения об обучении")
-        Spacer(Modifier.width(4.dp))
-        AppIcon(
-          if (showMore) AppIcons.ExpandLess else AppIcons.ExpandMore,
-          contentDescription = null,
-          modifier = Modifier.size(20.dp),
-        )
-      }
-      AnimatedVisibility(visible = showMore) {
-        Surface(
-          modifier = Modifier.fillMaxWidth(),
-          shape = MaterialTheme.shapes.extraLarge,
-          color = colors.surfaceContainerLow,
-        ) {
-          Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            secondary.forEachIndexed { index, fact ->
-              if (index != 0) HorizontalDivider(
-                color = colors.outlineVariant.copy(alpha = 0.45f),
-              )
-              Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-              ) {
-                AppIcon(
-                  barsProfileFactIcon(fact.kind),
-                  contentDescription = null,
-                  tint = colors.onSurfaceVariant,
-                  modifier = Modifier.size(20.dp),
-                )
-                Column(
-                  modifier = Modifier.weight(1f),
-                  verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                  Text(
-                    fact.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                  )
-                  Text(
-                    fact.value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurface,
-                  )
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+
   }
 }
 

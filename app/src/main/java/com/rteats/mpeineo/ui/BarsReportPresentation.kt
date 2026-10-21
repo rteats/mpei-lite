@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.text.DateFormat
+import java.util.Date
 
 /** Interprets only existing, cached, visible BARS Main/Summary snapshots. */
 internal data class BarsMainExtras(
@@ -334,10 +336,34 @@ internal fun LazyListScope.barsReportEntries(
     isSummaryLoading: Boolean,
     summaryError: String?,
     onRetrySummary: () -> Unit,
+    lastVerifiedAtMillis: Long = 0L,
 ) {
     if (section == "controls") {
         item(key = "controls-heading") {
-            BarsReportHeading("Контрольные мероприятия", "В порядке учебных недель")
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    BarsReportHeading("Контрольные мероприятия", "")
+                }
+                BarsInfoButton(
+                    title = "О контрольных мероприятиях",
+                    sections = listOf(
+                        BarsInfoSection(
+                            "Порядок",
+                            "КМ показаны в порядке учебных недель, если БАРС указал неделю. " +
+                                "Откройте карточку для подробных оценок и сценария.",
+                        ),
+                        BarsInfoSection(
+                            "Вес",
+                            "Вес из БАРС показывает вклад отдельного КМ в прогноз. " +
+                                "Дата и оценка выводятся только при наличии в источнике.",
+                        ),
+                    ),
+                    tag = "bars-controls-info",
+                )
+            }
         }
         if (controls.isEmpty()) {
             item(key = "controls-empty") {
@@ -387,6 +413,31 @@ internal fun LazyListScope.barsReportEntries(
         ?: matrix.weekColumns.firstOrNull { it.isCurrentWeek }
         ?: matrix.weekColumns.firstOrNull()
         ?: matrix.columns.firstOrNull()
+    val verifiedText = lastVerifiedAtMillis.takeIf { it > 0L }?.let {
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+            .format(Date(it))
+    } ?: "Данные ещё не подтверждены"
+    val infoSections = listOf(
+        BarsInfoSection(
+            "Источник и обновление",
+            "Данные взяты из «Сводки» БАРС. " +
+                "Последняя успешная загрузка: $verifiedText.",
+        ),
+        BarsInfoSection(
+            if (isGrades) "Недели" else "Посещаемость",
+            if (isGrades)
+                "Выберите учебную неделю, чтобы сравнить оценки по дисциплинам. " +
+                    "Значения соответствуют загруженной таблице БАРС."
+            else
+                "Отображаются сведения о посещаемости по данным БАРС. " +
+                    "Приложение не изменяет и не пересчитывает официальные отметки.",
+        ),
+    ) + report.notes.mapIndexed { index, note ->
+        BarsInfoSection(
+            if (index == 0) "Пояснения из БАРС" else "",
+            note,
+        )
+    }
     item(key = "report-heading") {
         Row(
             modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
@@ -395,10 +446,14 @@ internal fun LazyListScope.barsReportEntries(
             Box(modifier = Modifier.weight(1f)) {
                 BarsReportHeading(
                     if (isGrades) "Оценки по неделям" else "Посещаемость",
-                    listOf(report.semester, "Данные БАРС")
-                        .filter { it.isNotBlank() }.joinToString(" · "),
+                    report.semester,
                 )
             }
+            BarsInfoButton(
+                title = if (isGrades) "Об оценках по неделям" else "О посещаемости",
+                sections = infoSections,
+                tag = "bars-summary-info",
+            )
             if (!isSummaryLoading) {
                 TextButton(onClick = onRetrySummary) { Text("Обновить") }
             } else {
@@ -445,23 +500,6 @@ internal fun LazyListScope.barsReportEntries(
                 BarsGradeSubjectCard(subject, matrix, week)
             } else {
                 BarsAttendanceSubjectCard(subject, matrix)
-            }
-        }
-        if (report.notes.isNotEmpty()) {
-            item(key = "report-notes") {
-                Column(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Пояснения", style = MaterialTheme.typography.titleSmall)
-                    report.notes.forEach { note ->
-                        Text(
-                            note,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
             }
         }
     }
