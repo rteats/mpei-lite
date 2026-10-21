@@ -27,19 +27,9 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import kotlin.math.roundToInt
 
-/**
- * A what-if planner, not an official BARS final grade.
- * There are no network writes: grade buttons only change hypothetical scores.
- */
-@Composable
-internal fun BarsAutoPlanner(
-    discipline: BarsDiscipline,
-    savedScenario: String?,
-    onScenarioChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val plan = remember(discipline) { buildAutoPlan(discipline) }
-    val explanations = when (plan) {
+/** The full calculation and limitations stay accessible through the info affordance. */
+internal fun barsAutoExplanations(plan: AutoPlanResult): List<BarsInfoSection> {
+    return when (plan) {
         is AutoPlanResult.Unavailable -> listOf(
             BarsInfoSection(
                 "Почему нет плана",
@@ -92,6 +82,21 @@ internal fun BarsAutoPlanner(
             ),
         )
     }
+}
+
+/**
+ * A what-if planner, not an official BARS final grade.
+ * There are no network writes: grade buttons only change hypothetical scores.
+ */
+@Composable
+internal fun BarsAutoPlanner(
+    discipline: BarsDiscipline,
+    savedScenario: String?,
+    onScenarioChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val plan = remember(discipline) { buildAutoPlan(discipline) }
+    val explanations = barsAutoExplanations(plan)
     Column(
         modifier = modifier.fillMaxWidth().testTag("bars-auto-planner"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
