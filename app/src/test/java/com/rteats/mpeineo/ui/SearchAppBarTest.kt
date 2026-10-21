@@ -16,8 +16,8 @@ class SearchAppBarTest {
     }
 
     @Test fun searchHintFollowsActualNavigationDestination() {
-        assertEquals(SearchScope.ALL, searchAppBarContext(null).scope)
-        assertEquals("Поиск по МЭИ", searchAppBarContext(null).placeholder)
+        assertEquals(SearchScope.SCHEDULE, searchAppBarContext(null).scope)
+        assertEquals("Поиск расписания", searchAppBarContext(null).placeholder)
         assertEquals(SearchScope.SCHEDULE, searchAppBarContext(AppTab.SCHEDULE).scope)
         assertEquals("Группа, преподаватель, аудитория",
             searchAppBarContext(AppTab.SCHEDULE).placeholder)
@@ -29,7 +29,7 @@ class SearchAppBarTest {
         assertEquals(SearchScope.MAPS, searchAppBarContext(AppTab.MAPS).scope)
         assertEquals("Корпус или аудитория",
             searchAppBarContext(AppTab.MAPS).placeholder)
-        assertEquals(SearchScope.ALL, searchAppBarContext(AppTab.SETTINGS).scope)
+        assertEquals(SearchScope.SCHEDULE, searchAppBarContext(AppTab.SETTINGS).scope)
     }
 
     @Test fun contextualAppBarUsesHomeAndServiceActions() {
