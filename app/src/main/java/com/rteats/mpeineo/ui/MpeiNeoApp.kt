@@ -214,8 +214,6 @@ fun MpeiNeoApp(
         label = "search-anchored-container-reveal",
     )
     var searchScope by rememberSaveable { mutableStateOf(SearchScope.SCHEDULE) }
-    val searchHistory = remember(application) { GlobalSearchHistory(application) }
-    var recentQueries by remember { mutableStateOf(searchHistory.load()) }
     var nextLessonFocusId by remember { mutableIntStateOf(0) }
     var scheduleLessonFocus by remember { mutableStateOf<ScheduleLessonFocus?>(null) }
     var barsSearchRequest by remember { mutableIntStateOf(0) }
@@ -331,10 +329,6 @@ fun MpeiNeoApp(
         viewModel.updateSearchQuery(if (searchScope.includesSchedule) value else "")
     }
 
-    fun rememberGlobalQuery() {
-        if (globalQuery.isNotBlank()) recentQueries = searchHistory.record(globalQuery)
-    }
-
     fun closeGlobalSearch() {
         globalSearchOpen = false
         focusManager.clearFocus(force = true)
@@ -354,7 +348,6 @@ fun MpeiNeoApp(
     }
 
     fun openScheduleResult(target: ScheduleTarget) {
-        rememberGlobalQuery()
         closeGlobalSearch()
         scheduleLessonFocus = null
         viewModel.selectTarget(target)
@@ -362,7 +355,6 @@ fun MpeiNeoApp(
     }
 
     fun openLessonResult(hit: ScheduleLessonHit) {
-        rememberGlobalQuery()
         closeGlobalSearch()
         nextLessonFocusId++
         scheduleLessonFocus = ScheduleLessonFocus(
@@ -376,7 +368,6 @@ fun MpeiNeoApp(
     }
 
     fun openMailResult(hit: SearchMailHit) {
-        rememberGlobalQuery()
         closeGlobalSearch()
         if (currentService != AppTab.MAIL) openService(AppTab.MAIL)
         mailViewModel.switchMailbox(hit.folder)
@@ -384,7 +375,6 @@ fun MpeiNeoApp(
     }
 
     fun openBarsResult(discipline: String) {
-        rememberGlobalQuery()
         closeGlobalSearch()
         barsSearchRequest++
         barsRequestedDiscipline = discipline
@@ -392,7 +382,6 @@ fun MpeiNeoApp(
     }
 
     fun openCampusResult(building: String) {
-        rememberGlobalQuery()
         closeGlobalSearch()
         nextMapFocusId++
         mapFocus = CampusMapFocus(nextMapFocusId, building, "")
@@ -643,12 +632,6 @@ fun MpeiNeoApp(
                                 openService(AppTab.BARS)
                             }
                         },
-                        onOpenMailMessage = { summary ->
-                            if (currentService == null && !isTransitioning) {
-                                openService(AppTab.MAIL)
-                                mailViewModel.openInboxMessage(summary)
-                            }
-                        },
                     )
                 } else serviceContent(beneathService, false)
             }
@@ -765,10 +748,6 @@ fun MpeiNeoApp(
                 scope = searchScope,
                 onScheduleTypeChange = viewModel::setSearchType,
                 onQueryChange = ::updateGlobalQuery,
-                history = recentQueries,
-                onHistorySelected = ::updateGlobalQuery,
-                onRemoveHistory = { recentQueries = searchHistory.remove(it) },
-                onClearHistory = { recentQueries = searchHistory.clear() },
                 schedule = scheduleState,
                 mail = mailState,
                 bars = barsState,
@@ -780,7 +759,6 @@ fun MpeiNeoApp(
                 onMail = ::openMailResult,
                 onDiscipline = ::openBarsResult,
                 onClose = ::closeGlobalSearch,
-                onSubmit = ::rememberGlobalQuery,
                 revealProgress = searchReveal,
                 sourceFieldBounds = if (activatedSearchBounds.width > 0f) activatedSearchBounds else searchEntryBounds,
                 focusWhenReady = globalSearchOpen && searchReveal >= 0.98f,
