@@ -13,7 +13,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Material-style container reveal. The surface's bounds interpolate from the
  * measured collapsed search field, not an arbitrary offscreen start position.
- * The content never scales, so text and icons do not distort.
+ * The result content never scales. Only the transitioning search input has a
+ * small scale adjustment to match the original search field bounds.
  */
 internal fun searchRevealRect(field: Rect, viewport: Size, progress: Float): Rect {
     if (field.width <= 0f || field.height <= 0f) {
