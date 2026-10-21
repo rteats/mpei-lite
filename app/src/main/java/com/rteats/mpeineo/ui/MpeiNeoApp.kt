@@ -383,6 +383,7 @@ fun MpeiNeoApp(
     fun openScheduleResult(target: ScheduleTarget) {
         rememberGlobalQuery()
         closeGlobalSearch()
+        scheduleLessonFocus = null
         viewModel.selectTarget(target)
         if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
     }
@@ -394,6 +395,7 @@ fun MpeiNeoApp(
         scheduleLessonFocus = ScheduleLessonFocus(
             requestId = nextLessonFocusId, weekOffset = hit.weekOffset,
             date = hit.date, name = hit.lesson.name, startTime = hit.lesson.startTime,
+            place = hit.lesson.place,
         )
         // The hit belongs to the selected timetable. Do not re-select that
         // timetable: doing so clears its loaded weeks and loses the result.
@@ -648,7 +650,17 @@ fun MpeiNeoApp(
                         editing = homeEditing,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
+                                if (target == AppTab.SCHEDULE) scheduleLessonFocus = null
                                 openService(target)
+                            }
+                        },
+                        onOpenNextLesson = { highlight ->
+                            if (currentService == null && !isTransitioning) {
+                                nextLessonFocusId++
+                                scheduleLessonFocus = homeLessonFocus(
+                                    highlight, scheduleState.agendaWeeks, nextLessonFocusId,
+                                )
+                                openService(AppTab.SCHEDULE)
                             }
                         },
                         onOpenBarsDiscipline = { discipline ->

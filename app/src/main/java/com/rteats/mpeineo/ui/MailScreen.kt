@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -512,6 +514,12 @@ private fun MailMessage(
     modifier: Modifier = Modifier,
 ) {
     val detail = state.message
+    // Applies to previews, search results, notifications and ordinary mail
+    // rows alike; no separate destination-specific animation code is needed.
+    val focusKey = if (detail != null) {
+        state.selected?.let { "${state.mailbox}:${it.uid}:${it.uidValidity}" }
+    } else null
+    val focusPulse = rememberDestinationFocusPulse(focusKey)
     val toRecipients = detail?.recipients?.takeIf { it.isNotEmpty() }
         ?: state.selected?.recipients.orEmpty()
     val correspondent = if (isSent) {
@@ -536,6 +544,20 @@ private fun MailMessage(
             }
             Text(
                 detail.subject.ifBlank { "<Без темы>" },
+                modifier = Modifier.fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer.copy(
+                            alpha = focusPulse * 0.7f,
+                        ),
+                        MaterialTheme.shapes.medium,
+                    )
+                    .border(
+                        2.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = focusPulse),
+                        MaterialTheme.shapes.medium,
+                    )
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .testTag("mail-message-focus"),
                 style = MaterialTheme.typography.titleLarge,
             )
             Row(

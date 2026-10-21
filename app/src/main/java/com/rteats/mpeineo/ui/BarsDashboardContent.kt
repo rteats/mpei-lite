@@ -25,6 +25,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -148,6 +149,15 @@ internal fun BarsNativeDashboard(
   onSearch: () -> Unit = {},
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
+  var focusDisciplineName by remember { mutableStateOf<String?>(null) }
+  var destinationFocusSerial by remember {
+    androidx.compose.runtime.mutableIntStateOf(0)
+  }
+  fun openDisciplineWithFocus(name: String) {
+    focusDisciplineName = name
+    destinationFocusSerial++
+    selectedDisciplineName = name
+  }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
   // Saveable across detail navigation and Activity recreation. The key includes
   // actual BARS grades/weights so a new mark invalidates stale predictions.
@@ -170,7 +180,7 @@ internal fun BarsNativeDashboard(
       state.disciplines, active) {
     if (active && openDisciplineName != null &&
         state.disciplines.any { it.disciplineName == openDisciplineName }) {
-      selectedDisciplineName = openDisciplineName
+      openDisciplineWithFocus(openDisciplineName)
       onOpenDisciplineConsumed()
     }
   }
@@ -186,6 +196,7 @@ internal fun BarsNativeDashboard(
   ) {
     selectedDisciplineName?.let(onAcknowledgeGrades)
     selectedDisciplineName = null
+    focusDisciplineName = null
   }
 
   AnimatedContent(
@@ -216,6 +227,9 @@ internal fun BarsNativeDashboard(
       )
       DisciplineExpandedCard(
         discipline = expandedDiscipline,
+        focusRequestId = destinationFocusSerial.takeIf {
+          focusDisciplineName == expandedDiscipline.disciplineName
+        },
         changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
         savedAutoScenario = autoScenarios[planKey],
         onAutoScenarioChange = { encoded ->
@@ -225,6 +239,7 @@ internal fun BarsNativeDashboard(
         onCollapse = {
           onAcknowledgeGrades(expandedDiscipline.disciplineName)
           selectedDisciplineName = null
+          focusDisciplineName = null
         },
       )
     } else {
@@ -324,7 +339,7 @@ internal fun BarsNativeDashboard(
               controls = controls,
               selectedWeekColumn = selectedWeekColumn,
               onSelectWeek = { selectedWeekColumn = it },
-              onOpenDiscipline = { selectedDisciplineName = it },
+              onOpenDiscipline = { openDisciplineWithFocus(it) },
               isSummaryLoading = state.isSummaryLoading,
               summaryError = state.summaryError,
               onRetrySummary = onRefreshSummary,
@@ -337,7 +352,7 @@ internal fun BarsNativeDashboard(
             item(key = "auto-focus") {
               BarsAutoFocus(
                 disciplines = state.disciplines,
-                onOpenDiscipline = { selectedDisciplineName = it },
+                onOpenDiscipline = { openDisciplineWithFocus(it) },
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
               )
             }
@@ -350,7 +365,7 @@ internal fun BarsNativeDashboard(
                 discipline = discipline,
                 changes = state.gradeChanges[discipline.disciplineName].orEmpty(),
                 onClick = {
-                  selectedDisciplineName = discipline.disciplineName
+                  openDisciplineWithFocus(discipline.disciplineName)
                 },
                 modifier = Modifier.padding(horizontal = 8.dp)
                   .animateItem(),
@@ -711,6 +726,7 @@ private fun DisciplineCard(
 @Composable
 private fun DisciplineExpandedCard(
   discipline: BarsDiscipline,
+  focusRequestId: Int? = null,
   changes: List<BarsGradeChange>,
   savedAutoScenario: String?,
   onAutoScenarioChange: (String) -> Unit,
@@ -722,6 +738,7 @@ private fun DisciplineExpandedCard(
   val otherActivities = discipline.activities.filter {
     it.type != BarsActivityType.CONTROL_ACTIVITY
   }
+  val focusPulse = rememberDestinationFocusPulse(focusRequestId)
   Column(
     modifier = Modifier.fillMaxSize()
       .background(MaterialTheme.colorScheme.background)
@@ -731,7 +748,13 @@ private fun DisciplineExpandedCard(
   ) {
     Surface(
       onClick = onCollapse,
-      modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+      modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        .border(
+          2.dp,
+          MaterialTheme.colorScheme.primary.copy(alpha = focusPulse),
+          MaterialTheme.shapes.extraLarge,
+        )
+        .testTag("bars-discipline-focus"),
       shape = MaterialTheme.shapes.extraLarge,
       color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
