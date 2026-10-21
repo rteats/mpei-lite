@@ -74,6 +74,6 @@ class SearchAppBarTest {
         assertTrue(SearchScope.MAPS.showScheduleTargets("В-206"))
         assertFalse(SearchScope.MAPS.includesMail)
         assertFalse(SearchScope.MAPS.includesBars)
-        assertTrue(SearchScope.ALL.includesMaps)
+        assertTrue(SearchScope.MAPS.includesMaps)
     }
 }
