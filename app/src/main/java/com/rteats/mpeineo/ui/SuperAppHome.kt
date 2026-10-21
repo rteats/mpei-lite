@@ -31,7 +31,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
-import com.rteats.mpeineo.data.MailSummary
 
 /** Only navigation and local preferences. Never loads network data on Home. */
 @Composable
@@ -44,7 +43,6 @@ internal fun SuperAppHome(
     onOpen: (AppTab) -> Unit,
     onOpenNextLesson: (HomeLessonHighlight) -> Unit = { onOpen(AppTab.SCHEDULE) },
     onOpenBarsDiscipline: (String) -> Unit,
-    onOpenMailMessage: (MailSummary) -> Unit,
     editing: Boolean = false,
 ) {
     val entries = HomeTileLayout.normalize(tiles)
