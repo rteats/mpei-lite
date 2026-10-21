@@ -103,6 +103,27 @@ internal fun scheduleDockRevealProgress(
 internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
     widthPx > 0f && distancePx >= widthPx * 0.20f
 
+/**
+ * The BARS detail is a nested destination, just like a Mail message:
+ * its rightward swipe should invoke its own BackHandler, never pop the
+ * whole BARS service to Home. Browser, IME and transitions block gestures.
+ */
+internal enum class BarsSwipeTarget { DISABLED, DISCIPLINE_OVERVIEW, HOME }
+
+internal fun barsSwipeTarget(
+    foreground: Boolean,
+    isTransitioning: Boolean,
+    imeVisible: Boolean,
+    browserVisible: Boolean,
+    authenticated: Boolean,
+    detailOpen: Boolean,
+): BarsSwipeTarget {
+    if (!foreground || isTransitioning || imeVisible || browserVisible || !authenticated) {
+        return BarsSwipeTarget.DISABLED
+    }
+    return if (detailOpen) BarsSwipeTarget.DISCIPLINE_OVERVIEW else BarsSwipeTarget.HOME
+}
+
 /** Map-only back target is narrow; regular service pages retain full-width swipes. */
 internal fun acceptsServiceBackStart(
     x: Float,
@@ -723,9 +744,14 @@ fun MpeiNeoApp(
             // Place it offscreen while inactive rather than recreating WebViews.
             // Compose layout still grants the full viewport to BARS DOM extraction.
             val barsForeground = currentService == AppTab.BARS
-            val barsCanSwipe = barsForeground && !isTransitioning && !imeVisible &&
-                !barsState.browserVisible && !barsDetailOpen &&
-                barsState.authStage == BarsAuthStage.AUTHENTICATED
+            val barsSwipe = barsSwipeTarget(
+                foreground = barsForeground,
+                isTransitioning = isTransitioning,
+                imeVisible = imeVisible,
+                browserVisible = barsState.browserVisible,
+                authenticated = barsState.authStage == BarsAuthStage.AUTHENTICATED,
+                detailOpen = barsDetailOpen,
+            )
             Box(
                 modifier = Modifier.fillMaxSize()
                     .offset {
@@ -735,7 +761,10 @@ fun MpeiNeoApp(
                             y = 0,
                         )
                     }
-                    .serviceBackGesture(barsCanSwipe, barsCanSwipe),
+                    .serviceBackGesture(
+                        eligible = barsSwipe != BarsSwipeTarget.DISABLED,
+                        interactive = barsSwipe == BarsSwipeTarget.HOME,
+                    ),
             ) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     BarsScreen(
