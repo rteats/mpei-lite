@@ -81,67 +81,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
-
-/** Destination used by AppBar actions at the beginning of a back transition. */
-internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
-    serviceRouteAfterBack(routes).lastOrNull()?.let(AppTab::valueOf)
-
-/** Preserve the existing pager-policy unit tests while using stack navigation. */
-internal fun lockedBrowserTab(
-    intended: AppTab,
-    mailWebVisible: Boolean,
-    barsWebVisible: Boolean,
-): AppTab? = when (intended) {
-    AppTab.MAIL -> AppTab.MAIL.takeIf { mailWebVisible }
-    AppTab.BARS -> AppTab.BARS.takeIf { barsWebVisible }
-    else -> null
-}
-
-internal fun scheduleDockRevealProgress(
-    currentPage: Int,
-    pageOffsetFraction: Float,
-): Float = (1f - kotlin.math.abs(currentPage + pageOffsetFraction)).coerceIn(0f, 1f)
-
-/** Complete an intentional rightward swipe, otherwise spring the page back. */
-internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
-    widthPx > 0f && distancePx >= widthPx * 0.20f
-
-/**
- * The BARS detail is a nested destination, just like a Mail message:
- * its rightward swipe should invoke its own BackHandler, never pop the
- * whole BARS service to Home. Browser, IME and transitions block gestures.
- */
-internal enum class BarsSwipeTarget { DISABLED, DISCIPLINE_OVERVIEW, HOME }
-
-internal fun barsSwipeTarget(
-    foreground: Boolean,
-    isTransitioning: Boolean,
-    imeVisible: Boolean,
-    browserVisible: Boolean,
-    authenticated: Boolean,
-    detailOpen: Boolean,
-): BarsSwipeTarget {
-    if (!foreground || isTransitioning || imeVisible || browserVisible || !authenticated) {
-        return BarsSwipeTarget.DISABLED
-    }
-    return if (detailOpen) BarsSwipeTarget.DISCIPLINE_OVERVIEW else BarsSwipeTarget.HOME
-}
-
-/** Map-only back target is narrow; regular service pages retain full-width swipes. */
-internal fun acceptsServiceBackStart(
-    x: Float,
-    width: Float,
-    systemEdge: Float,
-    mapEdgeZone: Boolean,
-): Boolean = x >= systemEdge && (mapEdgeZone || x <= width - systemEdge)
-
 /**
  * A single composited foreground page over a permanently mounted background.
- *
- * Both drag progress and automatic push/pop operate on the SAME reveal value.
- * The outgoing route is removed only after its foreground is entirely offscreen:
- * no AnimatedContent outgoing slot or delayed translation reset can flash it back.
+ * Drag progress and automatic push/pop share one reveal value.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -238,8 +180,9 @@ fun MpeiNeoApp(
             if (initialMailTab) arrayListOf(AppTab.MAIL.name) else arrayListOf<String>(),
         )
     }
-    val currentService = routeNames.lastOrNull()?.let(AppTab::valueOf)
-    val beneathService = routeNames.dropLast(1).lastOrNull()?.let(AppTab::valueOf)
+    val routeSnapshot = ServiceRouteSnapshot(routeNames)
+    val currentService = routeSnapshot.current
+    val beneathService = routeSnapshot.beneath
     val savedServiceState = rememberSaveableStateHolder()
     var reveal by rememberSaveable {
         mutableFloatStateOf(if (initialMailTab) 1f else 0f)
@@ -348,7 +291,7 @@ fun MpeiNeoApp(
         barsBrowserJustClosed = false
         barsDetailOpen = false
         appBarService = target
-        routeNames = serviceRouteAfterOpen(routeNames, target, viaClassroom)
+        routeNames = ServiceRouteSnapshot(routeNames).open(target, viaClassroom)
         reveal = 0f
         logNavigation("superapp push " + target.name +
             " origin=" + (currentService?.name ?: "HOME") +
@@ -369,7 +312,7 @@ fun MpeiNeoApp(
         barsBrowserJustClosed = false
         appBarService = searchAppBarDestinationAfterBack(routeNames)
         animateReveal(0f) {
-            routeNames = serviceRouteAfterBack(routeNames)
+            routeNames = ServiceRouteSnapshot(routeNames).back()
             // The underlying service is already fully rendered, at rest.
             reveal = if (routeNames.isEmpty()) 0f else 1f
             barsDetailOpen = false
