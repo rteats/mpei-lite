@@ -15,17 +15,18 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun rememberDestinationFocusPulse(requestKey: Any?): Float {
+    // A busy schedule has many lesson cards; only a linked destination needs
+    // animation state, not every visible row.
+    if (requestKey == null) return 0f
     val pulse = remember { Animatable(0f) }
     LaunchedEffect(requestKey) {
         pulse.snapTo(0f)
-        if (requestKey != null) {
-            pulse.animateTo(1f, animationSpec = tween(180))
-            delay(850L)
-            pulse.animateTo(
-                0f,
-                animationSpec = tween(650, easing = FastOutSlowInEasing),
-            )
-        }
+        pulse.animateTo(1f, animationSpec = tween(180))
+        delay(850L)
+        pulse.animateTo(
+            0f,
+            animationSpec = tween(650, easing = FastOutSlowInEasing),
+        )
     }
     return pulse.value
 }
