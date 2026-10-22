@@ -9,12 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -57,6 +62,19 @@ internal fun BarsScreen(
   val transport = remember(viewModel) { BarsWebViewTransport(viewModel) }
   val webFlow = transport.webFlow
   val webView = transport.webView
+  val browserSlide = rememberBackSlideState()
+  var viewportPx by remember { mutableFloatStateOf(1f) }
+  fun exitEmbeddedBrowser() {
+    if (state.browserVisible) {
+      transport.exitBrowser(onBrowserExit)
+    } else {
+      onBrowserExit()
+      onAuthBrowserExit()
+    }
+  }
+  LaunchedEffect(state.browserVisible) {
+    if (state.browserVisible) browserSlide.enter() else browserSlide.reset()
+  }
   val browserControlsVisible = active &&
     (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
   // AndroidView callbacks must read the latest foreground/browser mode.
@@ -92,13 +110,17 @@ internal fun BarsScreen(
     transport.onBrowserModeChanged()
   }
 
-  BackHandler(enabled = active && state.browserVisible) {
-    transport.handleBrowserBack(onBrowserExit)
+  BackHandler(enabled = active && browserControlsVisible) {
+    if (state.browserVisible && transport.browserToolbarState.canGoBack &&
+        webView?.url != BARS_MARKS_URL) {
+      transport.browserBack()
+    } else browserSlide.exit(::exitEmbeddedBrowser)
   }
 
   Box(
     modifier = modifier
       .fillMaxSize()
+      .onSizeChanged { viewportPx = it.width.toFloat().coerceAtLeast(1f) }
       .testTag("bars-screen"),
   ) {
     when (state.authStage) {
@@ -145,36 +167,31 @@ internal fun BarsScreen(
           if (!state.browserVisible &&
             state.authStage != BarsAuthStage.WEB_AUTH
           ) -1f else 1f,
-        ),
+        ).graphicsLayer {
+          translationX = if (browserControlsVisible) viewportPx * browserSlide.progress else 0f
+        },
         factory = transport::create,
         update = {},
         onRelease = transport::release,
       )
       if (browserControlsVisible) {
         EmbeddedBrowserExitZone(
-          onExit = {
-            if (state.browserVisible) {
-              transport.exitBrowser(onBrowserExit)
-            } else {
-              // The login/2FA page has no native grades to return to.
-              // Leave the BARS service instead, keeping its WebView alive.
-              onBrowserExit()
-              onAuthBrowserExit()
-            }
-          },
+          onExit = { browserSlide.exit(::exitEmbeddedBrowser) },
+          onDrag = { delta -> browserSlide.drag(delta, viewportPx) },
+          onRelease = { browserSlide.release(::exitEmbeddedBrowser) },
+          onCancel = browserSlide::cancel,
           modifier = Modifier.align(Alignment.CenterStart).zIndex(3f)
+            .graphicsLayer { translationX = viewportPx * browserSlide.progress }
             .testTag("bars-browser-swipe-exit"),
         )
         EmbeddedBrowserAppBar(
           state = transport.browserToolbarState,
-          onExit = {
-            if (state.browserVisible) transport.exitBrowser(onBrowserExit)
-            else { onBrowserExit(); onAuthBrowserExit() }
-          },
+          onExit = { browserSlide.exit(::exitEmbeddedBrowser) },
           onBack = transport::browserBack,
           onForward = transport::browserForward,
           onReload = transport::browserReload,
           modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
+            .graphicsLayer { translationX = viewportPx * browserSlide.progress }
             .testTag("bars-browser-controls"),
         )
       }
