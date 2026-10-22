@@ -243,7 +243,7 @@ internal fun BarsScreen(
 
   fun requestOfficialSummary(view: WebView, reason: String) {
     val controller = navigationController ?: return
-    if (webView !== view || state.browserVisible ||
+    if (webView !== view || liveState().browserVisible ||
       !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
     ) return
 
@@ -256,17 +256,19 @@ internal fun BarsScreen(
     val generation = ++webFlow.summaryRouteDiscoveryGeneration
 
     fun discover(attempt: Int) {
-      if (webView !== view || state.browserVisible ||
-        navigationController !== controller ||
-        !webFlow.summaryFetchAttempted || generation != webFlow.summaryRouteDiscoveryGeneration ||
-        !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+      if (webView !== view || navigationController !== controller ||
+        !webFlow.canNavigateToSummary(
+          generation, liveState().browserVisible,
+          BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL),
+        )
       ) return
 
       view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
-        if (webView !== view || state.browserVisible ||
-          navigationController !== controller ||
-          !webFlow.summaryFetchAttempted || generation != webFlow.summaryRouteDiscoveryGeneration ||
-          !BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL)
+        if (webView !== view || navigationController !== controller ||
+          !webFlow.canNavigateToSummary(
+            generation, liveState().browserVisible,
+            BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL),
+          )
         ) return@evaluateJavascript
 
         val discovery = BarsAuthenticatedRoutePolicy.parseJsResult(result)
