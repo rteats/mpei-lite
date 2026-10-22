@@ -21,6 +21,9 @@ jobs:
       - name: Checkout PR
         uses: actions/checkout@v5
 
+      - name: Verify architecture ownership boundaries
+        run: python3 scripts/check_architecture.py
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
