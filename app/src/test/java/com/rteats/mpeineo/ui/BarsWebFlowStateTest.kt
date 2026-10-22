@@ -21,6 +21,7 @@ class BarsWebFlowStateTest {
         assertFalse(state.redirectingToMarks)
         assertFalse(state.summaryFetchAttempted)
         assertFalse(state.summaryExtractionStarted)
+        assertFalse(state.canAcceptSummaryPayload(browserVisible = false))
         assertFalse(state.mainFrameFailed)
         assertTrue(state.needsFullViewport)
         assertTrue(state.manuallyRequestedConnection)
@@ -51,6 +52,8 @@ class BarsWebFlowStateTest {
         state.officialMainUrl = "https://bars.mpei.ru/bars_web/ST_Study/Main/Main"
         val generation = ++state.summaryRouteDiscoveryGeneration
 
+        assertTrue(state.canAcceptSummaryPayload(browserVisible = false))
+        assertFalse(state.canAcceptSummaryPayload(browserVisible = true))
         assertTrue(state.canNavigateToSummary(
             generation, browserVisible = false, marksDocumentVisible = true))
         assertFalse(state.canNavigateToSummary(
