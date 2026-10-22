@@ -256,6 +256,9 @@ fun MpeiNeoApp(
     }
 
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
+        // Ordinary navigation has no pending lesson cue. Deep-link dispatch
+        // installs a new request before opening Schedule, not before leaving it.
+        if (target != AppTab.SCHEDULE) navigationTargets.clearScheduleFocus()
         application.container.uiFrameProfiler.markInteraction("NAV_PUSH")
         transitionJob?.cancel()
         if (navigationHaptics && !viaClassroom) {
@@ -416,6 +419,7 @@ fun MpeiNeoApp(
                                 },
                                 todayJumpRequest = todayJumpRequest,
                                 focusLesson = navigationTargets.scheduleLessonFocus,
+                                onFocusConsumed = navigationTargets::consumeScheduleFocus,
                                 modifier = Modifier.fillMaxSize(),
                             )
 
