@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -31,6 +32,7 @@ internal fun WebPortalScreen(
     testTag: String,
     modifier: Modifier = Modifier,
     onDebugEvent: (String) -> Unit = {},
+    onExit: () -> Unit = {},
 ) {
     val debugEvent by rememberUpdatedState(onDebugEvent)
     DisposableEffect(url) {
@@ -156,6 +158,11 @@ internal fun WebPortalScreen(
                     browserState = EmbeddedBrowserState()
                 }
             },
+        )
+        EmbeddedBrowserExitZone(
+            onExit = onExit,
+            modifier = Modifier.align(Alignment.CenterStart)
+                .testTag("mail-browser-swipe-exit"),
         )
         EmbeddedBrowserToolbar(
             state = browserState,
