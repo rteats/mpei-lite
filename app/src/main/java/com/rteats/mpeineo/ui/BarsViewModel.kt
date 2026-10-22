@@ -399,6 +399,15 @@ internal class BarsViewModel(
         diagnostics.log("BARS", "summary capture started")
     }
 
+    /** Browser mode cancels automatic Summary work, not previously cached reports. */
+    fun summaryCaptureCancelled() {
+        _state.update {
+            if (it.isSummaryLoading) it.copy(isSummaryLoading = false, summaryError = null)
+            else it
+        }
+        diagnostics.log("BARS", "summary capture cancelled for interactive browser")
+    }
+
     fun summaryCaptureFailed(reason: String) {
         _state.update {
             it.copy(isSummaryLoading = false, summaryError = reason, rawStatus = reason)
