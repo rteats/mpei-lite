@@ -307,16 +307,11 @@ internal fun BarsReportChooser(selected: String, onSelected: (String) -> Unit) {
             .padding(horizontal = 12.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        listOf(
-            "subjects" to "Дисциплины",
-            "grades" to "По неделям",
-            "attendance" to "Посещаемость",
-            "controls" to "Контрольные",
-        ).forEach { (id, label) ->
+        BarsOverviewSection.entries.forEach { section ->
             FilterChip(
-                selected = selected == id,
-                onClick = { onSelected(id) },
-                label = { Text(label) },
+                selected = selected == section.key,
+                onClick = { onSelected(section.key) },
+                label = { Text(section.title) },
             )
         }
     }
