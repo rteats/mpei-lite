@@ -176,16 +176,10 @@ fun MpeiNeoApp(
         mutableStateOf(barsPrefs.getBoolean("auto_refresh", true))
     }
 
-    // Only strings are saved in the route stack (Android Bundle compatible).
-    // The second entry exists only for Schedule -> classroom Map navigation.
-    var routeNames by rememberSaveable {
-        mutableStateOf(
-            if (initialMailTab) arrayListOf(AppTab.MAIL.name) else arrayListOf<String>(),
-        )
-    }
-    val routeSnapshot = ServiceRouteSnapshot(routeNames)
-    val currentService = routeSnapshot.current
-    val beneathService = routeSnapshot.beneath
+    // Route ownership is separate from the rendering/transition state.
+    val navigation = rememberServiceNavigationState(initialMailTab)
+    val currentService = navigation.current
+    val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
     var reveal by rememberSaveable {
         mutableFloatStateOf(if (initialMailTab) 1f else 0f)
@@ -292,7 +286,7 @@ fun MpeiNeoApp(
         barsBrowserJustClosed = false
         barsDetailOpen = false
         appBarService = target
-        routeNames = ServiceRouteSnapshot(routeNames).open(target, viaClassroom)
+        navigation.open(target, viaClassroom)
         reveal = 0f
         logNavigation("superapp push " + target.name +
             " origin=" + (currentService?.name ?: "HOME") +
@@ -301,21 +295,21 @@ fun MpeiNeoApp(
     }
 
     fun goBackOneService() {
-        if (isTransitioning || routeNames.isEmpty()) return
+        if (isTransitioning || !navigation.canPop) return
         application.container.uiFrameProfiler.markInteraction("NAV_POP")
         if (navigationHaptics) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
         logNavigation("superapp pop " + (currentService?.name ?: "HOME") +
-            " depth=" + routeNames.size)
+            " depth=" + navigation.routes.size)
         if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
-        appBarService = searchAppBarDestinationAfterBack(routeNames)
+        appBarService = navigation.peekBack()
         animateReveal(0f) {
-            routeNames = ServiceRouteSnapshot(routeNames).back()
+            navigation.pop()
             // The underlying service is already fully rendered, at rest.
-            reveal = if (routeNames.isEmpty()) 0f else 1f
+            reveal = if (!navigation.canPop) 0f else 1f
             barsDetailOpen = false
         }
     }
