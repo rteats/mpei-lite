@@ -10,6 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -36,18 +38,28 @@ internal fun WebPortalScreen(
         onDispose { debugEvent("portal disposed") }
     }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
-    var canGoBack by remember(url) { mutableStateOf(false) }
+    var browserState by remember(url) { mutableStateOf(EmbeddedBrowserState()) }
 
-    BackHandler(enabled = canGoBack) {
+    fun syncBrowserState(view: WebView, pageUrl: String? = null) {
+        if (webView !== view) return
+        browserState = EmbeddedBrowserState(
+            url = pageUrl ?: view.url.orEmpty(),
+            canGoBack = view.canGoBack(),
+            canGoForward = view.canGoForward(),
+        )
+    }
+
+    BackHandler(enabled = browserState.canGoBack) {
         debugEvent("browser back within website")
-        webView?.goBack()
+        webView?.takeIf { it.canGoBack() }?.goBack()
     }
 
     Box(
         modifier = modifier.testTag(testTag),
     ) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize()
+                .padding(bottom = EMBEDDED_BROWSER_TOOLBAR_HEIGHT),
             factory = { context ->
                 WebView(context).apply {
                     debugEvent("webview created")
@@ -95,11 +107,12 @@ internal fun WebPortalScreen(
                         }
 
                         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                            syncBrowserState(view, url)
                             debugEvent("webview page started")
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
-                            canGoBack = view.canGoBack()
+                            syncBrowserState(view, url)
                             // Persist the manually established OWA login for
                             // cold-start and idle-session testing.
                             if (url.startsWith("https://mail.mpei.ru/", ignoreCase = true)) {
@@ -112,17 +125,25 @@ internal fun WebPortalScreen(
                                 else -> "other"
                             }
                             // Never log the actual URL: redirects may carry auth tokens.
-                            debugEvent("webview page finished stage=$stage canGoBack=$canGoBack")
+                            debugEvent("webview page finished stage=$stage canGoBack=${browserState.canGoBack}")
+                        }
+
+                        override fun doUpdateVisitedHistory(
+                            view: WebView,
+                            url: String,
+                            isReload: Boolean,
+                        ) {
+                            syncBrowserState(view, url)
                         }
                     }
 
-                    loadUrl(url)
                     webView = this
+                    loadUrl(url)
                 }
             },
             update = { view ->
                 webView = view
-                canGoBack = view.canGoBack()
+                syncBrowserState(view)
             },
             onRelease = { view ->
                 debugEvent("webview released")
@@ -132,9 +153,17 @@ internal fun WebPortalScreen(
                 view.destroy()
                 if (webView === view) {
                     webView = null
-                    canGoBack = false
+                    browserState = EmbeddedBrowserState()
                 }
             },
+        )
+        EmbeddedBrowserToolbar(
+            state = browserState,
+            onBack = { webView?.takeIf { it.canGoBack() }?.goBack() },
+            onForward = { webView?.takeIf { it.canGoForward() }?.goForward() },
+            onReload = { webView?.reload() },
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .testTag("mail-browser-controls"),
         )
     }
 }
