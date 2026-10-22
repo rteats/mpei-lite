@@ -210,15 +210,20 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
     webFlow.browserWasVisible = state.browserVisible
   }
 
+  /** Close the official browser without replaying arbitrary page history. */
+  fun exitBrowser(onBrowserExit: () -> Unit) {
+    onBrowserExit()
+    webView?.clearFocus()
+    webFlow.needsFullViewport = false
+    viewModel.hideBrowser()
+  }
+
   fun handleBrowserBack(onBrowserExit: () -> Unit) {
     val view = webView
     if (view?.canGoBack() == true && view.url != BARS_MARKS_URL) {
       view.goBack()
     } else {
-      onBrowserExit()
-      view?.clearFocus()
-      webFlow.needsFullViewport = false
-      viewModel.hideBrowser()
+      exitBrowser(onBrowserExit)
     }
   }
 
