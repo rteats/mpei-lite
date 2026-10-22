@@ -41,6 +41,31 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
   var retryNavigation by mutableStateOf<(() -> Unit)?>(null)
     private set
 
+  var browserToolbarState by mutableStateOf(EmbeddedBrowserState())
+    private set
+
+  private fun updateBrowserToolbar(view: WebView, pageUrl: String? = null) {
+    if (webView !== view) return
+    browserToolbarState = EmbeddedBrowserState(
+      url = pageUrl ?: view.url.orEmpty(),
+      canGoBack = view.canGoBack(),
+      canGoForward = view.canGoForward(),
+    )
+  }
+
+  /** These actions navigate within the official browser; they never pop the app. */
+  fun browserBack() {
+    webView?.takeIf { it.canGoBack() }?.goBack()
+  }
+
+  fun browserForward() {
+    webView?.takeIf { it.canGoForward() }?.goForward()
+  }
+
+  fun browserReload() {
+    webView?.reload()
+  }
+
   val webFlow = BarsWebFlowState()
   val session = BarsSessionCoordinator()
   val extractionGate = BarsExtractionGate()
@@ -170,6 +195,7 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
 
   /** Revalidate the last document after leaving 2FA or the official browser. */
   fun onBrowserModeChanged() {
+    webView?.let(::updateBrowserToolbar)
     val state = liveState()
     if (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH) {
       interruptAutomatedCapture("interactive mode")
@@ -304,6 +330,7 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
             }
           }
           webView = view
+          updateBrowserToolbar(view)
           val hasBarsCookies =
             !CookieManager.getInstance().getCookie(BARS_BASE_URL).isNullOrBlank()
           val provider = WebView.getCurrentWebViewPackage()
@@ -689,6 +716,7 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
               favicon: Bitmap?,
             ) {
               if (webView !== view) return
+              updateBrowserToolbar(view, url)
               session.onDocumentStarted()
               extractionGate.invalidate()
               readiness.navigationStarted()
@@ -704,6 +732,7 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
 
             override fun onPageFinished(view: WebView, url: String) {
               if (webView !== view) return
+              updateBrowserToolbar(view, url)
               viewModel.updateSessionUrl(url)
               viewModel.logWebEvent(
                 "page finished id=${controller.requestId} " +
@@ -763,6 +792,7 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
               url: String,
               isReload: Boolean,
             ) {
+              updateBrowserToolbar(view, url)
               viewModel.logWebEvent(
                 "navigation history path=${safeBarsLocation(url)} reload=$isReload",
               )
@@ -950,7 +980,10 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
           view.removeJavascriptInterface(BARS_JS_INTERFACE)
           view.webViewClient = WebViewClient()
           view.destroy()
-          if (webView === view) webView = null
+          if (webView === view) {
+            webView = null
+            browserToolbarState = EmbeddedBrowserState()
+          }
   }
 }
 
