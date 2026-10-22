@@ -79,6 +79,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -176,8 +178,6 @@ internal fun BarsNativeDashboard(
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
   }
-  val motion = MaterialTheme.motionScheme
-
   androidx.compose.runtime.LaunchedEffect(openDisciplineRequest, openDisciplineName,
       state.disciplines, active) {
     if (active && openDisciplineName != null &&
@@ -191,60 +191,31 @@ internal fun BarsNativeDashboard(
     onDetailOpenChange(selectedDiscipline != null)
   }
 
-  // Android Back returns to the overview before leaving the tab.
-  // The official WebView keeps priority when the browser is visible.
-  BackHandler(
-    enabled = active && selectedDiscipline != null && !state.browserVisible,
-  ) {
+  val detailSlide = rememberBackSlideState()
+  var detailViewportPx by remember {
+    androidx.compose.runtime.mutableFloatStateOf(1f)
+  }
+  fun closeDetail() {
     selectedDisciplineName?.let(onAcknowledgeGrades)
     selectedDisciplineName = null
     focusDisciplineName = null
   }
+  androidx.compose.runtime.LaunchedEffect(selectedDiscipline?.disciplineName) {
+    if (selectedDiscipline != null) detailSlide.enter() else detailSlide.reset()
+  }
 
-  AnimatedContent(
-    targetState = selectedDiscipline?.disciplineName,
-    modifier = Modifier.fillMaxSize(),
-    contentKey = { it ?: "bars-overview" },
-    transitionSpec = {
-      val opening = targetState != null
-      (slideInHorizontally(
-        initialOffsetX = { if (opening) it / 7 else -it / 7 },
-        animationSpec = motion.defaultSpatialSpec(),
-      ) + fadeIn(animationSpec = motion.defaultEffectsSpec())) togetherWith
-        (slideOutHorizontally(
-          targetOffsetX = { if (opening) -it / 7 else it / 7 },
-          animationSpec = motion.defaultSpatialSpec(),
-        ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
-    },
-    label = "bars-discipline",
-  ) { expandedName ->
-    val expandedDiscipline = state.disciplines.firstOrNull {
-      it.disciplineName == expandedName
-    }
-    if (expandedDiscipline != null) {
-      val planKey = autoScenarioKey(
-        expandedDiscipline,
-        account = state.profileName + "|" + state.profileGroup,
-        semester = state.semester,
-      )
-      DisciplineExpandedCard(
-        discipline = expandedDiscipline,
-        focusRequestId = destinationFocusSerial.takeIf {
-          focusDisciplineName == expandedDiscipline.disciplineName
-        },
-        changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
-        savedAutoScenario = autoScenarios[planKey],
-        onAutoScenarioChange = { encoded ->
-          autoScenarios = (autoScenarios + (planKey to encoded))
-            .toList().takeLast(32).toMap()
-        },
-        onCollapse = {
-          onAcknowledgeGrades(expandedDiscipline.disciplineName)
-          selectedDisciplineName = null
-          focusDisciplineName = null
-        },
-      )
-    } else {
+  BackHandler(
+    enabled = active && selectedDiscipline != null && !state.browserVisible,
+  ) {
+    detailSlide.exit(::closeDetail)
+  }
+
+  // The overview stays mounted behind its detail so a right swipe exposes
+  // the actual previous page. The same BackSlideState drives touch and Back.
+  Box(
+    modifier = Modifier.fillMaxSize()
+      .onSizeChanged { detailViewportPx = it.width.toFloat().coerceAtLeast(1f) },
+  ) {
       val refreshState = rememberPullToRefreshState()
       PullToRefreshBox(
         isRefreshing = state.isLoading,
@@ -399,6 +370,45 @@ internal fun BarsNativeDashboard(
             }
           }
         }
+      }
+    if (selectedDiscipline != null) {
+      Box(
+        modifier = Modifier.fillMaxSize()
+          .graphicsLayer { translationX = detailViewportPx * detailSlide.progress }
+          .testTag("bars-discipline-slide-layer"),
+      ) {
+        Surface(
+          modifier = Modifier.fillMaxSize(),
+          color = MaterialTheme.colorScheme.background,
+        ) {
+          val expandedDiscipline = selectedDiscipline
+          val planKey = autoScenarioKey(
+            expandedDiscipline,
+            account = state.profileName + "|" + state.profileGroup,
+            semester = state.semester,
+          )
+          DisciplineExpandedCard(
+            discipline = expandedDiscipline,
+            focusRequestId = destinationFocusSerial.takeIf {
+              focusDisciplineName == expandedDiscipline.disciplineName
+            },
+            changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
+            savedAutoScenario = autoScenarios[planKey],
+            onAutoScenarioChange = { encoded ->
+              autoScenarios = (autoScenarios + (planKey to encoded))
+                .toList().takeLast(32).toMap()
+            },
+            onCollapse = { detailSlide.exit(::closeDetail) },
+          )
+        }
+        EmbeddedBrowserExitZone(
+          onExit = { detailSlide.exit(::closeDetail) },
+          onDrag = { delta -> detailSlide.drag(delta, detailViewportPx) },
+          onRelease = { detailSlide.release(::closeDetail) },
+          onCancel = detailSlide::cancel,
+          modifier = Modifier.align(Alignment.CenterStart)
+            .testTag("bars-discipline-swipe-back-zone"),
+        )
       }
     }
   }
