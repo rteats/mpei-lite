@@ -159,6 +159,7 @@ internal fun BarsNativeDashboard(
     selectedDisciplineName = name
   }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
+  var reportPickerExpanded by rememberSaveable { mutableStateOf(false) }
   // Saveable across detail navigation and Activity recreation. The key includes
   // actual BARS grades/weights so a new mark invalidates stale predictions.
   var autoScenarios by rememberSaveable {
@@ -171,6 +172,9 @@ internal fun BarsNativeDashboard(
     androidx.compose.runtime.mutableIntStateOf(-1)
   }
   val dashboardListState = rememberLazyListState()
+  androidx.compose.runtime.LaunchedEffect(selectedSection) {
+    dashboardListState.scrollToItem(0)
+  }
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
   }
@@ -313,10 +317,52 @@ internal fun BarsNativeDashboard(
           }
 
           item(key = "sections") {
-            BarsReportChooser(
-              selected = selectedSection,
-              onSelected = { selectedSection = it },
-            )
+            Row(
+              modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Text(
+                when (selectedSection) {
+                  "subjects" -> "Дисциплины"
+                  "grades" -> "По неделям"
+                  "attendance" -> "Посещаемость"
+                  "controls" -> "Контрольные"
+                  else -> "БАРС"
+                },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+              )
+              TextButton(
+                onClick = {
+                  if (selectedSection == "subjects") {
+                    reportPickerExpanded = !reportPickerExpanded
+                  } else {
+                    selectedSection = "subjects"
+                    reportPickerExpanded = false
+                  }
+                },
+                modifier = Modifier.testTag("bars-reports-toggle"),
+              ) {
+                Text(if (selectedSection == "subjects") {
+                  if (reportPickerExpanded) "Скрыть отчёты" else "Отчёты"
+                } else "К дисциплинам")
+              }
+            }
+          }
+
+          if (selectedSection != "subjects" || reportPickerExpanded) {
+            item(key = "report-choices") {
+              BarsReportChooser(
+                selected = selectedSection,
+                onSelected = {
+                  selectedSection = it
+                  reportPickerExpanded = false
+                },
+              )
+            }
           }
 
           if (selectedSection != "subjects") {
@@ -366,10 +412,7 @@ internal fun BarsNativeDashboard(
   }
 }
 
-/**
-* Expressive BARS dashboard: dominant profile surface + factual semester
-* summary + approachable, interactive discipline cards.
-*/
+/** Task-first BARS dashboard: disciplines are primary, reports are optional. */
 /** A quiet data-first profile summary, rather than unparsed BARS text chips. */
 @Composable
 private fun BarsUserHeader(
