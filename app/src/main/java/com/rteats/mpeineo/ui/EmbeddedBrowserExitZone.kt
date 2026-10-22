@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -30,13 +32,22 @@ internal fun shouldExitEmbeddedBrowserSwipe(
 internal fun EmbeddedBrowserExitZone(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    onDrag: (Float) -> Unit = {},
+    onRelease: (() -> Unit)? = null,
+    onCancel: () -> Unit = {},
 ) {
+    // Gesture progress recomposes the parent on every frame. Do not restart
+    // pointerInput on each new lambda instance or drag detection is cancelled.
+    val currentExit by rememberUpdatedState(onExit)
+    val currentDrag by rememberUpdatedState(onDrag)
+    val currentRelease by rememberUpdatedState(onRelease)
+    val currentCancel by rememberUpdatedState(onCancel)
     Box(
         modifier = modifier.width(80.dp).fillMaxHeight()
             // Avoid the page header and the fixed browser toolbar.
             .padding(top = 112.dp, bottom = 112.dp)
             .testTag("embedded-browser-exit-zone")
-            .pointerInput(onExit) {
+            .pointerInput(Unit) {
                 var startedInsideZone = false
                 var distancePx = 0f
                 val systemEdgePx = 20.dp.toPx()
@@ -49,17 +60,24 @@ internal fun EmbeddedBrowserExitZone(
                     onHorizontalDrag = { change, delta ->
                         if (startedInsideZone) {
                             distancePx = (distancePx + delta).coerceAtLeast(0f)
+                            currentDrag(delta)
                             if (delta > 0f) change.consume()
                         }
                     },
                     onDragEnd = {
-                        if (shouldExitEmbeddedBrowserSwipe(
-                                startedInsideZone, distancePx, exitThresholdPx,
-                            )
-                        ) onExit()
+                        if (startedInsideZone) {
+                            if (currentRelease != null) currentRelease?.invoke()
+                            else if (shouldExitEmbeddedBrowserSwipe(
+                                    startedInsideZone, distancePx, exitThresholdPx,
+                                )
+                            ) currentExit()
+                        }
                         startedInsideZone = false
                     },
-                    onDragCancel = { startedInsideZone = false },
+                    onDragCancel = {
+                        if (startedInsideZone) currentCancel()
+                        startedInsideZone = false
+                    },
                 )
             },
     )

@@ -243,7 +243,7 @@ fun MpeiNeoApp(
                 initialValue = reveal.coerceIn(0f, 1f),
                 targetValue = target,
                 animationSpec = tween(
-                    durationMillis = if (target == 0f) 260 else 310,
+                    durationMillis = if (target == 0f) BACK_SLIDE_OUT_MS else BACK_SLIDE_IN_MS,
                     easing = FastOutSlowInEasing,
                 ),
             ) { value, _ ->
