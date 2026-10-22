@@ -86,8 +86,14 @@ of simultaneous choices on each level.
   manual connection intention), not the owner of extraction operations.
 - `ServiceNavigationState`: one saveable owner for service push/pop, Back preview
   and the Schedule → Campus nested service stack.
+- `AppNavigationRequest`: typed cross-feature navigation and focus intent.
+  `AppNavigationTargets` owns unique IDs and acknowledgement for lesson,
+  discipline and campus highlights; the shell only dispatches and animates.
 - `SearchOverlayState`: query, search scope, activation, frozen source bounds,
   reverse transition lifetime and restoration.
+- `MailComposeController`: draft/account snapshot, autosave, debounced recipient
+  lookup, outgoing SAF grants and sending; the Mail ViewModel remains the
+  combined UI state facade and owns mailbox sync and message pagination.
 - `scripts/check_architecture.py`: CI guard for the above ownership boundaries.
   The guard runs for every PR and rolling Dev push.
 
@@ -101,8 +107,10 @@ from Android transport.
 
 Still outstanding: test real university 2FA, cold-start session restoration,
 Main→Summary transition, interrupted captures and IME/gesture behavior on a
-physical device. The root shell still owns feature-specific focus requests and
-IME transitions, which should not be migrated without device verification.
+physical device. The root shell retains platform IME and transition coordination;
+feature-specific one-shot focus targets are owned by AppNavigationTargets.
+A future Mail synchronization refactor should follow device validation and
+an explicit check of account-switch and logout races.
 
 ## Next review criteria
 
