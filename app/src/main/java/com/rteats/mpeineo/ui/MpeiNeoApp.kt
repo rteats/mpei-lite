@@ -190,27 +190,16 @@ fun MpeiNeoApp(
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var widthPx by remember { mutableFloatStateOf(1f) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
-    var globalSearchOpen by rememberSaveable { mutableStateOf(false) }
-    var searchOverlayMounted by remember { mutableStateOf(globalSearchOpen) }
-    var searchEntryBounds by remember { mutableStateOf(Rect.Zero) }
-    // Freeze the tapped field bounds before AppBar actions change their width.
-    var activatedSearchBounds by remember { mutableStateOf(Rect.Zero) }
+    val searchUi = rememberSearchOverlayState()
     // The bar switches context when navigation begins, not when its slide ends.
     var appBarService by remember { mutableStateOf(currentService) }
     var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
-    var globalQuery by rememberSaveable { mutableStateOf("") }
     val searchReveal by animateFloatAsState(
-        targetValue = if (globalSearchOpen) 1f else 0f,
+        targetValue = if (searchUi.isOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
-        finishedListener = { settled ->
-            if (settled == 0f) {
-                searchOverlayMounted = false
-                globalQuery = ""
-            }
-        },
+        finishedListener = searchUi::onRevealSettled,
         label = "search-anchored-container-reveal",
     )
-    var searchScope by rememberSaveable { mutableStateOf(SearchScope.SCHEDULE) }
     var nextLessonFocusId by remember { mutableIntStateOf(0) }
     var scheduleLessonFocus by remember { mutableStateOf<ScheduleLessonFocus?>(null) }
     var barsSearchRequest by remember { mutableIntStateOf(0) }
@@ -226,7 +215,7 @@ fun MpeiNeoApp(
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     // Route names are intentionally coarse; never record student or message data.
-    val performanceScreen = if (globalSearchOpen) "SEARCH"
+    val performanceScreen = if (searchUi.isOpen) "SEARCH"
         else currentService?.name ?: "HOME"
     LaunchedEffect(performanceScreen) {
         application.container.uiFrameProfiler.markScreen(performanceScreen)
@@ -321,13 +310,13 @@ fun MpeiNeoApp(
     }
 
     fun updateGlobalQuery(value: String) {
-        globalQuery = value
-        // Only Schedule and All need the remote schedule-target lookup.
-        viewModel.updateSearchQuery(if (searchScope.includesSchedule) value else "")
+        searchUi.updateQuery(value)
+        // Only schedule-scoped search performs remote target lookup.
+        viewModel.updateSearchQuery(if (searchUi.scope.includesSchedule) value else "")
     }
 
     fun closeGlobalSearch() {
-        globalSearchOpen = false
+        searchUi.close()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         // Preserve visible results until the reverse reveal has fully closed.
@@ -335,12 +324,7 @@ fun MpeiNeoApp(
     }
 
     fun openGlobalSearch(scope: SearchScope = SearchScope.SCHEDULE) {
-        if (globalSearchOpen) return
-        searchScope = scope
-        activatedSearchBounds = searchEntryBounds
-        searchOverlayMounted = true
-        globalSearchOpen = true
-        globalQuery = ""
+        if (!searchUi.activate(scope)) return
         viewModel.updateSearchQuery("")
     }
 
@@ -576,11 +560,11 @@ fun MpeiNeoApp(
                             openGlobalSearch(searchAppBarContext(currentService).scope)
                         }
                     },
-                    onScheduleRefresh = if (!globalSearchOpen && appBarService == AppTab.SCHEDULE)
+                    onScheduleRefresh = if (!searchUi.isOpen && appBarService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
                         viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
-                    onMailCompose = if (!globalSearchOpen && searchAppBarAction(
+                    onMailCompose = if (!searchUi.isOpen && searchAppBarAction(
                             appBarService,
                             mailListReady = mailState.configured && !mailState.composing &&
                                 mailState.selected == null && !mailWebVisible,
@@ -588,15 +572,15 @@ fun MpeiNeoApp(
                     ) mailViewModel::startCompose else null,
                     homeEditing = homeEditing,
                     onSearchBoundsChanged = { bounds ->
-                        if (bounds != searchEntryBounds) searchEntryBounds = bounds
+                        if (bounds != searchUi.entryBounds) searchUi.entryBounds = bounds
                     },
-                    onHomeEditToggle = if (!globalSearchOpen && appBarService == null) ({
+                    onHomeEditToggle = if (!searchUi.isOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = !homeEditing
                             diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
                         }
                     }) else null,
-                    onHomeSettings = if (!globalSearchOpen && appBarService == null) ({
+                    onHomeSettings = if (!searchUi.isOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
                             openService(AppTab.SETTINGS)
@@ -737,8 +721,8 @@ fun MpeiNeoApp(
     }
     // Positioned above Scaffold and its top bar, not inside Scaffold's content
     // padding. Clip starts at the actual tapped field and grows to the screen.
-    if (searchOverlayMounted) {
-        val measured = searchEntryBounds
+    if (searchUi.overlayMounted) {
+        val measured = searchUi.entryBounds
         val relativeBounds = if (measured.width > 0f && measured.height > 0f) {
             Rect(
                 measured.left - searchHostBounds.left,
@@ -756,8 +740,8 @@ fun MpeiNeoApp(
                 .testTag("search-anchored-overlay"),
         ) {
             GlobalSearchScreen(
-                query = globalQuery,
-                scope = searchScope,
+                query = searchUi.query,
+                scope = searchUi.scope,
                 onScheduleTypeChange = viewModel::setSearchType,
                 onQueryChange = ::updateGlobalQuery,
                 schedule = scheduleState,
@@ -772,8 +756,8 @@ fun MpeiNeoApp(
                 onDiscipline = ::openBarsResult,
                 onClose = ::closeGlobalSearch,
                 revealProgress = searchReveal,
-                sourceFieldBounds = if (activatedSearchBounds.width > 0f) activatedSearchBounds else searchEntryBounds,
-                focusWhenReady = globalSearchOpen && searchReveal >= 0.98f,
+                sourceFieldBounds = searchUi.anchoredBounds(),
+                focusWhenReady = searchUi.isOpen && searchReveal >= 0.98f,
             )
         }
     }
