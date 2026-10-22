@@ -22,6 +22,9 @@ class UiSmokeTest {
         composeRule.onNodeWithContentDescription("Почта").performClick()
         composeRule.onNodeWithTag("portal-floating-ОСЭП").performClick()
         composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
+        composeRule.onNodeWithTag("mail-browser-controls").assertIsDisplayed()
+        composeRule.onNodeWithTag("browser-reload").assertIsDisplayed()
+        composeRule.onNodeWithTag("browser-copy-url").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Вернуться к входящим").performClick()
         composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
