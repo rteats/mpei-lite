@@ -22,6 +22,12 @@ App shell (navigation, animation, app bars)
 Pure models, parsers, navigation policies and grade planners depend on no UI.
 ```
 
+**Full-page Back:** service transitions, BARS discipline, Mail message and
+Mail composer, and embedded WebView exits all use the same full-width,
+finger-following 20% swipe threshold and 260 ms exit / 310 ms entry policy.
+The underlying native page stays composed while a nested page slides away.
+Modal sheets and search reveal intentionally retain their own animations.
+
 **Shell:** routes, back policy, transitions, IME coordination and deep-link
 dispatch. Does not initiate BARS extraction or Mail network calls.
 **Feature UI:** renders immutable state and invokes commands. Does not decide

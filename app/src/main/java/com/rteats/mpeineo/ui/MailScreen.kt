@@ -139,7 +139,7 @@ internal fun MailScreen(
     LaunchedEffect(scrollState, folderItems.size, folderHasMore,
         folderLoadingMore, folderLoading, folderMoreError,
         state.selected, active, state.mailbox) {
-        if (active && state.selected == null &&
+        if (active && state.selected == null && !state.composing &&
             folderHasMore && !folderLoadingMore &&
             !folderLoading && !folderMoreError) {
             snapshotFlow {
@@ -148,6 +148,11 @@ internal fun MailScreen(
                 if (last >= folderItems.size - 4) viewModel.loadMore()
             }
         }
+    }
+    val composeSlide = rememberBackSlideState()
+    var composeViewportPx by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(state.composing) {
+        if (state.composing) composeSlide.enter() else composeSlide.reset()
     }
     val messageSlide = rememberBackSlideState()
     var messageViewportPx by remember { mutableFloatStateOf(1f) }
@@ -166,14 +171,11 @@ internal fun MailScreen(
         // The app scaffold already handles safe-area insets; no second blank header.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
-        if (state.composing) {
-            MailComposeScreen(
-                state = state,
-                viewModel = viewModel,
-                modifier = Modifier.fillMaxSize().padding(insets),
-            )
-        } else {
-        Column(modifier = Modifier.fillMaxSize().padding(insets)) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(insets)
+                .onSizeChanged { composeViewportPx = it.width.toFloat().coerceAtLeast(1f) },
+        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             if (state.configured) {
                 if (state.error != null) {
                     val hasCachedContent = folderItems.isNotEmpty() || state.message != null
@@ -408,6 +410,39 @@ internal fun MailScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+        if (state.composing) {
+            // Keep the mailbox visible under the composer, just like a
+            // service-to-Home Back. Unsaved input remains in MailComposeController.
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer {
+                        translationX = composeViewportPx * composeSlide.progress
+                    }
+                    .testTag("mail-compose-slide-layer"),
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    MailComposeScreen(
+                        state = state,
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize(),
+                        onExit = { composeSlide.exit(viewModel::closeCompose) },
+                    )
+                }
+                if (!state.sending) {
+                    EmbeddedBrowserExitZone(
+                        onExit = { composeSlide.exit(viewModel::closeCompose) },
+                        onDrag = { delta -> composeSlide.drag(delta, composeViewportPx) },
+                        onRelease = { composeSlide.release(viewModel::closeCompose) },
+                        onCancel = composeSlide::cancel,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                            .testTag("mail-compose-swipe-back-zone"),
+                    )
                 }
             }
         }

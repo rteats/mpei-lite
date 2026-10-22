@@ -49,6 +49,7 @@ internal fun MailComposeScreen(
     state: MailUiState,
     viewModel: MailViewModel,
     modifier: Modifier = Modifier,
+    onExit: () -> Unit = viewModel::closeCompose,
 ) {
     val draft = state.draft
     val hasDraft = draft.to.isNotBlank() || draft.cc.isNotBlank() || draft.bcc.isNotBlank() ||
@@ -74,7 +75,7 @@ internal fun MailComposeScreen(
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> viewModel.addOutgoingFiles(uris) }
-    BackHandler(enabled = !state.sending) { viewModel.closeCompose() }
+    BackHandler(enabled = !state.sending) { onExit() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("mail-compose"),
@@ -87,7 +88,7 @@ internal fun MailComposeScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconButton(onClick = viewModel::closeCompose, enabled = !state.sending) {
+                IconButton(onClick = onExit, enabled = !state.sending) {
                     AppIcon(AppIcons.Back, contentDescription = "Свернуть черновик")
                 }
                 Text(
