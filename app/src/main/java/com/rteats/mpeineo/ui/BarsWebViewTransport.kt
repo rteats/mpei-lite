@@ -1,7 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import com.rteats.mpeineo.AppIcon
-import com.rteats.mpeineo.AppIcons
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -15,16 +13,13 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.content.Context
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 
 /**
  * Owns the actual Android BARS WebView and all transport callbacks. This
