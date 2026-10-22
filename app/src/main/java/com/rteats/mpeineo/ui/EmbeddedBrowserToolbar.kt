@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -87,6 +88,8 @@ internal fun EmbeddedBrowserAppBar(
 
     TopAppBar(
         modifier = modifier.fillMaxWidth().testTag("embedded-browser-appbar"),
+        // The parent Scaffold already applies status-bar safe drawing insets.
+        windowInsets = WindowInsets(0, 0, 0, 0),
         title = {
             Text(
                 browserSiteLabel(state.url),

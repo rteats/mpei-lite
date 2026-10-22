@@ -27,7 +27,8 @@ class UiSmokeTest {
         composeRule.onNodeWithTag("browser-reload").assertIsDisplayed()
         composeRule.onNodeWithTag("browser-copy-url").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("browser-overflow").performClick()
+        // The popup owns the foreground until a menu item closes it.
+        composeRule.onNodeWithTag("browser-reload").performClick()
         composeRule.onNodeWithTag("browser-exit").performClick()
         composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
     }
