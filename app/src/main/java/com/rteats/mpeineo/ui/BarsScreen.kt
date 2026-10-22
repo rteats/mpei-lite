@@ -134,6 +134,7 @@ internal fun BarsScreen(
   var marksReadiness by remember { mutableStateOf<BarsMarksReadiness?>(null) }
   var retryNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
   val webFlow = remember { BarsWebFlowState() }
+  val session = remember { BarsSessionCoordinator() }
   val extractionGate = remember { BarsExtractionGate() }
   val autoRefreshGate = remember { BarsAutoRefreshGate() }
 
@@ -142,7 +143,7 @@ internal fun BarsScreen(
   fun liveState(): BarsUiState = viewModel.state.value
 
   fun interruptAutomatedCapture(reason: String) {
-    val interrupted = webFlow.enterInteractiveBrowser()
+    val interrupted = session.enterInteractiveBrowser()
     navigationController?.cancelAutomaticNavigation()
     extractionGate.invalidate()
     marksReadiness?.navigationStarted()
@@ -194,6 +195,7 @@ internal fun BarsScreen(
       ) {
         viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
         webFlow.prepareMarkRefresh()
+        session.prepareMarkRefresh()
         marksReadiness?.reset()
         viewModel.startRefresh()
         retryNavigation?.invoke()
@@ -250,14 +252,12 @@ internal fun BarsScreen(
     // Route discovery is asynchronous. Keep the authenticated document laid
     // out at its normal size until discovery/navigation is finished: reducing
     // Chromium to 1dp can remove or postpone responsive menu markup.
-    webFlow.summaryFetchAttempted = true
-    webFlow.summaryExtractionStarted = false
     webFlow.needsFullViewport = true
-    val generation = ++webFlow.summaryRouteDiscoveryGeneration
+    val generation = session.startSummaryDiscovery()
 
     fun discover(attempt: Int) {
       if (webView !== view || navigationController !== controller ||
-        !webFlow.canNavigateToSummary(
+        !session.canNavigateToSummary(
           generation, liveState().browserVisible,
           BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL),
         )
@@ -265,7 +265,7 @@ internal fun BarsScreen(
 
       view.evaluateJavascript(BARS_AUTHENTICATED_ROUTES_SCRIPT) { result ->
         if (webView !== view || navigationController !== controller ||
-          !webFlow.canNavigateToSummary(
+          !session.canNavigateToSummary(
             generation, liveState().browserVisible,
             BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL),
           )
@@ -320,6 +320,7 @@ internal fun BarsScreen(
         error = state.error,
         onRetry = {
           webFlow.prepareCheckRetry()
+          session.prepareCheckRetry()
           marksReadiness?.reset()
           viewModel.checking()
           retryNavigation?.invoke()
@@ -342,9 +343,7 @@ internal fun BarsScreen(
         onSearch = onSearch,
         onRefresh = {
           webFlow.manuallyRequestedConnection = true
-          webFlow.redirectingToMarks = false
-          webFlow.summaryFetchAttempted = false
-          webFlow.summaryExtractionStarted = false
+          session.prepareMarkRefresh()
           webFlow.mainFrameFailed = false
           if (state.loginRequired) {
             interruptAutomatedCapture("login required")
@@ -367,8 +366,7 @@ internal fun BarsScreen(
             viewModel.showBrowser()
           } else if (!state.isSummaryLoading) {
             val view = webView
-            webFlow.summaryFetchAttempted = false
-            webFlow.summaryExtractionStarted = false
+            session.resetSummaryCapture()
             webFlow.mainFrameFailed = false
             if (view != null &&
               BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
@@ -498,9 +496,9 @@ internal fun BarsScreen(
             probe = viewModel::probeNetwork,
             onTimeout = {
               if (!liveState().browserVisible &&
-                webFlow.summaryFetchAttempted && liveState().isSummaryLoading
+                session.summaryFetchAttempted && liveState().isSummaryLoading
               ) {
-                webFlow.summaryExtractionStarted = false
+                session.retrySummaryExtraction()
                 viewModel.summaryCaptureFailed(
                   "Не удалось загрузить Сводку: сервер БАРС не ответил.",
                 )
@@ -563,8 +561,7 @@ internal fun BarsScreen(
           // Grade extraction is read-only, including during interactive WebView login.
           // It must not open Summary or otherwise take over the user's browser.
           fun startMarksExtraction(page: BarsPageState, source: String) {
-            if (!shouldExtractBarsMarks(page, webFlow.marksExtractionStarted)) return
-            webFlow.marksExtractionStarted = true
+            if (!session.beginMarksExtraction(page)) return
             viewModel.logWebEvent("marks extraction started source=$source")
             // Interactive browsing can navigate away before the JS result;
             // do not leave native grades stuck in a loading state in that case.
@@ -646,10 +643,8 @@ internal fun BarsScreen(
 
                   if (liveState().browserVisible) {
                     readiness.navigationStarted()
-                    if (shouldExtractBarsMarks(page, webFlow.marksExtractionStarted)) {
-                      // A user can sign in or change students without closing WebView.
-                      startMarksExtraction(page, "interactive-webview")
-                    }
+                    // A user can sign in or change students without closing WebView.
+                    startMarksExtraction(page, "interactive-webview")
                     // Keep interactive navigation entirely under user control.
                     viewModel.logWebEvent(
                       "browser mode; leaving navigation untouched path=$currentLocation",
@@ -658,9 +653,8 @@ internal fun BarsScreen(
                   }
 
                   // Summary has independent AJAX-populated grade and attendance tables.
-                  if (page.isSummaryPage && webFlow.summaryFetchAttempted) {
-                    if (page.isSummaryReady && !webFlow.summaryExtractionStarted) {
-                      webFlow.summaryExtractionStarted = true
+                  if (page.isSummaryPage && session.summaryFetchAttempted) {
+                    if (session.beginSummaryExtraction(page.isSummaryReady)) {
                       viewModel.logWebEvent("summary tables ready")
                       view.evaluateJavascript(BARS_SUMMARY_RAW_SCRIPT, null)
                     }
@@ -669,9 +663,9 @@ internal fun BarsScreen(
 
                   when (classifyBarsPage(page)) {
                     BarsPageKind.MARKS_READY -> {
-                      webFlow.redirectingToMarks = false
+                      session.onMarksRouteObserved()
                       readiness.reset()
-                      if (webFlow.summaryFetchAttempted && liveState().isSummaryLoading) {
+                      if (session.summaryFetchAttempted && liveState().isSummaryLoading) {
                         // Redirected back to Main without a Summary payload.
                         viewModel.summaryCaptureFailed(
                           "Сводка не вернула данные. Нажмите «Обновить», чтобы повторить.",
@@ -680,9 +674,9 @@ internal fun BarsScreen(
                       startMarksExtraction(page, "native")
                     }
                     BarsPageKind.AUTH_FLOW -> {
-                      webFlow.redirectingToMarks = false
+                      session.onMarksRouteObserved()
                       readiness.reset()
-                      if (webFlow.summaryFetchAttempted && liveState().isSummaryLoading) {
+                      if (session.summaryFetchAttempted && liveState().isSummaryLoading) {
                         viewModel.summaryCaptureFailed(
                           "Для загрузки Сводки требуется повторный вход в БАРС.",
                         )
@@ -691,7 +685,7 @@ internal fun BarsScreen(
                       viewModel.webAuth(page.url)
                     }
                     BarsPageKind.MARKS_LOADING -> {
-                      webFlow.redirectingToMarks = false
+                      session.onMarksRouteObserved()
                       viewModel.waitingForMarks(page.url)
                       if (readiness.waitForMarks()) {
                         viewModel.logWebEvent(
@@ -701,8 +695,7 @@ internal fun BarsScreen(
                     }
                     BarsPageKind.OTHER_BARS_PAGE -> {
                       readiness.navigationStarted()
-                      if (!webFlow.redirectingToMarks) {
-                        webFlow.redirectingToMarks = true
+                      if (session.beginRedirectToMarks()) {
                         viewModel.waitingForMarks(page.url)
                         viewModel.logWebEvent(
                           "authenticated BARS root; opening marks route",
@@ -734,7 +727,7 @@ internal fun BarsScreen(
                   // Keep the offscreen WebView at full layout size until the
                   // Main -> Summary route has been resolved. On the return
                   // trip, marks are already cached and it can shrink again.
-                  if (webFlow.summaryFetchAttempted && !liveState().isSummaryLoading) {
+                  if (session.summaryFetchAttempted && !liveState().isSummaryLoading) {
                     webFlow.needsFullViewport = false
                   }
                   readiness.reset()
@@ -762,19 +755,19 @@ internal fun BarsScreen(
                   }
                   if (!valid) return@post
                   if (source == "SUMMARY" &&
-                    !webFlow.canAcceptSummaryPayload(liveState().browserVisible)
+                    !session.canAcceptSummaryPayload(liveState().browserVisible)
                   ) {
                     viewModel.logWebEvent("ignored obsolete Summary payload")
                     return@post
                   }
                   viewModel.rawSnapshotReceived(source, raw)
-                  if (source == "MAIN" && !webFlow.summaryFetchAttempted &&
+                  if (source == "MAIN" && !session.summaryFetchAttempted &&
                     !liveState().browserVisible
                   ) {
                     viewModel.logWebEvent("automatic Summary capture: resolving official link")
                     requestOfficialSummary(view, "automatic Summary capture")
                   }
-                  if (source == "SUMMARY" && webFlow.summaryFetchAttempted &&
+                  if (source == "SUMMARY" && session.summaryFetchAttempted &&
                     !liveState().browserVisible) {
                     viewModel.logWebEvent("summary captured; restoring marks")
                     restoreOfficialMarks("restore marks after Summary")
@@ -853,7 +846,7 @@ internal fun BarsScreen(
               favicon: Bitmap?,
             ) {
               if (webView !== view) return
-              webFlow.marksExtractionStarted = false
+              session.onDocumentStarted()
               extractionGate.invalidate()
               readiness.navigationStarted()
               if (isTrustedBarsDocument(url)) webFlow.mainFrameFailed = false
@@ -892,7 +885,7 @@ internal fun BarsScreen(
               }
               view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
               if (BarsDocumentPolicy.isCurrent(url, BARS_SUMMARY_URL) &&
-                webFlow.summaryFetchAttempted
+                session.summaryFetchAttempted
               ) {
                 view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
                 val deadlineNavigationId = controller.requestId
@@ -901,11 +894,11 @@ internal fun BarsScreen(
                 view.postDelayed({
                   if (webView === view &&
                     BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_SUMMARY_URL) &&
-                    webFlow.summaryFetchAttempted && liveState().isSummaryLoading &&
+                    session.summaryFetchAttempted && liveState().isSummaryLoading &&
                     controller.requestId == deadlineNavigationId && !liveState().browserVisible
                   ) {
                     view.evaluateJavascript(BARS_SUMMARY_DIAGNOSTICS_SCRIPT, null)
-                    webFlow.summaryExtractionStarted = false
+                    session.retrySummaryExtraction()
                     viewModel.summaryCaptureFailed(
                       "Таблицы Сводки не загрузились. Можно повторить.",
                     )
@@ -952,7 +945,7 @@ internal fun BarsScreen(
                     retryable = code in 500..599,
                   )
                   if (!retryScheduled && !liveState().browserVisible) {
-                    if (webFlow.summaryFetchAttempted &&
+                    if (session.summaryFetchAttempted &&
                       BarsDocumentPolicy.isCurrent(request.url.toString(), BARS_SUMMARY_URL)
                     ) {
                       viewModel.summaryCaptureFailed(
@@ -1025,7 +1018,7 @@ internal fun BarsScreen(
               if (canRetry) return
 
               if (!liveState().browserVisible) {
-                if (webFlow.summaryFetchAttempted &&
+                if (session.summaryFetchAttempted &&
                   BarsDocumentPolicy.isCurrent(failedUrl, BARS_SUMMARY_URL)
                 ) {
                   viewModel.summaryCaptureFailed(
