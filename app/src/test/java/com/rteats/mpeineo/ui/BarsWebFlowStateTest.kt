@@ -42,4 +42,44 @@ class BarsWebFlowStateTest {
         assertFalse(state.mainFrameFailed)
         assertTrue(state.needsFullViewport)
     }
+    @Test fun openingInteractiveBrowserInvalidatesPendingSummaryDiscovery() {
+        val state = BarsWebFlowState()
+        state.summaryFetchAttempted = true
+        state.summaryExtractionStarted = true
+        state.redirectingToMarks = true
+        state.needsFullViewport = false
+        state.officialMainUrl = "https://bars.mpei.ru/bars_web/ST_Study/Main/Main"
+        val generation = ++state.summaryRouteDiscoveryGeneration
+
+        assertTrue(state.canNavigateToSummary(
+            generation, browserVisible = false, marksDocumentVisible = true))
+        assertFalse(state.canNavigateToSummary(
+            generation, browserVisible = true, marksDocumentVisible = true))
+        assertFalse(state.canNavigateToSummary(
+            generation, browserVisible = false, marksDocumentVisible = false))
+
+        assertTrue(state.enterInteractiveBrowser())
+        assertFalse(state.summaryFetchAttempted)
+        assertFalse(state.summaryExtractionStarted)
+        assertFalse(state.redirectingToMarks)
+        assertTrue(state.needsFullViewport)
+        assertFalse(state.canNavigateToSummary(
+            generation, browserVisible = false, marksDocumentVisible = true))
+        assertEquals("https://bars.mpei.ru/bars_web/ST_Study/Main/Main",
+            state.officialMainUrl)
+    }
+
+    @Test fun lateJavascriptCallbacksCannotReuseCancelledGeneration() {
+        val state = BarsWebFlowState()
+        state.summaryFetchAttempted = true
+        val first = ++state.summaryRouteDiscoveryGeneration
+        assertTrue(state.enterInteractiveBrowser())
+        // A new automatic capture may start only after returning to native mode.
+        state.summaryFetchAttempted = true
+        val second = ++state.summaryRouteDiscoveryGeneration
+        assertFalse(state.canNavigateToSummary(first, false, true))
+        assertTrue(state.canNavigateToSummary(second, false, true))
+        assertTrue(state.enterInteractiveBrowser())
+    }
+
 }
