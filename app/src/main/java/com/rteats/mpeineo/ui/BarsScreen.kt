@@ -134,7 +134,7 @@ internal fun BarsScreen(
         // Only the explicit session browser or login should cover native UI.
         modifier = (when {
           state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH ->
-            Modifier.fillMaxSize().padding(bottom = EMBEDDED_BROWSER_TOOLBAR_HEIGHT)
+            Modifier.fillMaxSize().padding(top = EMBEDDED_BROWSER_APPBAR_HEIGHT)
           webFlow.needsFullViewport -> Modifier
             .fillMaxSize()
             .alpha(0f)
@@ -165,12 +165,16 @@ internal fun BarsScreen(
           modifier = Modifier.align(Alignment.CenterStart).zIndex(3f)
             .testTag("bars-browser-swipe-exit"),
         )
-        EmbeddedBrowserToolbar(
+        EmbeddedBrowserAppBar(
           state = transport.browserToolbarState,
+          onExit = {
+            if (state.browserVisible) transport.exitBrowser(onBrowserExit)
+            else { onBrowserExit(); onAuthBrowserExit() }
+          },
           onBack = transport::browserBack,
           onForward = transport::browserForward,
           onReload = transport::browserReload,
-          modifier = Modifier.align(Alignment.BottomCenter).zIndex(2f)
+          modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
             .testTag("bars-browser-controls"),
         )
       }

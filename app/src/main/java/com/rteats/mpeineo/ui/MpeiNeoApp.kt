@@ -544,9 +544,14 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            // The native search app bar reserves space rather than floating
-            // over controls, scrollable content, maps, or WebViews.
-            if (appBarMode(appBarService) == AppBarMode.TITLE) {
+            // Embedded browsers own a dedicated Material app bar. Never stack
+            // the contextual search app bar above their own overflow controls.
+            val embeddedBrowserForeground = (currentService == AppTab.MAIL && mailWebVisible) ||
+                (currentService == AppTab.BARS &&
+                    (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH))
+            if (embeddedBrowserForeground) {
+                // The active portal renders EmbeddedBrowserAppBar instead.
+            } else if (appBarMode(appBarService) == AppBarMode.TITLE) {
                 TopAppBar(
                     title = { Text("Настройки") },
                     navigationIcon = {

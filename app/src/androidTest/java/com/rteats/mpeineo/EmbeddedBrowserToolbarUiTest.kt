@@ -7,12 +7,12 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.rteats.mpeineo.ui.EmbeddedBrowserState
-import com.rteats.mpeineo.ui.EmbeddedBrowserToolbar
+import com.rteats.mpeineo.ui.EmbeddedBrowserAppBar
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
-class EmbeddedBrowserToolbarUiTest {
+class EmbeddedBrowserAppBarUiTest {
     @get:Rule val rule = createComposeRule()
 
     @Test fun backForwardAndReloadSendOnlyIntendedActions() {
@@ -21,20 +21,24 @@ class EmbeddedBrowserToolbarUiTest {
         var reload = 0
         rule.setContent {
             MaterialTheme {
-                EmbeddedBrowserToolbar(
+                EmbeddedBrowserAppBar(
                     state = EmbeddedBrowserState(
                         url = "https://bars.mpei.ru/bars_web/",
                         canGoBack = true,
                         canGoForward = true,
                     ),
+                    onExit = {},
                     onBack = { back++ },
                     onForward = { forward++ },
                     onReload = { reload++ },
                 )
             }
         }
+        rule.onNodeWithTag("browser-overflow").performClick()
         rule.onNodeWithTag("browser-back").performClick()
+        rule.onNodeWithTag("browser-overflow").performClick()
         rule.onNodeWithTag("browser-forward").performClick()
+        rule.onNodeWithTag("browser-overflow").performClick()
         rule.onNodeWithTag("browser-reload").performClick()
         rule.runOnIdle {
             assertEquals(1, back)
@@ -46,17 +50,20 @@ class EmbeddedBrowserToolbarUiTest {
     @Test fun historyButtonsDisabledWithoutHistory() {
         rule.setContent {
             MaterialTheme {
-                EmbeddedBrowserToolbar(
+                EmbeddedBrowserAppBar(
                     state = EmbeddedBrowserState(url = "about:blank"),
+                    onExit = {},
                     onBack = {},
                     onForward = {},
                     onReload = {},
                 )
             }
         }
+        rule.onNodeWithTag("browser-overflow").performClick()
         rule.onNodeWithTag("browser-back").assertIsNotEnabled()
         rule.onNodeWithTag("browser-forward").assertIsNotEnabled()
         rule.onNodeWithTag("browser-copy-url").assertIsNotEnabled()
         rule.onNodeWithTag("browser-reload").assertIsEnabled()
+        rule.onNodeWithTag("browser-external").assertIsNotEnabled()
     }
 }
