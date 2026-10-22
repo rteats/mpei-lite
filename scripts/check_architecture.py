@@ -27,6 +27,8 @@ presentation = content("BarsWebFlowState.kt")
 app = content("MpeiNeoApp.kt")
 navigation = content("ServiceNavigationState.kt")
 search = content("SearchOverlayState.kt")
+bars_screen = content("BarsScreen.kt")
+bars_transport = content("BarsWebViewTransport.kt")
 
 # The session decision engine must remain JVM-testable without Compose/Android.
 for forbidden in (
@@ -71,10 +73,35 @@ for marker, filename, source in (
     if marker not in source:
         issues.append(f"{filename} is missing expected API: {marker}")
 
+# The UI may compose AndroidView, but browser policy and the JS bridge must
+# remain inside the transport instead of regrowing in BarsScreen.kt.
+for forbidden in (
+    r"^import\\s+android\\.webkit\\.",
+    r"\\bevaluateJavascript\\s*\\(",
+    r"\\bBarsNavigationController\\s*\\(",
+    r"\\bBarsJavascriptBridge\\s*\\(",
+    r"\\bCookieManager\\b",
+    r"\\bWebViewClient\\b",
+):
+    if re.search(forbidden, bars_screen, re.MULTILINE):
+        issues.append(f"BarsScreen must delegate Android transport: {forbidden}")
+
+for marker in (
+    "class BarsWebViewTransport",
+    "fun create(context:",
+    "fun release(view:",
+    "fun onBrowserModeChanged(",
+    "fun refreshMarks(",
+    "fun refreshSummary(",
+    "fun handleBrowserBack(",
+):
+    if marker not in bars_transport:
+        issues.append(f"BarsWebViewTransport missing required transport API: {marker}")
+
 if issues:
     print("Architecture boundary violations:")
     for issue in issues:
         print(f"  - {issue}")
     sys.exit(1)
 
-print("Architecture boundaries verified (BARS session, search, navigation).")
+print("Architecture boundaries verified (BARS transport/session, search, navigation).")
