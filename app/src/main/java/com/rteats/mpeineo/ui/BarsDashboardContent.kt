@@ -26,6 +26,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -592,6 +593,9 @@ private fun DisciplineExpandedCard(
     it.type != BarsActivityType.CONTROL_ACTIVITY
   }
   val focusPulse = rememberDestinationFocusPulse(focusRequestId)
+  var plannerExpanded by rememberSaveable(discipline.disciplineName) {
+    mutableStateOf(false)
+  }
   Column(
     modifier = Modifier.fillMaxSize()
       .background(MaterialTheme.colorScheme.background)
@@ -639,20 +643,52 @@ private fun DisciplineExpandedCard(
         .padding(horizontal = 6.dp, vertical = 4.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      // The next actionable decision is the 4.2 plan, not a raw grade dump.
-      // Aggregate assessments are excluded by the established BARS rule.
+      // A compact goal entry gives grade details priority on first opening.
+      // The full what-if editor is available on demand, never duplicated here.
       if (shouldShowGradeForecastForAssessment(discipline.assessmentType)) {
+        val autoPlan = remember(discipline) { buildAutoPlan(discipline) }
+        val goalStatus = when (autoPlan) {
+          is AutoPlanResult.Unavailable -> "Не хватает данных для расчёта"
+          is AutoPlanResult.Available -> if (autoPlan.canReachTarget) {
+            "Цель 4,20 достижима по известным весам"
+          } else "4,20 не достичь по известным весам"
+        }
         Surface(
           modifier = Modifier.fillMaxWidth(),
           shape = MaterialTheme.shapes.extraLarge,
           color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
-          BarsAutoPlanner(
-            discipline = discipline,
-            savedScenario = savedAutoScenario,
-            onScenarioChange = onAutoScenarioChange,
-            modifier = Modifier.padding(16.dp),
-          )
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+              modifier = Modifier.fillMaxWidth()
+                .clickable { plannerExpanded = !plannerExpanded }
+                .padding(16.dp)
+                .testTag("bars-auto-goal-toggle"),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              AppIcon(AppIcons.Analytics, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary)
+              Column(modifier = Modifier.weight(1f)) {
+                Text("План на автомат · 4,20",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.SemiBold)
+                Text(goalStatus, style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant)
+              }
+              AppIcon(if (plannerExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                contentDescription = if (plannerExpanded) "Свернуть план" else "Открыть план",
+                tint = MaterialTheme.colorScheme.primary)
+            }
+            if (plannerExpanded) {
+              BarsAutoPlanner(
+                discipline = discipline,
+                savedScenario = savedAutoScenario,
+                onScenarioChange = onAutoScenarioChange,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+              )
+            }
+          }
         }
       }
 
