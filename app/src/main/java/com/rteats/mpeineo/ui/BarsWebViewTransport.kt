@@ -820,6 +820,34 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
 
   /** Called once when AndroidView releases its owned browser instance. */
   fun release(view: WebView) {
+          viewModel.logWebEvent(
+            "webview released stage=${liveState().authStage} browser=${liveState().browserVisible} " +
+              "cacheFresh=${liveState().hasFreshCache()} loading=${liveState().isLoading} " +
+              "path=${safeBarsLocation(view.url.orEmpty())} progress=${view.progress}",
+          )
+          if (webView === view) retryNavigation = null
+          if (webView === view) {
+            extractionGate.invalidate()
+            marksReadiness?.dispose()
+            marksReadiness = null
+          }
+          if (navigationController?.belongsTo(view) == true) {
+            navigationController?.close()
+            navigationController = null
+          }
+          // A WebView with an editable element can retain native input
+          // focus while AndroidView is detached, reopening the IME.
+          // Drop focus and make it ineligible for focus restoration.
+          view.clearFocus()
+          view.isFocusableInTouchMode = false
+          view.isFocusable = false
+          view.onFocusChangeListener = null
+          view.setOnTouchListener(null)
+          view.stopLoading()
+          view.removeJavascriptInterface(BARS_JS_INTERFACE)
+          view.webViewClient = WebViewClient()
+          view.destroy()
+          if (webView === view) webView = null
   }
 }
 
