@@ -585,7 +585,7 @@ fun MpeiNeoApp(
                     onHomeSettings = if (!searchUi.isOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
-                            openService(AppTab.SETTINGS)
+                            dispatchNavigation(AppNavigationRequest.Service(AppTab.SETTINGS))
                         }
                     }) else null,
                 )
