@@ -200,15 +200,11 @@ fun MpeiNeoApp(
         finishedListener = searchUi::onRevealSettled,
         label = "search-anchored-container-reveal",
     )
-    var nextLessonFocusId by remember { mutableIntStateOf(0) }
-    var scheduleLessonFocus by remember { mutableStateOf<ScheduleLessonFocus?>(null) }
-    var barsSearchRequest by remember { mutableIntStateOf(0) }
-    var barsRequestedDiscipline by remember { mutableStateOf<String?>(null) }
+    val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
-    var mapFocus by remember { mutableStateOf<CampusMapFocus?>(null) }
-    var nextMapFocusId by remember { mutableIntStateOf(0) }
+
     var agendaScrolling by remember { mutableStateOf(false) }
     var weekInfoVisible by remember { mutableStateOf(false) }
     var barsBrowserJustClosed by remember { mutableStateOf(false) }
@@ -328,53 +324,65 @@ fun MpeiNeoApp(
         viewModel.updateSearchQuery("")
     }
 
-    fun openScheduleResult(target: ScheduleTarget) {
-        closeGlobalSearch()
-        scheduleLessonFocus = null
-        viewModel.selectTarget(target)
-        if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
-    }
-
-    fun openLessonResult(hit: ScheduleLessonHit) {
-        closeGlobalSearch()
-        nextLessonFocusId++
-        scheduleLessonFocus = ScheduleLessonFocus(
-            requestId = nextLessonFocusId, weekOffset = hit.weekOffset,
-            date = hit.date, name = hit.lesson.name, startTime = hit.lesson.startTime,
-            place = hit.lesson.place,
-        )
-        // The hit belongs to the selected timetable. Do not re-select that
-        // timetable: doing so clears its loaded weeks and loses the result.
-        if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
-    }
-
-    fun openMailResult(hit: SearchMailHit) {
-        closeGlobalSearch()
-        if (currentService != AppTab.MAIL) openService(AppTab.MAIL)
-        mailViewModel.switchMailbox(hit.folder)
-        mailViewModel.open(hit.message)
-    }
-
-    fun openBarsResult(discipline: String) {
-        closeGlobalSearch()
-        barsSearchRequest++
-        barsRequestedDiscipline = discipline
-        if (currentService != AppTab.BARS) openService(AppTab.BARS)
-    }
-
-    fun openCampusResult(building: String) {
-        closeGlobalSearch()
-        nextMapFocusId++
-        mapFocus = CampusMapFocus(nextMapFocusId, building, "")
-        if (currentService != AppTab.MAPS) openService(AppTab.MAPS)
+    fun dispatchNavigation(request: AppNavigationRequest) {
+        when (request) {
+            is AppNavigationRequest.Service -> {
+                if (request.destination == AppTab.SCHEDULE) navigationTargets.clearScheduleFocus()
+                openService(request.destination)
+            }
+            is AppNavigationRequest.SelectSchedule -> {
+                closeGlobalSearch()
+                navigationTargets.clearScheduleFocus()
+                viewModel.selectTarget(request.target)
+                if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
+            }
+            is AppNavigationRequest.FocusScheduleLesson -> {
+                closeGlobalSearch()
+                navigationTargets.focusScheduleLesson(request.hit)
+                // Never reselect the timetable: that would drop the cached week.
+                if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
+            }
+            is AppNavigationRequest.FocusHomeLesson -> {
+                navigationTargets.focusHomeLesson(request.highlight, scheduleState.agendaWeeks)
+                openService(AppTab.SCHEDULE)
+            }
+            is AppNavigationRequest.OpenMail -> {
+                closeGlobalSearch()
+                if (currentService != AppTab.MAIL) openService(AppTab.MAIL)
+                mailViewModel.switchMailbox(request.hit.folder)
+                mailViewModel.open(request.hit.message)
+            }
+            is AppNavigationRequest.OpenMailNotification -> {
+                openService(AppTab.MAIL)
+                if (request.uid > 0 && request.validity > 0) {
+                    mailViewModel.openFromNotification(request.uid, request.validity)
+                } else mailViewModel.closeMessage()
+            }
+            is AppNavigationRequest.OpenBarsDiscipline -> {
+                closeGlobalSearch()
+                navigationTargets.focusBarsDiscipline(request.name)
+                if (currentService != AppTab.BARS) openService(AppTab.BARS)
+            }
+            is AppNavigationRequest.FocusCampus -> {
+                closeGlobalSearch()
+                navigationTargets.focusCampus(request.building, request.classroom)
+                if (request.fromSchedule || currentService != AppTab.MAPS) {
+                    openService(AppTab.MAPS, viaClassroom = request.fromSchedule)
+                }
+            }
+            is AppNavigationRequest.LocateClassroom -> {
+                campusBuildingForRoom(request.room)?.let { building ->
+                    dispatchNavigation(AppNavigationRequest.FocusCampus(
+                        building = building, classroom = request.room, fromSchedule = true,
+                    ))
+                }
+            }
+        }
     }
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
-        openService(AppTab.MAIL)
-        if (target.uid > 0 && target.validity > 0) {
-            mailViewModel.openFromNotification(target.uid, target.validity)
-        } else mailViewModel.closeMessage()
+        dispatchNavigation(AppNavigationRequest.OpenMailNotification(target.uid, target.validity))
     }
 
     // Nested BackHandlers in MailScreen and BARS take precedence over the root.
@@ -404,16 +412,10 @@ fun MpeiNeoApp(
                                 onViewedAgendaWeek = { viewedScheduleWeek = it },
                                 onAgendaScrollingChanged = { agendaScrolling = it },
                                 onLocateRoom = { room ->
-                                    campusBuildingForRoom(room)?.let { building ->
-                                        nextMapFocusId++
-                                        mapFocus = CampusMapFocus(
-                                            nextMapFocusId, building, room.take(100),
-                                        )
-                                        openService(AppTab.MAPS, viaClassroom = true)
-                                    }
+                                    dispatchNavigation(AppNavigationRequest.LocateClassroom(room))
                                 },
                                 todayJumpRequest = todayJumpRequest,
-                                focusLesson = scheduleLessonFocus,
+                                focusLesson = navigationTargets.scheduleLessonFocus,
                                 modifier = Modifier.fillMaxSize(),
                             )
 
@@ -443,8 +445,8 @@ fun MpeiNeoApp(
                         }
                         AppTab.MAPS -> CampusMapScreen(
                             active = active,
-                            focus = mapFocus,
-                            onFocusConsumed = { mapFocus = null },
+                            focus = navigationTargets.mapFocus,
+                            onFocusConsumed = navigationTargets::consumeCampusFocus,
                             modifier = Modifier.fillMaxSize(),
                         )
                         AppTab.SETTINGS -> SettingsScreen(
@@ -583,7 +585,7 @@ fun MpeiNeoApp(
                     onHomeSettings = if (!searchUi.isOpen && appBarService == null) ({
                         if (!isTransitioning) {
                             homeEditing = false
-                            openService(AppTab.SETTINGS)
+                            dispatchNavigation(AppNavigationRequest.Service(AppTab.SETTINGS))
                         }
                     }) else null,
                 )
@@ -608,24 +610,17 @@ fun MpeiNeoApp(
                         editing = homeEditing,
                         onOpen = { target ->
                             if (currentService == null && !isTransitioning) {
-                                if (target == AppTab.SCHEDULE) scheduleLessonFocus = null
-                                openService(target)
+                                dispatchNavigation(AppNavigationRequest.Service(target))
                             }
                         },
                         onOpenNextLesson = { highlight ->
                             if (currentService == null && !isTransitioning) {
-                                nextLessonFocusId++
-                                scheduleLessonFocus = homeLessonFocus(
-                                    highlight, scheduleState.agendaWeeks, nextLessonFocusId,
-                                )
-                                openService(AppTab.SCHEDULE)
+                                dispatchNavigation(AppNavigationRequest.FocusHomeLesson(highlight))
                             }
                         },
                         onOpenBarsDiscipline = { discipline ->
                             if (currentService == null && !isTransitioning) {
-                                barsSearchRequest++
-                                barsRequestedDiscipline = discipline
-                                openService(AppTab.BARS)
+                                dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(discipline))
                             }
                         },
                     )
@@ -704,9 +699,9 @@ fun MpeiNeoApp(
                         active = barsForeground,
                         allowBackgroundSync = barsAutoRefreshEnabled,
                         onDetailOpenChange = { if (barsForeground) barsDetailOpen = it },
-                        openDisciplineName = barsRequestedDiscipline,
-                        openDisciplineRequest = barsSearchRequest,
-                        onOpenDisciplineConsumed = { barsRequestedDiscipline = null },
+                        openDisciplineName = navigationTargets.barsRequestedDiscipline,
+                        openDisciplineRequest = navigationTargets.barsSearchRequest,
+                        onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
                         onBrowserExit = {
                             barsBrowserJustClosed = true
                             dismissIme("bars-browser-back")
@@ -746,13 +741,13 @@ fun MpeiNeoApp(
                 schedule = scheduleState,
                 mail = mailState,
                 bars = barsState,
-                onSchedule = ::openScheduleResult,
+                onSchedule = { dispatchNavigation(AppNavigationRequest.SelectSchedule(it)) },
                 onToggleFavorite = viewModel::toggleFavorite,
                 onRenameFavorite = viewModel::renameFavorite,
-                onLesson = ::openLessonResult,
-                onCampus = ::openCampusResult,
-                onMail = ::openMailResult,
-                onDiscipline = ::openBarsResult,
+                onLesson = { dispatchNavigation(AppNavigationRequest.FocusScheduleLesson(it)) },
+                onCampus = { dispatchNavigation(AppNavigationRequest.FocusCampus(it)) },
+                onMail = { dispatchNavigation(AppNavigationRequest.OpenMail(it)) },
+                onDiscipline = { dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(it)) },
                 onClose = ::closeGlobalSearch,
                 revealProgress = searchReveal,
                 sourceFieldBounds = searchUi.anchoredBounds(),
