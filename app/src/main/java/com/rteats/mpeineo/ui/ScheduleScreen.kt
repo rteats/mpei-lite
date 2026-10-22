@@ -69,6 +69,7 @@ internal fun ScheduleScreen(
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
     focusLesson: ScheduleLessonFocus? = null,
+    onFocusConsumed: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (state.selected == null) {
@@ -103,6 +104,7 @@ internal fun ScheduleScreen(
             onLocateRoom = onLocateRoom,
             todayJumpRequest = todayJumpRequest,
             focusLesson = focusLesson,
+            onFocusConsumed = onFocusConsumed,
             modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         )
     }
@@ -127,6 +129,7 @@ internal fun LessonCard(
     lesson: Lesson,
     onLocateRoom: (String) -> Unit = {},
     focusRequestId: Int? = null,
+    onFocusConsumed: (Int) -> Unit = {},
     date: LocalDate? = null,
     now: LocalDateTime? = null,
 ) {
@@ -148,6 +151,10 @@ internal fun LessonCard(
             withFrameNanos { }
             bringIntoView.bringIntoView()
             visibleFocusId = focusRequestId
+            // The navigation cue is one-shot, but must remain active until
+            // its complete 180 + 850 + 650 ms animation has played.
+            kotlinx.coroutines.delay(1_750L)
+            onFocusConsumed(focusRequestId)
         }
     }
     val focusPulse = rememberDestinationFocusPulse(visibleFocusId)

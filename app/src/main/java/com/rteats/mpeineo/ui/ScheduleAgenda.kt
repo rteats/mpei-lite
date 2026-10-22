@@ -101,6 +101,7 @@ internal fun ScheduleAgenda(
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
     focusLesson: ScheduleLessonFocus? = null,
+    onFocusConsumed: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val clock = rememberMpeiNow()
@@ -333,6 +334,7 @@ internal fun ScheduleAgenda(
                                         it.date == date.toString() &&
                                         it.requestId == readyFocusId
                                 },
+                                onFocusConsumed = onFocusConsumed,
                             )
                         }
                     }
@@ -450,6 +452,7 @@ private fun AgendaDaySection(
     onRetry: () -> Unit,
     onLocateRoom: (String) -> Unit,
     focusLesson: ScheduleLessonFocus?,
+    onFocusConsumed: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
@@ -479,6 +482,7 @@ private fun AgendaDaySection(
                                 it.startTime == lesson.startTime &&
                                 (it.place == null || it.place == lesson.place)
                         }?.requestId,
+                        onFocusConsumed = onFocusConsumed,
                         date = date,
                         now = clock.value,
                     )
@@ -525,6 +529,7 @@ private fun AgendaDayCard(
     onRetry: () -> Unit,
     onLocateRoom: (String) -> Unit,
     focusLesson: ScheduleLessonFocus?,
+    onFocusConsumed: (Int) -> Unit,
 ) {
     val isToday = date == today
     Surface(
@@ -551,6 +556,7 @@ private fun AgendaDayCard(
                     onRetry = onRetry,
                     onLocateRoom = onLocateRoom,
                     focusLesson = focusLesson,
+                    onFocusConsumed = onFocusConsumed,
                 )
             }
         }

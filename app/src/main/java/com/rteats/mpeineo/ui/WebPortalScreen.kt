@@ -31,6 +31,7 @@ internal fun WebPortalScreen(
     testTag: String,
     modifier: Modifier = Modifier,
     onDebugEvent: (String) -> Unit = {},
+    onExit: () -> Unit = {},
 ) {
     val debugEvent by rememberUpdatedState(onDebugEvent)
     DisposableEffect(url) {
@@ -156,6 +157,11 @@ internal fun WebPortalScreen(
                     browserState = EmbeddedBrowserState()
                 }
             },
+        )
+        EmbeddedBrowserExitZone(
+            onExit = onExit,
+            modifier = Modifier.align(Alignment.CenterStart)
+                .testTag("mail-browser-swipe-exit"),
         )
         EmbeddedBrowserToolbar(
             state = browserState,

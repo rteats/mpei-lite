@@ -39,6 +39,13 @@ one active session mode. UI cannot accidentally start two conflicting flows.
   from WebView history callbacks; the site label never displays the path or
   auth parameters. Controls reserve their own height instead of covering form
   fields. The browser toolbar does not replace system Back or native routing.
+- Both embedded portals have a small left-edge swipe exit strip, separate
+  from WebView history Back. Mail returns to inbox; BARS returns to native
+  grades, or Home if the only visible UI is the official login/2FA form.
+  Keep the edge target narrow so regular browser scrolling remains available.
+- Schedule lesson highlights originate only from explicit cross-feature links;
+  the matched lesson acknowledges its one-shot request after the focus pulse,
+  and ordinary service navigation clears any stale pending request.
 - BARS browser mode is user-controlled. Auto-navigation to Summary must stop
   before the interactive browser is exposed. Pending route-discovery and
   delayed callbacks must be invalidated.
