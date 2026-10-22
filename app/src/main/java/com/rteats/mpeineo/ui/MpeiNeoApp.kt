@@ -32,8 +32,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -85,7 +88,7 @@ import kotlin.math.roundToInt
  * A single composited foreground page over a permanently mounted background.
  * Drag progress and automatic push/pop share one reveal value.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MpeiNeoApp(
     viewModel: MainViewModel,
@@ -558,6 +561,20 @@ fun MpeiNeoApp(
         topBar = {
             // The native search app bar reserves space rather than floating
             // over controls, scrollable content, maps, or WebViews.
+            if (appBarMode(appBarService) == AppBarMode.TITLE) {
+                TopAppBar(
+                    title = { Text("Настройки") },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = { if (!isTransitioning) goBackOneService() },
+                            modifier = Modifier.testTag("settings-app-bar-back"),
+                        ) {
+                            AppIcon(AppIcons.Back, contentDescription = "Назад")
+                        }
+                    },
+                    modifier = Modifier.testTag("settings-app-bar"),
+                )
+            } else {
             ContextSearchAppBar(
                     context = searchAppBarContext(appBarService),
                     onSearch = {
@@ -592,6 +609,7 @@ fun MpeiNeoApp(
                         }
                     }) else null,
                 )
+            }
         },
     ) { innerPadding ->
         Box(

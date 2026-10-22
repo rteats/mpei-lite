@@ -41,6 +41,14 @@ internal data class SearchAppBarContext(
     val placeholder: String,
 )
 
+/** Top-bar capability belongs to the destination, not to the root scaffold. */
+internal enum class AppBarMode { SEARCH, TITLE }
+
+internal fun appBarMode(tab: AppTab?): AppBarMode = when (tab) {
+    AppTab.SETTINGS -> AppBarMode.TITLE
+    else -> AppBarMode.SEARCH
+}
+
 internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab) {
     null -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
     AppTab.SCHEDULE -> SearchAppBarContext(
@@ -49,7 +57,7 @@ internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab)
     AppTab.BARS -> SearchAppBarContext(SearchScope.BARS, "Поиск дисциплины в БАРС")
     AppTab.MAIL -> SearchAppBarContext(SearchScope.MAIL, "Поиск по почте")
     AppTab.MAPS -> SearchAppBarContext(SearchScope.MAPS, "Корпус или аудитория")
-    AppTab.SETTINGS -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
+    AppTab.SETTINGS -> error("Settings has a title bar, not a timetable search bar")
 }
 
 internal enum class SearchAppBarAction { NONE, HOME, REFRESH_WEEK, COMPOSE_MAIL }
