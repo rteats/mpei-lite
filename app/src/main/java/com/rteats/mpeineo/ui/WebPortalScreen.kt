@@ -60,7 +60,7 @@ internal fun WebPortalScreen(
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize()
-                .padding(bottom = EMBEDDED_BROWSER_TOOLBAR_HEIGHT),
+                .padding(top = EMBEDDED_BROWSER_APPBAR_HEIGHT),
             factory = { context ->
                 WebView(context).apply {
                     debugEvent("webview created")
@@ -163,12 +163,13 @@ internal fun WebPortalScreen(
             modifier = Modifier.align(Alignment.CenterStart)
                 .testTag("mail-browser-swipe-exit"),
         )
-        EmbeddedBrowserToolbar(
+        EmbeddedBrowserAppBar(
             state = browserState,
+            onExit = onExit,
             onBack = { webView?.takeIf { it.canGoBack() }?.goBack() },
             onForward = { webView?.takeIf { it.canGoForward() }?.goForward() },
             onReload = { webView?.reload() },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.TopCenter)
                 .testTag("mail-browser-controls"),
         )
     }
