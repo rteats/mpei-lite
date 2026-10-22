@@ -72,6 +72,35 @@ of simultaneous choices on each level.
 5. Only merge independently verified PRs and publish a Dev build after the
    integration check.
 
-Proposed implementation order: app bar contract → BARS capture coordinator
-→ task-first BARS layout → navigation state separation → removal of obsolete
-cross-feature state. Keep Mail and Schedule providers independent throughout.
+## Implemented boundaries (October 2026)
+
+- `BarsSessionCoordinator`: pure Kotlin state machine for automatic Main and
+  Summary extraction, once-per-document marks, generation cancellation and
+  browser takeover. The WebView remains an adapter in `BarsScreen` for now.
+- `BarsWebFlowState`: presentation-only WebView flags (viewport, diagnostics,
+  manual connection intention), not the owner of extraction operations.
+- `ServiceNavigationState`: one saveable owner for service push/pop, Back preview
+  and the Schedule → Campus nested service stack.
+- `SearchOverlayState`: query, search scope, activation, frozen source bounds,
+  reverse transition lifetime and restoration.
+- `scripts/check_architecture.py`: CI guard for the above ownership boundaries.
+  The guard runs for every PR and rolling Dev push.
+
+The UI still has more work to do: the Android-specific BARS WebView transport
+and request watchdogs can be moved into a session adapter; feature-specific
+focus requests and IME transitions still live inside the root shell. Avoid
+moving those until user-device validation of WebView and Back handling.
+
+## Next review criteria
+
+- No second owner of session operation state; callbacks are ignored after
+  cancellation or document change.
+- Native grades and attendance remain visible on recoverable network failure.
+- Back navigation from a BARS discipline returns to its overview rather than
+  Home, including gesture navigation.
+- Search keeps its source-anchored animation and does not appear in Settings.
+- A new feature cannot silently add separate global-search/route flags to
+  `MpeiNeoApp.kt`.
+
+Keep Mail and Schedule data providers independent; stay in one Gradle module
+until these boundaries have survived device testing.
