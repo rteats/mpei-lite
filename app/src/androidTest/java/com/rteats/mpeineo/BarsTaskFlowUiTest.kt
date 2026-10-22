@@ -45,6 +45,8 @@ class BarsTaskFlowUiTest {
         rule.onNodeWithTag("bars-reports-toggle").performClick()
         rule.onNodeWithText("По неделям").assertExists()
         rule.onNodeWithTag("bars-discipline-Физика").performClick()
+        rule.onNodeWithText("1 из 2 КМ оценено").assertExists()
+        rule.onNodeWithText("Контрольные мероприятия · 1/2").assertExists()
         rule.onNodeWithTag("bars-auto-goal-toggle").assertExists()
         rule.onNodeWithTag("bars-auto-planner").assertDoesNotExist()
         rule.onNodeWithTag("bars-auto-goal-toggle").performClick()
