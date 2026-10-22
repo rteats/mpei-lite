@@ -1,7 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import com.rteats.mpeineo.AppIcon
-import com.rteats.mpeineo.AppIcons
 
 import android.annotation.SuppressLint
 import android.content.Intent
