@@ -76,12 +76,12 @@ for marker, filename, source in (
 # The UI may compose AndroidView, but browser policy and the JS bridge must
 # remain inside the transport instead of regrowing in BarsScreen.kt.
 for forbidden in (
-    r"^import\\s+android\\.webkit\\.",
-    r"\\bevaluateJavascript\\s*\\(",
-    r"\\bBarsNavigationController\\s*\\(",
-    r"\\bBarsJavascriptBridge\\s*\\(",
-    r"\\bCookieManager\\b",
-    r"\\bWebViewClient\\b",
+    r"^import\s+android\.webkit\.",
+    r"\bevaluateJavascript\s*\(",
+    r"\bBarsNavigationController\s*\(",
+    r"\bBarsJavascriptBridge\s*\(",
+    r"\bCookieManager\b",
+    r"\bWebViewClient\b",
 ):
     if re.search(forbidden, bars_screen, re.MULTILINE):
         issues.append(f"BarsScreen must delegate Android transport: {forbidden}")
