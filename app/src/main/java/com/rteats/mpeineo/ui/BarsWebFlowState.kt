@@ -57,6 +57,10 @@ internal class BarsWebFlowState {
         return interruptedSummary
     }
 
+    /** A late Summary JS result is invalid after browser takeover. */
+    fun canAcceptSummaryPayload(browserVisible: Boolean): Boolean =
+        summaryFetchAttempted && !browserVisible
+
     /** A discovery result may navigate only in its original document/mode. */
     fun canNavigateToSummary(
         generation: Int,
