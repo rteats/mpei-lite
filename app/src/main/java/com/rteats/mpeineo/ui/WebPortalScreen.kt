@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
@@ -20,6 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
@@ -40,6 +45,9 @@ internal fun WebPortalScreen(
     }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var browserState by remember(url) { mutableStateOf(EmbeddedBrowserState()) }
+    val slide = rememberBackSlideState()
+    var viewportPx by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(url) { slide.enter() }
 
     fun syncBrowserState(view: WebView, pageUrl: String? = null) {
         if (webView !== view) return
@@ -50,13 +58,17 @@ internal fun WebPortalScreen(
         )
     }
 
-    BackHandler(enabled = browserState.canGoBack) {
-        debugEvent("browser back within website")
-        webView?.takeIf { it.canGoBack() }?.goBack()
+    BackHandler {
+        if (browserState.canGoBack) {
+            debugEvent("browser back within website")
+            webView?.takeIf { it.canGoBack() }?.goBack()
+        } else slide.exit(onExit)
     }
 
     Box(
-        modifier = modifier.testTag(testTag),
+        modifier = modifier.testTag(testTag)
+            .onSizeChanged { viewportPx = it.width.toFloat().coerceAtLeast(1f) }
+            .graphicsLayer { translationX = viewportPx * slide.progress },
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize()
@@ -159,13 +171,16 @@ internal fun WebPortalScreen(
             },
         )
         EmbeddedBrowserExitZone(
-            onExit = onExit,
+            onExit = { slide.exit(onExit) },
+            onDrag = { delta -> slide.drag(delta, viewportPx) },
+            onRelease = { slide.release(onExit) },
+            onCancel = slide::cancel,
             modifier = Modifier.align(Alignment.CenterStart)
                 .testTag("mail-browser-swipe-exit"),
         )
         EmbeddedBrowserAppBar(
             state = browserState,
-            onExit = onExit,
+            onExit = { slide.exit(onExit) },
             onBack = { webView?.takeIf { it.canGoBack() }?.goBack() },
             onForward = { webView?.takeIf { it.canGoForward() }?.goForward() },
             onReload = { webView?.reload() },
