@@ -22,6 +22,23 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
+/** Pure recipient mutations shared by editing, lookup and suggestions. */
+internal fun mailRecipientValue(draft: OutgoingMail, field: RecipientField): String = when (field) {
+    RecipientField.TO -> draft.to
+    RecipientField.CC -> draft.cc
+    RecipientField.BCC -> draft.bcc
+}
+
+internal fun mailWithRecipient(
+    draft: OutgoingMail,
+    field: RecipientField,
+    value: String,
+): OutgoingMail = when (field) {
+    RecipientField.TO -> draft.copy(to = value)
+    RecipientField.CC -> draft.copy(cc = value)
+    RecipientField.BCC -> draft.copy(bcc = value)
+}
+
 /**
  * Owns Mail composition, recipient suggestions, attachment permissions and
  * encrypted draft persistence. Inbox and Sent synchronization remain owned by
@@ -97,11 +114,7 @@ internal class MailComposeController(
 
     /** Debounced and cancelable: search only the unfinished recipient token. */
     fun editRecipient(field: RecipientField, value: String) {
-        editDraft { draft -> when (field) {
-            RecipientField.TO -> draft.copy(to = value)
-            RecipientField.CC -> draft.copy(cc = value)
-            RecipientField.BCC -> draft.copy(bcc = value)
-        } }
+        editDraft { draft -> mailWithRecipient(draft, field, value) }
         recipientJob?.cancel()
         val query = OwaRecipientDirectory.token(value)
         if (query.length < 2 || !_state.value.composing) {
@@ -126,11 +139,7 @@ internal class MailComposeController(
             }
             if (sessionVersion() != version) return@launch
             _state.update { current ->
-                val actual = when (field) {
-                    RecipientField.TO -> current.draft.to
-                    RecipientField.CC -> current.draft.cc
-                    RecipientField.BCC -> current.draft.bcc
-                }
+                val actual = mailRecipientValue(current.draft, field)
                 if (!current.composing || current.activeRecipientField != field ||
                     OwaRecipientDirectory.token(actual) != query) current
                 else current.copy(recipientSuggestions = (found + fallback)
@@ -141,14 +150,12 @@ internal class MailComposeController(
 
     fun acceptRecipient(field: RecipientField, suggestion: OwaRecipientSuggestion) {
         recipientJob?.cancel()
-        editDraft { draft -> when (field) {
-            RecipientField.TO -> draft.copy(to =
-                OwaRecipientDirectory.replaceToken(draft.to, suggestion.email))
-            RecipientField.CC -> draft.copy(cc =
-                OwaRecipientDirectory.replaceToken(draft.cc, suggestion.email))
-            RecipientField.BCC -> draft.copy(bcc =
-                OwaRecipientDirectory.replaceToken(draft.bcc, suggestion.email))
-        } }
+        editDraft { draft ->
+            mailWithRecipient(
+                draft, field,
+                OwaRecipientDirectory.replaceToken(mailRecipientValue(draft, field), suggestion.email),
+            )
+        }
         _state.update { it.copy(activeRecipientField = null,
             recipientSuggestions = emptyList(), recipientSearching = false) }
     }
