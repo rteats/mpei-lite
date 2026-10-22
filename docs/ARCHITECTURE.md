@@ -34,6 +34,11 @@ one active session mode. UI cannot accidentally start two conflicting flows.
   More destination types can opt out without changing global search semantics.
 - The BARS WebView is one long-lived resource so cookies/2FA survive navigation.
   It must not be recreated when Home becomes visible.
+- BARS and OWA use the same `EmbeddedBrowserToolbar` with history-based Back
+  and Forward, a current-page Reload, and explicit Copy URL. Buttons are enabled
+  from WebView history callbacks; the site label never displays the path or
+  auth parameters. Controls reserve their own height instead of covering form
+  fields. The browser toolbar does not replace system Back or native routing.
 - BARS browser mode is user-controlled. Auto-navigation to Summary must stop
   before the interactive browser is exposed. Pending route-discovery and
   delayed callbacks must be invalidated.
