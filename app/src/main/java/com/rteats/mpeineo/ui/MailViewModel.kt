@@ -258,24 +258,21 @@ internal class MailViewModel(
                 compose.restoreDraftForActiveAccount()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
                 _state.update { old ->
-                    val preserved = mergeOwaInboxPages(items, old.items)
-                    val seenBefore = old.items.mapTo(mutableSetOf()) {
-                        it.uidValidity to it.uid
-                    }
-                    val addedAtHead = items.count {
-                        (it.uidValidity to it.uid) !in seenBefore
-                    }
+                    val page = refreshedMailPage(
+                        incoming = items,
+                        cached = old.items,
+                        previousOffset = old.nextPageOffset,
+                        previousHasMore = old.hasMore,
+                        pageSize = MAIL_PAGE_SIZE,
+                        merge = ::mergeOwaInboxPages,
+                    )
                     old.copy(
                         configured = true,
                         loginRequired = false,
                         loading = false,
-                        items = preserved,
-                        nextPageOffset = if (old.nextPageOffset > 0) {
-                            maxOf(old.nextPageOffset + addedAtHead, items.size)
-                        } else items.size,
-                        hasMore = if (old.items.size >= MAIL_PAGE_SIZE && !old.hasMore) {
-                            false
-                        } else items.size == MAIL_PAGE_SIZE,
+                        items = page.messages,
+                        nextPageOffset = page.nextOffset,
+                        hasMore = page.hasMore,
                         loadingMore = false,
                         moreError = false,
                     )
@@ -327,11 +324,16 @@ internal class MailViewModel(
                 if (version != sessionVersion ||
                     _state.value.nextPageOffset != offset) return@launch
                 _state.update {
+                    val page = appendedMailPage(
+                        cached = it.items, incoming = older,
+                        requestedOffset = offset, pageSize = MAIL_PAGE_SIZE,
+                        merge = ::mergeOwaInboxPages,
+                    )
                     it.copy(
                         loadingMore = false,
-                        items = mergeOwaInboxPages(it.items, older),
-                        hasMore = older.size == MAIL_PAGE_SIZE,
-                        nextPageOffset = offset + older.size,
+                        items = page.messages,
+                        hasMore = page.hasMore,
+                        nextPageOffset = page.nextOffset,
                         moreError = false,
                     )
                 }
@@ -367,15 +369,19 @@ internal class MailViewModel(
                 )
                 if (version != sessionVersion) return@launch
                 _state.update { old ->
-                    val seen = old.sentItems.mapTo(HashSet()) { it.uidValidity to it.uid }
-                    val newItems = page.count { (it.uidValidity to it.uid) !in seen }
+                    val merged = refreshedMailPage(
+                        incoming = page,
+                        cached = old.sentItems,
+                        previousOffset = old.sentNextPageOffset,
+                        previousHasMore = old.sentHasMore,
+                        pageSize = MAIL_PAGE_SIZE,
+                        merge = ::mergeOwaSentPages,
+                    )
                     old.copy(
-                        sentItems = mergeOwaSentPages(page, old.sentItems),
+                        sentItems = merged.messages,
                         sentLoaded = true, sentLoading = false,
-                        sentHasMore = if (old.sentItems.size >= MAIL_PAGE_SIZE && !old.sentHasMore)
-                            false else page.size == MAIL_PAGE_SIZE,
-                        sentNextPageOffset = if (old.sentNextPageOffset > 0)
-                            maxOf(old.sentNextPageOffset + newItems, page.size) else page.size,
+                        sentHasMore = merged.hasMore,
+                        sentNextPageOffset = merged.nextOffset,
                         sentMoreError = false, loginRequired = false,
                     )
                 }
@@ -408,12 +414,19 @@ internal class MailViewModel(
                 )
                 if (version != sessionVersion ||
                     _state.value.sentNextPageOffset != offset) return@launch
-                _state.update { it.copy(
-                    sentItems = mergeOwaSentPages(page, it.sentItems),
-                    sentNextPageOffset = offset + page.size,
-                    sentHasMore = page.size == MAIL_PAGE_SIZE,
-                    sentLoadingMore = false, sentMoreError = false,
-                ) }
+                _state.update {
+                    val next = appendedMailPage(
+                        cached = it.sentItems, incoming = page,
+                        requestedOffset = offset, pageSize = MAIL_PAGE_SIZE,
+                        merge = { cached, older -> mergeOwaSentPages(older, cached) },
+                    )
+                    it.copy(
+                        sentItems = next.messages,
+                        sentNextPageOffset = next.nextOffset,
+                        sentHasMore = next.hasMore,
+                        sentLoadingMore = false, sentMoreError = false,
+                    )
+                }
                 hydrateSentRecipients()
             } catch (cancelled: CancellationException) {
                 throw cancelled
