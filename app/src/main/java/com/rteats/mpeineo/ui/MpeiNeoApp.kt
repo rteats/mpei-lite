@@ -633,11 +633,10 @@ fun MpeiNeoApp(
             }
 
             if (currentService != null && currentService != AppTab.BARS) {
-                val isNativeContent = currentService != AppTab.BARS ||
-                    (barsState.authStage == BarsAuthStage.AUTHENTICATED &&
-                        !barsState.browserVisible)
+                // This branch excludes BARS; browser-aware BARS gestures
+                // are handled by their own persistent sibling composition.
                 val canHandleGesture = !isTransitioning &&
-                    !imeVisible && !mailWebVisible && isNativeContent
+                    !imeVisible && !mailWebVisible
                 val canInteractivelyPop = canHandleGesture &&
                     !barsDetailOpen &&
                     !(currentService == AppTab.MAIL && mailState.selected != null)
