@@ -141,6 +141,112 @@ internal class BarsWebViewTransport(private val viewModel: BarsViewModel) {
   }
 
 
+  /** Native visibility controls WebView execution; it is not a second session. */
+  fun onVisibilityChanged(visible: Boolean, autoRefreshEnabled: Boolean) {
+    val view = webView ?: return
+    if (visible) view.onResume() else view.onPause()
+    val state = liveState()
+    if (visible && state.authStage == BarsAuthStage.AUTHENTICATED &&
+      !state.loginRequired &&
+      autoRefreshGate.shouldRefresh(
+        enabled = autoRefreshEnabled,
+        nowElapsedMs = SystemClock.elapsedRealtime(),
+        sessionReady = navigationController?.hasCompletedDocument == true &&
+          retryNavigation != null,
+        hasCachedGrades = state.lastUpdatedAtMillis > 0L && state.disciplines.isNotEmpty(),
+        cacheFresh = state.hasFreshCache(),
+        isLoading = state.isLoading,
+        browserVisible = state.browserVisible,
+      )
+    ) {
+      viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
+      webFlow.prepareMarkRefresh()
+      session.prepareMarkRefresh()
+      marksReadiness?.reset()
+      viewModel.startRefresh()
+      retryNavigation?.invoke()
+    }
+  }
+
+  /** Revalidate the last document after leaving 2FA or the official browser. */
+  fun onBrowserModeChanged() {
+    val state = liveState()
+    if (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH) {
+      interruptAutomatedCapture("interactive mode")
+    }
+    if (webFlow.browserWasVisible && !state.browserVisible) {
+      webView?.let { view ->
+        if (BarsDocumentPolicy.isTrusted(view.url.orEmpty())) {
+          view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
+        }
+      }
+    }
+    webFlow.browserWasVisible = state.browserVisible
+  }
+
+  fun handleBrowserBack(onBrowserExit: () -> Unit) {
+    val view = webView
+    if (view?.canGoBack() == true && view.url != BARS_MARKS_URL) {
+      view.goBack()
+    } else {
+      onBrowserExit()
+      view?.clearFocus()
+      webFlow.needsFullViewport = false
+      viewModel.hideBrowser()
+    }
+  }
+
+  fun retrySessionCheck() {
+    webFlow.prepareCheckRetry()
+    session.prepareCheckRetry()
+    marksReadiness?.reset()
+    viewModel.checking()
+    retryNavigation?.invoke()
+  }
+
+  fun openBrowser(reason: String = "user opened browser") {
+    interruptAutomatedCapture(reason)
+    viewModel.showBrowser()
+  }
+
+  fun refreshMarks(manual: Boolean = true) {
+    if (manual) webFlow.manuallyRequestedConnection = true
+    session.prepareMarkRefresh()
+    webFlow.mainFrameFailed = false
+    if (liveState().loginRequired) {
+      openBrowser("login required")
+      return
+    }
+    webFlow.needsFullViewport = true
+    marksReadiness?.reset()
+    viewModel.startRefresh()
+    retryNavigation?.invoke()
+  }
+
+  fun refreshSummary() {
+    webFlow.manuallyRequestedConnection = true
+    val state = liveState()
+    if (state.loginRequired) {
+      openBrowser("login required")
+    } else if (!state.isSummaryLoading) {
+      val view = webView
+      session.resetSummaryCapture()
+      webFlow.mainFrameFailed = false
+      if (view != null &&
+        BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
+        !state.isLoading && navigationController != null
+      ) {
+        requestOfficialSummary(view, "manual Summary refresh")
+      } else {
+        // The authenticated marks document is not ready: revalidate first.
+        webFlow.needsFullViewport = true
+        marksReadiness?.reset()
+        viewModel.startRefresh()
+        retryNavigation?.invoke()
+      }
+    }
+  }
+
   @SuppressLint("SetJavaScriptEnabled")
   fun create(context: Context): WebView {
     return WebView(context).also { view ->
