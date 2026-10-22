@@ -4,6 +4,7 @@ package com.rteats.mpeineo.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -12,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.testTag
@@ -54,6 +56,8 @@ internal fun BarsScreen(
   val transport = remember(viewModel) { BarsWebViewTransport(viewModel) }
   val webFlow = transport.webFlow
   val webView = transport.webView
+  val browserControlsVisible = active &&
+    (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
   // AndroidView callbacks must read the latest foreground/browser mode.
   transport.browserCanInteract = active &&
     (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
@@ -128,8 +132,8 @@ internal fun BarsScreen(
         // Transparent AndroidViews still intercept input when layered on top.
         // Only the explicit session browser or login should cover native UI.
         modifier = (when {
-          state.browserVisible -> Modifier.fillMaxSize()
-          state.authStage == BarsAuthStage.WEB_AUTH -> Modifier.fillMaxSize()
+          state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH ->
+            Modifier.fillMaxSize().padding(bottom = EMBEDDED_BROWSER_TOOLBAR_HEIGHT)
           webFlow.needsFullViewport -> Modifier
             .fillMaxSize()
             .alpha(0f)
@@ -141,10 +145,20 @@ internal fun BarsScreen(
             state.authStage != BarsAuthStage.WEB_AUTH
           ) -1f else 1f,
         ),
-      factory = transport::create,
-      update = {},
-      onRelease = transport::release,
+        factory = transport::create,
+        update = {},
+        onRelease = transport::release,
       )
+      if (browserControlsVisible) {
+        EmbeddedBrowserToolbar(
+          state = transport.browserToolbarState,
+          onBack = transport::browserBack,
+          onForward = transport::browserForward,
+          onReload = transport::browserReload,
+          modifier = Modifier.align(Alignment.BottomCenter).zIndex(2f)
+            .testTag("bars-browser-controls"),
+        )
+      }
     }
 
   }
