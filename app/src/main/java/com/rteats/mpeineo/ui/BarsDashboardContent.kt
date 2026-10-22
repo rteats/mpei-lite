@@ -26,6 +26,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -91,8 +91,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
-import java.text.DateFormat
-import java.util.Date
 
 /**
  * Native BARS Compose presentation. WebView lifetime/navigation remain in BarsScreen.
@@ -159,6 +157,7 @@ internal fun BarsNativeDashboard(
     selectedDisciplineName = name
   }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
+  var reportPickerExpanded by rememberSaveable { mutableStateOf(false) }
   // Saveable across detail navigation and Activity recreation. The key includes
   // actual BARS grades/weights so a new mark invalidates stale predictions.
   var autoScenarios by rememberSaveable {
@@ -171,6 +170,9 @@ internal fun BarsNativeDashboard(
     androidx.compose.runtime.mutableIntStateOf(-1)
   }
   val dashboardListState = rememberLazyListState()
+  androidx.compose.runtime.LaunchedEffect(selectedSection) {
+    dashboardListState.scrollToItem(0)
+  }
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
   }
@@ -313,10 +315,46 @@ internal fun BarsNativeDashboard(
           }
 
           item(key = "sections") {
-            BarsReportChooser(
-              selected = selectedSection,
-              onSelected = { selectedSection = it },
-            )
+            Row(
+              modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Text(
+                barsSectionTitle(selectedSection),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+              )
+              TextButton(
+                onClick = {
+                  if (selectedSection == "subjects") {
+                    reportPickerExpanded = !reportPickerExpanded
+                  } else {
+                    selectedSection = "subjects"
+                    reportPickerExpanded = false
+                  }
+                },
+                modifier = Modifier.testTag("bars-reports-toggle"),
+              ) {
+                Text(if (selectedSection == "subjects") {
+                  if (reportPickerExpanded) "Скрыть отчёты" else "Отчёты"
+                } else "К дисциплинам")
+              }
+            }
+          }
+
+          if (selectedSection != "subjects" || reportPickerExpanded) {
+            item(key = "report-choices") {
+              BarsReportChooser(
+                selected = selectedSection,
+                onSelected = {
+                  selectedSection = it
+                  reportPickerExpanded = false
+                },
+              )
+            }
           }
 
           if (selectedSection != "subjects") {
@@ -366,11 +404,9 @@ internal fun BarsNativeDashboard(
   }
 }
 
-/**
-* Expressive BARS dashboard: dominant profile surface + factual semester
-* summary + approachable, interactive discipline cards.
-*/
+/** Task-first BARS dashboard: disciplines are primary, reports are optional. */
 /** A quiet data-first profile summary, rather than unparsed BARS text chips. */
+/** Compact identity and portal action; full academic facts belong in help. */
 @Composable
 private fun BarsUserHeader(
   state: BarsUiState,
@@ -380,172 +416,57 @@ private fun BarsUserHeader(
   val facts = remember(extras, state.studentDetails) {
     barsProfileFacts(extras, state.studentDetails)
   }
-  val filtered = facts.filterNot {
+  val details = facts.filterNot {
     (it.kind == BarsProfileKind.GROUP && state.profileGroup.isNotBlank()) ||
       (it.kind == BarsProfileKind.SEMESTER && state.semester.isNotBlank())
-  }
-  val primary = filtered.filter { it.kind.featurePriority() < 100 }
-    .sortedBy { it.kind.featurePriority() }.take(2)
-  val secondary = filtered.filterNot { it in primary }
-  val colors = MaterialTheme.colorScheme
+  }.sortedBy { it.kind.featurePriority() }
 
-  Column(
+  Row(
     modifier = Modifier.fillMaxWidth()
-      .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Column(
-        modifier = Modifier.weight(1f),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-      ) {
-        Text(
-          state.profileName.ifBlank { "Студент МЭИ" },
-          style = MaterialTheme.typography.titleLarge,
-          fontWeight = FontWeight.SemiBold,
-          maxLines = 2,
-          overflow = TextOverflow.Ellipsis,
-        )
-        val identity = listOf(state.profileGroup, state.semester)
-          .filter { it.isNotBlank() }.joinToString(" · ")
-        if (identity.isNotBlank()) {
-          Text(
-            identity,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
-          )
-        }
-      }
-      if (secondary.isNotEmpty()) {
-        BarsInfoButton(
-          title = "Сведения об обучении",
-          sections = secondary.map { BarsInfoSection(it.label, it.value) },
-          tag = "bars-profile-info",
-        )
-      }
-      PortalHeaderAction(label = "БАРС", onClick = onOpenBrowser)
-    }
-
-    if (primary.isNotEmpty()) {
-      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        primary.chunked(2).forEach { rowFacts ->
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-          ) {
-            rowFacts.forEach { fact ->
-              BarsProfileFactCard(
-                fact = fact,
-                modifier = Modifier.weight(1f),
-              )
-            }
-            if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
-          }
-        }
-      }
-    }
-
-    val graded = state.disciplines.count {
-      it.finalMarkValue != null || it.markValues.isNotEmpty()
-    }
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Text(
-        state.disciplines.size.toString() + " дисциплин · " +
-          graded + " с оценками",
-        modifier = Modifier.weight(1f),
-        style = MaterialTheme.typography.labelMedium,
-        color = colors.onSurfaceVariant,
-      )
-      if (state.lastUpdatedAtMillis > 0) {
-        Text(
-          DateFormat.getTimeInstance(DateFormat.SHORT)
-            .format(Date(state.lastUpdatedAtMillis)),
-          style = MaterialTheme.typography.labelSmall,
-          color = colors.onSurfaceVariant,
-        )
-      }
-    }
-
-
-  }
-}
-
-@Composable
-private fun BarsProfileFactCard(
-  fact: BarsProfileFact,
-  modifier: Modifier = Modifier,
-) {
-  val colors = MaterialTheme.colorScheme
-  Surface(
-    modifier = modifier.heightIn(min = 105.dp),
-    shape = MaterialTheme.shapes.extraLarge,
-    color = colors.surfaceContainerLow,
+      .padding(horizontal = 16.dp, vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     Column(
-      modifier = Modifier.fillMaxWidth().padding(14.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
+      modifier = Modifier.weight(1f),
+      verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        Surface(
-          shape = RoundedCornerShape(12.dp),
-          color = colors.primaryContainer,
-          contentColor = colors.onPrimaryContainer,
-        ) {
-          Box(
-            modifier = Modifier.size(34.dp),
-            contentAlignment = Alignment.Center,
-          ) {
-            AppIcon(
-              barsProfileFactIcon(fact.kind),
-              contentDescription = null,
-              modifier = Modifier.size(20.dp),
-            )
-          }
-        }
+      Text(
+        state.profileName.ifBlank { "Студент МЭИ" },
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      val graded = state.disciplines.count {
+        it.finalMarkValue != null || it.markValues.isNotEmpty()
+      }
+      val summary = listOf(
+        state.profileGroup,
+        state.semester,
+        if (state.disciplines.isNotEmpty()) {
+          "${graded}/${state.disciplines.size} с оценками"
+        } else "",
+      ).filter(String::isNotBlank).joinToString(" · ")
+      if (summary.isNotBlank()) {
         Text(
-          fact.label,
-          modifier = Modifier.weight(1f),
+          summary,
           style = MaterialTheme.typography.labelMedium,
-          color = colors.onSurfaceVariant,
-          maxLines = 2,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          maxLines = 1,
           overflow = TextOverflow.Ellipsis,
         )
       }
-      Text(
-        fact.value,
-        style = MaterialTheme.typography.titleMedium,
-        color = colors.onSurface,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
+    }
+    if (details.isNotEmpty()) {
+      BarsInfoButton(
+        title = "Сведения об обучении",
+        sections = details.map { BarsInfoSection(it.label, it.value) },
+        tag = "bars-profile-info",
       )
     }
+    PortalHeaderAction(label = "БАРС", onClick = onOpenBrowser)
   }
-}
-
-private fun barsProfileFactIcon(kind: BarsProfileKind): Int = when (kind) {
-  BarsProfileKind.COURSE -> AppIcons.Education
-  BarsProfileKind.RATING -> AppIcons.Ranking
-  BarsProfileKind.SCORE -> AppIcons.Analytics
-  BarsProfileKind.FORM -> AppIcons.StudyForm
-  BarsProfileKind.STATUS -> AppIcons.Verified
-  BarsProfileKind.FACULTY, BarsProfileKind.INSTITUTE -> AppIcons.Faculty
-  BarsProfileKind.PROGRAM -> AppIcons.Education
-  BarsProfileKind.GROUP -> AppIcons.GroupList
-  BarsProfileKind.SEMESTER -> AppIcons.Schedule
-  BarsProfileKind.STUDENT_ID -> AppIcons.StudentId
-  BarsProfileKind.OTHER -> AppIcons.Person
 }
 
 /**
@@ -561,7 +482,8 @@ private fun DisciplineCard(
 ) {
   Card(
     onClick = onClick,
-    modifier = modifier.fillMaxWidth(),
+    modifier = modifier.fillMaxWidth()
+      .testTag("bars-discipline-" + discipline.disciplineName),
     shape = MaterialTheme.shapes.extraLarge,
     colors = CardDefaults.cardColors(
       containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -672,6 +594,9 @@ private fun DisciplineExpandedCard(
     it.type != BarsActivityType.CONTROL_ACTIVITY
   }
   val focusPulse = rememberDestinationFocusPulse(focusRequestId)
+  var plannerExpanded by rememberSaveable(discipline.disciplineName) {
+    mutableStateOf(false)
+  }
   Column(
     modifier = Modifier.fillMaxSize()
       .background(MaterialTheme.colorScheme.background)
@@ -719,20 +644,52 @@ private fun DisciplineExpandedCard(
         .padding(horizontal = 6.dp, vertical = 4.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      // The next actionable decision is the 4.2 plan, not a raw grade dump.
-      // Aggregate assessments are excluded by the established BARS rule.
+      // A compact goal entry gives grade details priority on first opening.
+      // The full what-if editor is available on demand, never duplicated here.
       if (shouldShowGradeForecastForAssessment(discipline.assessmentType)) {
+        val autoPlan = remember(discipline) { buildAutoPlan(discipline) }
+        val goalStatus = when (autoPlan) {
+          is AutoPlanResult.Unavailable -> "Не хватает данных для расчёта"
+          is AutoPlanResult.Available -> if (autoPlan.canReachTarget) {
+            "Цель 4,20 достижима по известным весам"
+          } else "4,20 не достичь по известным весам"
+        }
         Surface(
           modifier = Modifier.fillMaxWidth(),
           shape = MaterialTheme.shapes.extraLarge,
           color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
-          BarsAutoPlanner(
-            discipline = discipline,
-            savedScenario = savedAutoScenario,
-            onScenarioChange = onAutoScenarioChange,
-            modifier = Modifier.padding(16.dp),
-          )
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+              modifier = Modifier.fillMaxWidth()
+                .clickable { plannerExpanded = !plannerExpanded }
+                .padding(16.dp)
+                .testTag("bars-auto-goal-toggle"),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              AppIcon(AppIcons.Analytics, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary)
+              Column(modifier = Modifier.weight(1f)) {
+                Text("План на автомат · 4,20",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.SemiBold)
+                Text(goalStatus, style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant)
+              }
+              AppIcon(if (plannerExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                contentDescription = if (plannerExpanded) "Свернуть план" else "Открыть план",
+                tint = MaterialTheme.colorScheme.primary)
+            }
+            if (plannerExpanded) {
+              BarsAutoPlanner(
+                discipline = discipline,
+                savedScenario = savedAutoScenario,
+                onScenarioChange = onAutoScenarioChange,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+              )
+            }
+          }
         }
       }
 
