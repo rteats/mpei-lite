@@ -4,12 +4,6 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
@@ -58,6 +52,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -73,6 +68,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
@@ -152,10 +149,14 @@ internal fun MailScreen(
             }
         }
     }
-    val motion = MaterialTheme.motionScheme
+    val messageSlide = rememberBackSlideState()
+    var messageViewportPx by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(state.selected?.uid, state.selected?.uidValidity) {
+        if (state.selected != null) messageSlide.enter() else messageSlide.reset()
+    }
 
     BackHandler(enabled = active && !state.composing && state.selected != null) {
-        viewModel.closeMessage()
+        messageSlide.exit(viewModel::closeMessage)
     }
 
 
@@ -250,38 +251,12 @@ internal fun MailScreen(
                     }
                 }
             } else {
-                // Preserve the inbox LazyListState while smoothly navigating
-                // into and out of a message; all mail operations remain native.
-                AnimatedContent(
-                    targetState = state.selected != null,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = {
-                        val opening = targetState
-                        (slideInHorizontally(
-                            initialOffsetX = { if (opening) it / 5 else -it / 5 },
-                            animationSpec = motion.defaultSpatialSpec(),
-                        ) + fadeIn(animationSpec = motion.defaultEffectsSpec())) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { if (opening) -it / 5 else it / 5 },
-                                animationSpec = motion.defaultSpatialSpec(),
-                            ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
-                    },
-                    label = "mail-inbox-message",
-                ) { reading ->
-                    if (reading) {
-                        MailMessage(
-                            state = state,
-                            isSent = state.mailbox == OwaMailFolder.SENT,
-                            onDownload = viewModel::download,
-                            onOpenLocal = { attachment, uri ->
-                                if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
-                                    viewModel.localOpenFailed()
-                                }
-                            },
-                            onBack = viewModel::closeMessage,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
+                // Keep the Inbox mounted underneath a real sliding detail page,
+                // preserving scroll position during a cancelled rightward swipe.
+                Box(
+                    modifier = Modifier.weight(1f)
+                        .onSizeChanged { messageViewportPx = it.width.toFloat().coerceAtLeast(1f) },
+                ) {
                         val refreshState = rememberPullToRefreshState()
                         PullToRefreshBox(
                             isRefreshing = folderLoading,
@@ -397,6 +372,40 @@ internal fun MailScreen(
                                     }
                                 }
                             }
+                        }
+                    if (state.selected != null) {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .graphicsLayer {
+                                    translationX = messageViewportPx * messageSlide.progress
+                                }
+                                .testTag("mail-message-slide-layer"),
+                        ) {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.background,
+                            ) {
+                                MailMessage(
+                                    state = state,
+                                    isSent = state.mailbox == OwaMailFolder.SENT,
+                                    onDownload = viewModel::download,
+                                    onOpenLocal = { attachment, uri ->
+                                        if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
+                                            viewModel.localOpenFailed()
+                                        }
+                                    },
+                                    onBack = { messageSlide.exit(viewModel::closeMessage) },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            EmbeddedBrowserExitZone(
+                                onExit = { messageSlide.exit(viewModel::closeMessage) },
+                                onDrag = { delta -> messageSlide.drag(delta, messageViewportPx) },
+                                onRelease = { messageSlide.release(viewModel::closeMessage) },
+                                onCancel = messageSlide::cancel,
+                                modifier = Modifier.align(Alignment.CenterStart)
+                                    .testTag("mail-detail-swipe-back-zone"),
+                            )
                         }
                     }
                 }

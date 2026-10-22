@@ -649,7 +649,8 @@ fun MpeiNeoApp(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationX = widthPx * (1f - reveal) }
                         .serviceBackGesture(
-                            canHandleGesture && currentService != AppTab.MAPS,
+                            canHandleGesture && canInteractivelyPop &&
+                                currentService != AppTab.MAPS,
                             canInteractivelyPop,
                         ),
                 ) {
@@ -697,7 +698,8 @@ fun MpeiNeoApp(
                         )
                     }
                     .serviceBackGesture(
-                        eligible = barsSwipe != BarsSwipeTarget.DISABLED,
+                        // Nested discipline has its own real-time swipe layer.
+                        eligible = barsSwipe == BarsSwipeTarget.HOME,
                         interactive = barsSwipe == BarsSwipeTarget.HOME,
                     ),
             ) {
