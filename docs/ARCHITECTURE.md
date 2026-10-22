@@ -1,5 +1,10 @@
 # MPEI Neo architecture and UX contracts
 
+Merged branch maintenance is automated by `.github/workflows/prune-merged-branches.yml`:
+after each `main` push the workflow deletes only unprotected, PR-free
+branch heads which are provably ancestors of `main`. Release branches,
+unmerged work and open PRs are never removed.
+
 The project intentionally stays in **one Gradle module** until the boundaries
 below are stable and measured. A package or file split alone is not a refactor:
 the owner of mutable state and the direction of dependencies must change.
