@@ -444,6 +444,7 @@ fun MpeiNeoApp(
                                     onDebugEvent = { message ->
                                         diagnostics.log("MAIL_WEB", message)
                                     },
+                                    onExit = ::closeMailBrowser,
                                 )
                             }
                         }
@@ -710,6 +711,7 @@ fun MpeiNeoApp(
                             barsBrowserJustClosed = true
                             dismissIme("bars-browser-back")
                         },
+                        onAuthBrowserExit = ::goBackOneService,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
