@@ -44,7 +44,7 @@ internal fun scheduleDockRevealProgress(
 
 /** Complete an intentional rightward swipe, otherwise spring the page back. */
 internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
-    widthPx > 0f && distancePx >= widthPx * 0.20f
+    widthPx > 0f && distancePx >= widthPx * BACK_SWIPE_COMMIT_FRACTION
 
 /**
  * The BARS detail is a nested destination, just like a Mail message:
