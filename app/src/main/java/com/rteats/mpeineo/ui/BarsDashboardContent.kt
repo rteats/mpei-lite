@@ -735,19 +735,11 @@ private fun DisciplineExpandedCard(
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
           } else {
-            FlowRow(
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
-              verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-              controls.forEach { control ->
-                val mark = control.markValue
-                if (mark != null) {
-                  GradeChip(formatBarsGrade(mark.toDouble()), mark)
-                } else {
-                  NeutralChip("—")
-                }
-              }
-            }
+            Text(
+              "${controls.count { it.markValue != null }} из ${controls.size} КМ оценено",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
           }
           discipline.finalMarkValue?.let { final ->
             Row(
@@ -782,7 +774,7 @@ private fun DisciplineExpandedCard(
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
           Text(
-            "Контрольные мероприятия",
+            "Контрольные мероприятия · ${controls.count { it.markValue != null }}/${controls.size}",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
           )
@@ -878,11 +870,14 @@ private fun ActivityDetailRow(
       }
     }
 
-    activity.markValue?.let { mark ->
+    val mark = activity.markValue
+    if (mark != null) {
       GradeChip(
-        text = mark.roundToInt().toString(),
+        text = formatBarsGrade(mark.toDouble()),
         mark = mark,
       )
+    } else {
+      NeutralChip("—")
     }
   }
 }
