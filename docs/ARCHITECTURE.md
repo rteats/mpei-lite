@@ -101,6 +101,9 @@ of simultaneous choices on each level.
 - `MailComposeController`: draft/account snapshot, autosave, debounced recipient
   lookup, outgoing SAF grants and sending; the Mail ViewModel remains the
   combined UI state facade and owns mailbox sync and message pagination.
+- `MailPagePolicy`: pure inbox/Sent pagination invariants (server offsets,
+  deduplicated visible rows, preserving sent-recipient enrichment, and
+  exhaustion). The Mail ViewModel retains account sessions and I/O orchestration.
 - `scripts/check_architecture.py`: CI guard for the above ownership boundaries.
   The guard runs for every PR and rolling Dev push.
 
