@@ -11,6 +11,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -36,6 +37,7 @@ internal fun BarsAutoFocus(
     modifier: Modifier = Modifier,
 ) {
     var orderByWeek by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val priorities = remember(disciplines, orderByWeek) {
         val candidates = semesterAutoFocus(disciplines)
         if (orderByWeek) candidates.sortedWith(
@@ -70,6 +72,9 @@ internal fun BarsAutoFocus(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Свернуть" else "Все")
+                }
                 BarsInfoButton(
                     title = "Как выбираются приоритеты",
                     sections = listOf(
@@ -93,6 +98,7 @@ internal fun BarsAutoFocus(
                     tag = "bars-auto-focus-info",
                 )
             }
+            if (expanded) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = !orderByWeek,
@@ -105,7 +111,8 @@ internal fun BarsAutoFocus(
                     label = { Text("По неделям") },
                 )
             }
-            priorities.forEachIndexed { index, item ->
+            }
+            priorities.take(if (expanded) 3 else 1).forEachIndexed { index, item ->
                 if (index > 0) {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
