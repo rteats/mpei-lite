@@ -644,7 +644,8 @@ fun MpeiNeoApp(
                     !imeVisible && !mailWebVisible
                 val canInteractivelyPop = canHandleGesture &&
                     !barsDetailOpen &&
-                    !(currentService == AppTab.MAIL && mailState.selected != null)
+                    !(currentService == AppTab.MAIL &&
+                        (mailState.selected != null || mailState.composing))
                 Box(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationX = widthPx * (1f - reveal) }
