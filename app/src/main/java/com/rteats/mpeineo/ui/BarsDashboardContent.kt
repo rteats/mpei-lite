@@ -321,13 +321,7 @@ internal fun BarsNativeDashboard(
               horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
               Text(
-                when (selectedSection) {
-                  "subjects" -> "Дисциплины"
-                  "grades" -> "По неделям"
-                  "attendance" -> "Посещаемость"
-                  "controls" -> "Контрольные"
-                  else -> "БАРС"
-                },
+                barsSectionTitle(selectedSection),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
