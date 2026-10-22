@@ -195,6 +195,7 @@ internal fun BarsScreen(
       ) {
         viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
         webFlow.prepareMarkRefresh()
+        session.prepareMarkRefresh()
         marksReadiness?.reset()
         viewModel.startRefresh()
         retryNavigation?.invoke()
@@ -319,6 +320,7 @@ internal fun BarsScreen(
         error = state.error,
         onRetry = {
           webFlow.prepareCheckRetry()
+          session.prepareCheckRetry()
           marksReadiness?.reset()
           viewModel.checking()
           retryNavigation?.invoke()
