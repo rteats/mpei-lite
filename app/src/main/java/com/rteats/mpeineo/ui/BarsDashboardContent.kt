@@ -482,7 +482,8 @@ private fun DisciplineCard(
 ) {
   Card(
     onClick = onClick,
-    modifier = modifier.fillMaxWidth(),
+    modifier = modifier.fillMaxWidth()
+      .testTag("bars-discipline-" + discipline.disciplineName),
     shape = MaterialTheme.shapes.extraLarge,
     colors = CardDefaults.cardColors(
       containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
