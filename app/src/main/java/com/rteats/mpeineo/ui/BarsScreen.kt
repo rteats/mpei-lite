@@ -761,6 +761,12 @@ internal fun BarsScreen(
                     else -> false
                   }
                   if (!valid) return@post
+                  if (source == "SUMMARY" &&
+                    !webFlow.canAcceptSummaryPayload(liveState().browserVisible)
+                  ) {
+                    viewModel.logWebEvent("ignored obsolete Summary payload")
+                    return@post
+                  }
                   viewModel.rawSnapshotReceived(source, raw)
                   if (source == "MAIN" && !webFlow.summaryFetchAttempted &&
                     !liveState().browserVisible
