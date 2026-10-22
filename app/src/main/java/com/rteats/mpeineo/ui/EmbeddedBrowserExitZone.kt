@@ -30,13 +30,16 @@ internal fun shouldExitEmbeddedBrowserSwipe(
 internal fun EmbeddedBrowserExitZone(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    onDrag: (Float) -> Unit = {},
+    onRelease: (() -> Unit)? = null,
+    onCancel: () -> Unit = {},
 ) {
     Box(
         modifier = modifier.width(80.dp).fillMaxHeight()
             // Avoid the page header and the fixed browser toolbar.
             .padding(top = 112.dp, bottom = 112.dp)
             .testTag("embedded-browser-exit-zone")
-            .pointerInput(onExit) {
+            .pointerInput(onExit, onDrag, onRelease, onCancel) {
                 var startedInsideZone = false
                 var distancePx = 0f
                 val systemEdgePx = 20.dp.toPx()
@@ -49,17 +52,24 @@ internal fun EmbeddedBrowserExitZone(
                     onHorizontalDrag = { change, delta ->
                         if (startedInsideZone) {
                             distancePx = (distancePx + delta).coerceAtLeast(0f)
+                            onDrag(delta)
                             if (delta > 0f) change.consume()
                         }
                     },
                     onDragEnd = {
-                        if (shouldExitEmbeddedBrowserSwipe(
-                                startedInsideZone, distancePx, exitThresholdPx,
-                            )
-                        ) onExit()
+                        if (startedInsideZone) {
+                            if (onRelease != null) onRelease()
+                            else if (shouldExitEmbeddedBrowserSwipe(
+                                    startedInsideZone, distancePx, exitThresholdPx,
+                                )
+                            ) onExit()
+                        }
                         startedInsideZone = false
                     },
-                    onDragCancel = { startedInsideZone = false },
+                    onDragCancel = {
+                        if (startedInsideZone) onCancel()
+                        startedInsideZone = false
+                    },
                 )
             },
     )
