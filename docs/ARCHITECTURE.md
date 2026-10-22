@@ -86,10 +86,18 @@ of simultaneous choices on each level.
 - `scripts/check_architecture.py`: CI guard for the above ownership boundaries.
   The guard runs for every PR and rolling Dev push.
 
-The UI still has more work to do: the Android-specific BARS WebView transport
-and request watchdogs can be moved into a session adapter; feature-specific
-focus requests and IME transitions still live inside the root shell. Avoid
-moving those until user-device validation of WebView and Back handling.
+The Android-specific BARS WebView adapter is now `BarsWebViewTransport`.
+It owns WebView configuration, retained session instance, main-frame callbacks,
+JS bridge, document readiness watchdogs, background refresh and teardown.
+`BarsScreen` only composes native content and WebView visibility and forwards
+user commands; it must not make extraction or navigation decisions.
+`BarsSessionCoordinator` remains the pure policy/state machine, separate
+from Android transport.
+
+Still outstanding: test real university 2FA, cold-start session restoration,
+Main→Summary transition, interrupted captures and IME/gesture behavior on a
+physical device. The root shell still owns feature-specific focus requests and
+IME transitions, which should not be migrated without device verification.
 
 ## Next review criteria
 
