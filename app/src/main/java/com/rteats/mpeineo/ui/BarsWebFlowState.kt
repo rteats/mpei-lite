@@ -38,4 +38,35 @@ internal class BarsWebFlowState {
         summaryExtractionStarted = false
         needsFullViewport = true
     }
+
+    /**
+     * Browser navigation has priority over background Main -> Summary capture.
+     * Invalidating the generation makes outstanding asynchronous DOM discovery
+     * and its delayed retries no-ops even if they report after the user enters.
+     *
+     * @return true if a Summary capture was underway and needs to be cancelled
+     * in the state exposed to the user.
+     */
+    fun enterInteractiveBrowser(): Boolean {
+        val interruptedSummary = summaryFetchAttempted
+        summaryRouteDiscoveryGeneration++
+        summaryFetchAttempted = false
+        summaryExtractionStarted = false
+        redirectingToMarks = false
+        needsFullViewport = true
+        return interruptedSummary
+    }
+
+    /** A late Summary JS result is invalid after browser takeover. */
+    fun canAcceptSummaryPayload(browserVisible: Boolean): Boolean =
+        summaryFetchAttempted && !browserVisible
+
+    /** A discovery result may navigate only in its original document/mode. */
+    fun canNavigateToSummary(
+        generation: Int,
+        browserVisible: Boolean,
+        marksDocumentVisible: Boolean,
+    ): Boolean = summaryFetchAttempted &&
+        !browserVisible && marksDocumentVisible &&
+        generation == summaryRouteDiscoveryGeneration
 }

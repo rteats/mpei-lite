@@ -180,6 +180,16 @@ internal class BarsNavigationController(
         view.postDelayed(task, left.coerceAtLeast(1L))
     }
 
+    /**
+     * Relinquish automatic navigation when the user opens the browser.
+     * Do not stop or replace the displayed document: navigation is now theirs.
+     */
+    fun cancelAutomaticNavigation() {
+        generation++
+        attempt = null
+        cancelCallbacks()
+    }
+
     fun close() {
         closed = true
         generation++
