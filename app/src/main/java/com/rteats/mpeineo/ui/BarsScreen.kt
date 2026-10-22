@@ -45,6 +45,7 @@ internal fun BarsScreen(
   /** Keep the single WebView alive for automatic Home data refresh. */
   allowBackgroundSync: Boolean = false,
   onBrowserExit: () -> Unit = {},
+  onAuthBrowserExit: () -> Unit = {},
   onSearch: () -> Unit = {},
   onDetailOpenChange: (Boolean) -> Unit = {},
   openDisciplineName: String? = null,
@@ -150,6 +151,20 @@ internal fun BarsScreen(
         onRelease = transport::release,
       )
       if (browserControlsVisible) {
+        EmbeddedBrowserExitZone(
+          onExit = {
+            if (state.browserVisible) {
+              transport.exitBrowser(onBrowserExit)
+            } else {
+              // The login/2FA page has no native grades to return to.
+              // Leave the BARS service instead, keeping its WebView alive.
+              onBrowserExit()
+              onAuthBrowserExit()
+            }
+          },
+          modifier = Modifier.align(Alignment.CenterStart).zIndex(3f)
+            .testTag("bars-browser-swipe-exit"),
+        )
         EmbeddedBrowserToolbar(
           state = transport.browserToolbarState,
           onBack = transport::browserBack,
