@@ -47,6 +47,13 @@ internal class AppNavigationTargets {
         scheduleLessonFocus = null
     }
 
+    /** A completed cue may only acknowledge its own request, never a newer link. */
+    fun consumeScheduleFocus(requestId: Int) {
+        if (scheduleLessonFocus?.requestId == requestId) {
+            scheduleLessonFocus = null
+        }
+    }
+
     fun focusScheduleLesson(hit: ScheduleLessonHit) {
         scheduleLessonFocus = ScheduleLessonFocus(
             requestId = ++nextLessonId,
