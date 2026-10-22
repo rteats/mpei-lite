@@ -19,7 +19,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.content.Context
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /**
  * Owns the actual Android BARS WebView and all transport callbacks. This
