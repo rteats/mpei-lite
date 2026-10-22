@@ -1,8 +1,6 @@
 package com.rteats.mpeineo.ui
 
 
-import android.os.SystemClock
-import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -13,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
@@ -56,12 +53,7 @@ internal fun BarsScreen(
   val state by viewModel.state.collectAsState()
   val transport = remember(viewModel) { BarsWebViewTransport(viewModel) }
   val webFlow = transport.webFlow
-  val session = transport.session
   val webView = transport.webView
-  val navigationController = transport.navigationController
-  val marksReadiness = transport.marksReadiness
-  val retryNavigation = transport.retryNavigation
-  val autoRefreshGate = transport.autoRefreshGate
   // AndroidView callbacks must read the latest foreground/browser mode.
   transport.browserCanInteract = active &&
     (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
@@ -74,7 +66,6 @@ internal fun BarsScreen(
     }
   }
 
-  val cacheFresh = state.hasFreshCache()
   // The super-app keeps one BARS composition mounted even at Home. Auto-refresh
   // may establish its authenticated WebView without entering the BARS service.
   // Explicitly disabling automatic updates still suppresses that background work.
@@ -87,64 +78,18 @@ internal fun BarsScreen(
     backgroundAllowed = allowBackgroundSync,
   )
 
-  // A background Home sync must not pause JS while Main/Summary are loading.
-  // The same WebView survives entering/leaving BARS and retains its cookies.
+  // The WebView stays mounted on Home; its lifecycle is transport-owned.
   androidx.compose.runtime.LaunchedEffect(active, allowBackgroundSync, webView, autoRefreshEnabled) {
-    webView?.let { view ->
-      if (active || allowBackgroundSync) view.onResume() else view.onPause()
-      if ((active || allowBackgroundSync) && state.authStage == BarsAuthStage.AUTHENTICATED &&
-        !state.loginRequired &&
-        autoRefreshGate.shouldRefresh(
-          enabled = autoRefreshEnabled,
-          nowElapsedMs = SystemClock.elapsedRealtime(),
-          sessionReady = navigationController?.hasCompletedDocument == true &&
-            retryNavigation != null,
-          hasCachedGrades = state.lastUpdatedAtMillis > 0L &&
-            state.disciplines.isNotEmpty(),
-          cacheFresh = state.hasFreshCache(),
-          isLoading = state.isLoading,
-          browserVisible = state.browserVisible,
-        )
-      ) {
-        viewModel.logWebEvent("cached grades expired; refreshing on tab activation")
-        webFlow.prepareMarkRefresh()
-        session.prepareMarkRefresh()
-        marksReadiness?.reset()
-        viewModel.startRefresh()
-        retryNavigation?.invoke()
-      }
-    }
+    transport.onVisibilityChanged(active || allowBackgroundSync, autoRefreshEnabled)
   }
 
   androidx.compose.runtime.LaunchedEffect(state.browserVisible, state.authStage, webView) {
-    if (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH) {
-      transport.interruptAutomatedCapture("interactive mode")
-    }
-    if (webFlow.browserWasVisible && !state.browserVisible) {
-      webView?.let { view ->
-        if (BarsDocumentPolicy.isTrusted(view.url.orEmpty())) {
-          // Login/2FA may have finished while showing the official
-          // browser. Recheck its final page when returning to grades.
-          view.evaluateJavascript(BARS_PAGE_STATE_SCRIPT, null)
-        }
-      }
-    }
-    webFlow.browserWasVisible = state.browserVisible
+    transport.onBrowserModeChanged()
   }
 
   BackHandler(enabled = active && state.browserVisible) {
-    val view = webView
-    if (view?.canGoBack() == true && view.url != BARS_MARKS_URL) {
-      view.goBack()
-    } else {
-      // Arm the pager exit guard before WebView loses focus or is destroyed.
-      onBrowserExit()
-      view?.clearFocus()
-      webFlow.needsFullViewport = false
-      viewModel.hideBrowser()
-    }
+    transport.handleBrowserBack(onBrowserExit)
   }
-
 
   Box(
     modifier = modifier
@@ -154,13 +99,7 @@ internal fun BarsScreen(
     when (state.authStage) {
       BarsAuthStage.CHECKING -> BarsCheckingState(
         error = state.error,
-        onRetry = {
-          webFlow.prepareCheckRetry()
-          session.prepareCheckRetry()
-          marksReadiness?.reset()
-          viewModel.checking()
-          retryNavigation?.invoke()
-        },
+        onRetry = transport::retrySessionCheck,
       )
 
       BarsAuthStage.WEB_AUTH -> {
@@ -177,48 +116,9 @@ internal fun BarsScreen(
         showCachedRefreshErrors = autoRefreshEnabled || webFlow.manuallyRequestedConnection,
         onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
         onSearch = onSearch,
-        onRefresh = {
-          webFlow.manuallyRequestedConnection = true
-          session.prepareMarkRefresh()
-          webFlow.mainFrameFailed = false
-          if (state.loginRequired) {
-            transport.interruptAutomatedCapture("login required")
-            viewModel.showBrowser()
-          } else {
-            webFlow.needsFullViewport = true
-            marksReadiness?.reset()
-            viewModel.startRefresh()
-            retryNavigation?.invoke()
-          }
-        },
-        onOpenBrowser = {
-          transport.interruptAutomatedCapture("user opened browser")
-          viewModel.showBrowser()
-        },
-        onRefreshSummary = {
-          webFlow.manuallyRequestedConnection = true
-          if (state.loginRequired) {
-            transport.interruptAutomatedCapture("login required")
-            viewModel.showBrowser()
-          } else if (!state.isSummaryLoading) {
-            val view = webView
-            session.resetSummaryCapture()
-            webFlow.mainFrameFailed = false
-            if (view != null &&
-              BarsDocumentPolicy.isCurrent(view.url.orEmpty(), BARS_MARKS_URL) &&
-              !state.isLoading && navigationController != null
-            ) {
-              transport.requestOfficialSummary(view, "manual Summary refresh")
-            } else {
-              // The live document is not Main yet. Revalidate marks first;
-              // their extraction callback will chain into Summary.
-              webFlow.needsFullViewport = true
-              marksReadiness?.reset()
-              viewModel.startRefresh()
-              retryNavigation?.invoke()
-            }
-          }
-        },
+        onRefresh = { transport.refreshMarks() },
+        onOpenBrowser = { transport.openBrowser() },
+        onRefreshSummary = transport::refreshSummary,
       )
     }
 
