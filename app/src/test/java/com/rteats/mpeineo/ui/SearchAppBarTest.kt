@@ -29,7 +29,12 @@ class SearchAppBarTest {
         assertEquals(SearchScope.MAPS, searchAppBarContext(AppTab.MAPS).scope)
         assertEquals("Корпус или аудитория",
             searchAppBarContext(AppTab.MAPS).placeholder)
-        assertEquals(SearchScope.SCHEDULE, searchAppBarContext(AppTab.SETTINGS).scope)
+        assertEquals(AppBarMode.TITLE, appBarMode(AppTab.SETTINGS))
+        assertEquals(AppBarMode.SEARCH, appBarMode(null))
+        assertEquals(AppBarMode.SEARCH, appBarMode(AppTab.BARS))
+        assertEquals(AppBarMode.SEARCH, appBarMode(AppTab.MAIL))
+        assertEquals(AppBarMode.SEARCH, appBarMode(AppTab.SCHEDULE))
+        assertEquals(AppBarMode.SEARCH, appBarMode(AppTab.MAPS))
     }
 
     @Test fun contextualAppBarUsesHomeAndServiceActions() {
