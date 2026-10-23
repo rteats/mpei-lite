@@ -183,6 +183,8 @@ fun MpeiNeoApp(
     }
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionJob by remember { mutableStateOf<Job?>(null) }
+    var motionGeneration by remember { mutableIntStateOf(0) }
+    val pendingExit = remember { NavigationExitTransaction() }
     val scope = rememberCoroutineScope()
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var widthPx by remember { mutableFloatStateOf(1f) }
@@ -232,22 +234,31 @@ fun MpeiNeoApp(
     }
 
     fun animateReveal(target: Float, onComplete: () -> Unit = {}) {
+        // A cancelled animation must never keep navigation locked, and a stale
+        // job must not clear the "transitioning" flag of its replacement.
+        val generation = ++motionGeneration
         transitionJob?.cancel()
         isTransitioning = true
         transitionJob = scope.launch {
-            animate(
-                initialValue = reveal.coerceIn(0f, 1f),
-                targetValue = target,
-                animationSpec = tween(
-                    durationMillis = if (target == 0f) BACK_SLIDE_OUT_MS else BACK_SLIDE_IN_MS,
-                    easing = FastOutSlowInEasing,
-                ),
-            ) { value, _ ->
-                reveal = value
+            try {
+                animate(
+                    initialValue = reveal.coerceIn(0f, 1f),
+                    targetValue = target,
+                    animationSpec = tween(
+                        durationMillis = if (target == 0f) BACK_SLIDE_OUT_MS
+                            else BACK_SLIDE_IN_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { value, _ ->
+                    if (motionGeneration == generation) reveal = value
+                }
+                if (motionGeneration == generation) {
+                    reveal = target
+                    onComplete()
+                }
+            } finally {
+                if (motionGeneration == generation) isTransitioning = false
             }
-            reveal = target
-            onComplete()
-            isTransitioning = false
         }
     }
 
@@ -256,7 +267,10 @@ fun MpeiNeoApp(
         // installs a new request before opening Schedule, not before leaving it.
         if (target != AppTab.SCHEDULE) navigationTargets.clearScheduleFocus()
         application.container.uiFrameProfiler.markInteraction("NAV_PUSH")
+        // If a programmatic navigation interrupts an exiting page, commit its
+        // back operation once before opening the next route.
         transitionJob?.cancel()
+        pendingExit.settle()
         if (navigationHaptics && !viaClassroom) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
@@ -290,12 +304,13 @@ fun MpeiNeoApp(
         mailWebVisible = false
         barsBrowserJustClosed = false
         appBarService = navigation.peekBack()
-        animateReveal(0f) {
+        pendingExit.begin {
             navigation.pop()
             // The underlying service is already fully rendered, at rest.
             reveal = if (!navigation.canPop) 0f else 1f
             barsDetailOpen = false
         }
+        animateReveal(0f, pendingExit::settle)
     }
 
     fun closeMailBrowser() {
@@ -597,10 +612,9 @@ fun MpeiNeoApp(
             modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) },
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .graphicsLayer { translationX = -widthPx * reveal / 7f },
-            ) {
+            // No decorative parallax: the outgoing page slides over its
+            // stationary parent, matching nested Mail/BARS/browser exits.
+            Box(modifier = Modifier.fillMaxSize()) {
                 if (beneathService == null) {
                     SuperAppHome(
                         schedule = scheduleState,

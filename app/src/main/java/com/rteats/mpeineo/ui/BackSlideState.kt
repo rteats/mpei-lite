@@ -34,24 +34,36 @@ internal class BackSlideState(private val scope: CoroutineScope) {
     var progress by mutableFloatStateOf(0f)
         private set
     private var animation: Job? = null
+    private var generation = 0
     private var leaving = false
 
     fun drag(deltaPx: Float, viewportPx: Float) {
         if (leaving) return
+        generation += 1
         animation?.cancel()
+        animation = null
         progress = backSwipeProgress(progress, deltaPx, viewportPx)
     }
 
     private fun animateProgress(target: Float, duration: Int, after: () -> Unit = {}) {
+        val current = ++generation
         animation?.cancel()
         animation = scope.launch {
-            animate(
-                initialValue = progress,
-                targetValue = target,
-                animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
-            ) { value, _ -> progress = value }
-            progress = target
-            after()
+            try {
+                animate(
+                    initialValue = progress,
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
+                ) { value, _ ->
+                    if (generation == current) progress = value
+                }
+                if (generation == current) {
+                    progress = target
+                    after()
+                }
+            } finally {
+                if (generation == current) animation = null
+            }
         }
     }
 
@@ -71,14 +83,20 @@ internal class BackSlideState(private val scope: CoroutineScope) {
 
     /** Only used for a new browser overlay over the already visible native UI. */
     fun enter() {
-        if (leaving) return
+        // Opening another message/browser cancels any pending close callback
+        // instead of letting that older exit close the newly opened page.
+        leaving = false
+        generation += 1
         animation?.cancel()
+        animation = null
         progress = 1f
         animateProgress(0f, BACK_SLIDE_IN_MS)
     }
 
     fun reset() {
+        generation += 1
         animation?.cancel()
+        animation = null
         leaving = false
         progress = 0f
     }
