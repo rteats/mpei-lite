@@ -63,6 +63,7 @@ internal fun ScheduleScreen(
     onAgendaScrollingChanged: (Boolean) -> Unit,
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
+    onPreviewLessonClick: (HomeLessonHighlight) -> Unit = {},
     focusLesson: ScheduleLessonFocus? = null,
     onFocusConsumed: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -80,7 +81,7 @@ internal fun ScheduleScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "Выберите избранное или найдите группу, преподавателя или аудиторию внизу.",
+                        "Выберите избранное или найдите группу, преподавателя или аудиторию вверху.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -89,6 +90,12 @@ internal fun ScheduleScreen(
             }
         }
     } else {
+        Column(modifier = modifier.fillMaxSize()) {
+            ScheduleNextLessonStrip(
+                state = state,
+                onClick = onPreviewLessonClick,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+            )
         ScheduleAgenda(
             state = state,
             onEnsureWeek = onEnsureAgendaWeek,
@@ -100,8 +107,9 @@ internal fun ScheduleScreen(
             todayJumpRequest = todayJumpRequest,
             focusLesson = focusLesson,
             onFocusConsumed = onFocusConsumed,
-            modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
         )
+        }
     }
 }
 

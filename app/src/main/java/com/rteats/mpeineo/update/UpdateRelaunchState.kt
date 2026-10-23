@@ -11,7 +11,7 @@ internal object UpdateRelaunchState {
     private val allowed = setOf("SCHEDULE", "BARS", "MAIL", "MAPS", "SETTINGS")
 
     fun record(context: Context, routes: List<String>) {
-        val names = routes.filter { it in allowed }.take(2)
+        val names = routes.filter { it in allowed }.takeLast(2)
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .edit().putString("current_routes", names.joinToString(",")).apply()
     }
@@ -32,7 +32,7 @@ internal object UpdateRelaunchState {
         val valid = expected > 0 && currentVersion >= expected &&
             System.currentTimeMillis() - armedAt in 0L..(2L * 24L * 60L * 60L * 1000L)
         val routes = if (valid) prefs.getString("restore_routes", "").orEmpty()
-            .split(",").filter { it in allowed }.take(2) else emptyList()
+            .split(",").filter { it in allowed }.takeLast(2) else emptyList()
         if (valid || (armedAt != 0L && System.currentTimeMillis() - armedAt > 172800000L)) {
             prefs.edit().remove("restore_routes").remove("expected_version")
                 .remove("armed_at").apply()

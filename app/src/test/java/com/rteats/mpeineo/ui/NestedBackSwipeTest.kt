@@ -4,8 +4,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class SuperAppBackSwipeTest {
-    @Test fun returnsHomeAfterIntentionalRightSwipe() {
+class NestedBackSwipeTest {
+    @Test fun nestedPopCommitsAfterRightSwipeThreshold() {
         assertTrue(shouldCommitServiceBackSwipe(216f, 1080f))
         assertTrue(shouldCommitServiceBackSwipe(300f, 1080f))
     }
@@ -24,7 +24,7 @@ class SuperAppBackSwipeTest {
         assertFalse(acceptsServiceBackStart(1070f, 1080f, 24f, mapEdgeZone = false))
     }
 
-    @Test fun barsDisciplineSwipeReturnsToOverviewInsteadOfHome() {
+    @Test fun barsDisciplineSwipeDoesNotNavigateRootTab() {
         assertTrue(
             barsSwipeTarget(
                 foreground = true, isTransitioning = false, imeVisible = false,
@@ -35,7 +35,7 @@ class SuperAppBackSwipeTest {
             barsSwipeTarget(
                 foreground = true, isTransitioning = false, imeVisible = false,
                 browserVisible = false, authenticated = true, detailOpen = false,
-            ) == BarsSwipeTarget.HOME,
+            ) == BarsSwipeTarget.DISABLED,
         )
     }
 

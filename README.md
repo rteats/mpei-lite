@@ -5,9 +5,10 @@ services are **Schedule**, **BARS**, **Mail**, and **Campus map**.
 
 ## Everyday navigation
 
-- **Home**: four customizable service tiles and one actionable next-lesson
-  preview. New-grade, unread-mail, and sign-in states are shown as short tile
-  hints instead of additional Home dashboards.
+- **Navigation**: four direct Material 3 bottom tabs (Schedule, BARS, Mail,
+  Campus). Schedule is the default. Settings remains a secondary page.
+- **Next lesson**: a compact cached preview at the top of Schedule; tapping it
+  focuses the exact lesson in the agenda.
 - **Schedule**: cached agendas, group/teacher/classroom favorites, week
   refresh, and direct lesson-to-room navigation.
 - **BARS**: cached semester grades, per-discipline controls, optional 4.2
@@ -19,7 +20,7 @@ services are **Schedule**, **BARS**, **Mail**, and **Campus map**.
 - **Campus**: offline Canvas-based map with building selection, pan, zoom, and
   inertial dragging.
 
-Search opens inside the active service. Home search defaults to timetable
+Search opens inside the selected service. Schedule search uses timetable
 targets. A shared search app bar provides a consistent entry point, but no
 cross-service result mixer or scope selector is shown. Schedule retains
 favorite/target selection and category filters; Campus also provides its own
@@ -44,7 +45,7 @@ No dependency-injection framework is required.
 - Mail uses the authenticated university OWA session and the OWA
   `service.svc` protocol. Headers and bodies use an encrypted per-account
   cache. Notifications use WorkManager.
-- Service stack/gesture decisions live in `ServiceRouteStack.kt`; the main
+- Tab and deep-link rules live in `ServiceRouteStack.kt`; the main
   Compose shell owns transition presentation. BARS WebView extraction flags
   live in `BarsWebFlowState.kt` and persist while its WebView remains mounted.
 - The offline map needs no external MapKit SDK.

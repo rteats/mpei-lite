@@ -136,6 +136,7 @@ internal fun GlobalSearchScreen(
     onClose: () -> Unit,
     revealProgress: Float = 1f,
     sourceFieldBounds: Rect = Rect.Zero,
+    sourceIsIcon: Boolean = false,
     focusWhenReady: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
@@ -218,6 +219,9 @@ internal fun GlobalSearchScreen(
                                 translationY = motion.translationY
                                 scaleX = motion.scaleX
                                 scaleY = motion.scaleY
+                                if (sourceIsIcon) {
+                                    alpha = ((elements.field - 0.12f) / 0.4f).coerceIn(0f, 1f)
+                                }
                             },
                         placeholder = { Text(when (scope) {
                             SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"

@@ -18,10 +18,10 @@ class ServiceRouteStackTest {
         assertEquals(listOf(AppTab.SCHEDULE.name), serviceRouteAfterBack(nested))
     }
 
-    @Test fun leavingRegularServiceReturnsHome() {
-        assertEquals(emptyList<String>(),
+    @Test fun leavingRegularServiceReturnsSchedule() {
+        assertEquals(listOf(AppTab.SCHEDULE.name),
             serviceRouteAfterBack(listOf(AppTab.BARS.name)))
-        assertEquals(listOf(AppTab.MAPS.name),
+        assertEquals(listOf(AppTab.MAIL.name, AppTab.MAPS.name),
             serviceRouteAfterOpen(listOf(AppTab.MAIL.name), AppTab.MAPS, true))
     }
     @Test fun snapshotKeepsCurrentAndPreviousDestinationsConsistent() {
@@ -34,6 +34,6 @@ class ServiceRouteStackTest {
         assertEquals(AppTab.MAPS, map.current)
         assertEquals(AppTab.SCHEDULE, map.beneath)
         assertEquals(listOf(AppTab.SCHEDULE.name), map.back())
-        assertEquals(emptyList<String>(), ServiceRouteSnapshot(map.back()).back())
+        assertEquals(listOf(AppTab.SCHEDULE.name), ServiceRouteSnapshot(map.back()).back())
     }
 }

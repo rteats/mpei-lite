@@ -97,7 +97,6 @@ internal fun SettingsScreen(
     onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
     navigationHaptics: Boolean = false,
     onNavigationHapticsChange: (Boolean) -> Unit = {},
-    onResetHomeLayout: () -> Unit = {},
     active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -344,12 +343,6 @@ internal fun SettingsScreen(
                     checked = navigationHaptics,
                     enabled = true,
                     onChange = onNavigationHapticsChange,
-                )
-                SettingsAction(
-                    title = "Сбросить кнопки главной",
-                    detail = "Исходный порядок и обычный размер всех четырёх кнопок",
-                    iconRes = AppIcons.Refresh,
-                    onClick = onResetHomeLayout,
                 )
             }
         }

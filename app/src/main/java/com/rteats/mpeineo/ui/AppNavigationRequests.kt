@@ -16,7 +16,6 @@ internal sealed interface AppNavigationRequest {
     data class Service(val destination: AppTab) : AppNavigationRequest
     data class SelectSchedule(val target: ScheduleTarget) : AppNavigationRequest
     data class FocusScheduleLesson(val hit: ScheduleLessonHit) : AppNavigationRequest
-    data class FocusHomeLesson(val highlight: HomeLessonHighlight) : AppNavigationRequest
     data class OpenMail(val hit: SearchMailHit) : AppNavigationRequest
     data class OpenMailNotification(val uid: Long, val validity: Long) : AppNavigationRequest
     data class OpenBarsDiscipline(val name: String) : AppNavigationRequest
@@ -65,7 +64,7 @@ internal class AppNavigationTargets {
         )
     }
 
-    fun focusHomeLesson(highlight: HomeLessonHighlight, weeks: Map<Int, ScheduleWeek>) {
+    fun focusUpcomingLesson(highlight: HomeLessonHighlight, weeks: Map<Int, ScheduleWeek>) {
         scheduleLessonFocus = homeLessonFocus(highlight, weeks, ++nextLessonId)
     }
 

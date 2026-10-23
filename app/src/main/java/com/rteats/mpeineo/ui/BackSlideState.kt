@@ -14,8 +14,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Shared timing and threshold for native service and nested browser Back. */
-internal const val BACK_SLIDE_OUT_MS = 260
-internal const val BACK_SLIDE_IN_MS = 310
+internal const val BACK_SLIDE_OUT_MS = AppMotionTiming.DETAIL_POP_MS
+internal const val BACK_SLIDE_IN_MS = AppMotionTiming.DETAIL_PUSH_MS
 internal const val BACK_SWIPE_COMMIT_FRACTION = 0.20f
 
 /** Pure progress policy; gesture and button exits share the same finish animation. */

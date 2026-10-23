@@ -22,8 +22,8 @@ class BackSlideStateTest {
         assertFalse(shouldCommitServiceBackSwipe(190f, 1000f))
     }
 
-    @Test fun animationsShareRootServiceDurations() {
-        assertEquals(260, BACK_SLIDE_OUT_MS)
-        assertEquals(310, BACK_SLIDE_IN_MS)
+    @Test fun nestedMotionUsesSharedTokens() {
+        assertEquals(AppMotionTiming.DETAIL_POP_MS, BACK_SLIDE_OUT_MS)
+        assertEquals(AppMotionTiming.DETAIL_PUSH_MS, BACK_SLIDE_IN_MS)
     }
 }

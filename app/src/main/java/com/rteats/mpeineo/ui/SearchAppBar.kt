@@ -9,6 +9,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSearchBarState
@@ -48,11 +49,10 @@ internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab)
     AppTab.SETTINGS -> error("Settings has a title bar, not a timetable search bar")
 }
 
-internal enum class SearchAppBarAction { NONE, HOME, REFRESH_WEEK, COMPOSE_MAIL }
+internal enum class SearchAppBarAction { NONE, REFRESH_WEEK, COMPOSE_MAIL }
 
 internal fun searchAppBarAction(tab: AppTab?, mailListReady: Boolean): SearchAppBarAction =
     when {
-        tab == null -> SearchAppBarAction.HOME
         tab == AppTab.SCHEDULE -> SearchAppBarAction.REFRESH_WEEK
         tab == AppTab.MAIL && mailListReady -> SearchAppBarAction.COMPOSE_MAIL
         else -> SearchAppBarAction.NONE
@@ -78,22 +78,54 @@ internal fun ContextSearchAppBar(
     onScheduleRefresh: (() -> Unit)? = null,
     scheduleRefreshing: Boolean = false,
     onMailCompose: (() -> Unit)? = null,
-    homeEditing: Boolean = false,
-    onHomeEditToggle: (() -> Unit)? = null,
-    onHomeSettings: (() -> Unit)? = null,
+    onSettings: () -> Unit = {},
+    compact: Boolean = false,
     onSearchBoundsChanged: (Rect) -> Unit = {},
 ) {
     val searchBarState = rememberSearchBarState()
     val action = when {
-        onHomeEditToggle != null && onHomeSettings != null -> SearchAppBarAction.HOME
         onScheduleRefresh != null -> SearchAppBarAction.REFRESH_WEEK
         onMailCompose != null -> SearchAppBarAction.COMPOSE_MAIL
         else -> SearchAppBarAction.NONE
     }
-    val endPadding = if (action == SearchAppBarAction.NONE) {
-        SEARCH_APP_BAR_END_WITHOUT_ACTION
-    } else {
-        SEARCH_APP_BAR_END_WITH_ACTION
+    val endPadding = SEARCH_APP_BAR_END_WITH_ACTION
+
+    if (compact) {
+        TopAppBar(
+            title = {
+                Text(when (context.scope) {
+                    SearchScope.BARS -> "БАРС"
+                    SearchScope.MAIL -> "Почта"
+                    SearchScope.MAPS -> "Корпуса"
+                    SearchScope.SCHEDULE -> "Пары"
+                })
+            },
+            actions = {
+                IconButton(
+                    onClick = onSearch,
+                    modifier = Modifier.testTag("compact-search-action")
+                        .onGloballyPositioned { onSearchBoundsChanged(it.boundsInRoot()) },
+                ) {
+                    AppIcon(AppIcons.Search, contentDescription = "Поиск")
+                }
+                if (onMailCompose != null) {
+                    IconButton(
+                        onClick = onMailCompose,
+                        modifier = Modifier.testTag("mail-compose-fab"),
+                    ) {
+                        AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
+                    }
+                }
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.testTag("service-settings"),
+                ) {
+                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
+                }
+            },
+            modifier = modifier.testTag("search-app-bar"),
+        )
+        return
     }
 
     AppBarWithSearch(
@@ -121,37 +153,15 @@ internal fun ContextSearchAppBar(
         actions = {
             // Controls reflect the destination immediately, avoiding an outgoing
             // action cluster competing with the active route.
-            when (action) {
-                    SearchAppBarAction.HOME -> Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(
-                            onClick = { onHomeEditToggle?.invoke() },
-                            modifier = Modifier.testTag("superapp-edit"),
-                        ) {
-                            AppIcon(
-                                if (homeEditing) AppIcons.Confirm else AppIcons.Edit,
-                                contentDescription = if (homeEditing) "Готово"
-                                    else "Настроить кнопки",
-                            )
-                        }
-                        IconButton(
-                            onClick = { onHomeSettings?.invoke() },
-                            modifier = Modifier.testTag("superapp-settings"),
-                        ) {
-                            AppIcon(AppIcons.Settings, contentDescription = "Настройки")
-                        }
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                when (action) {
                     SearchAppBarAction.REFRESH_WEEK -> IconButton(
                         onClick = { onScheduleRefresh?.invoke() },
                         enabled = !scheduleRefreshing,
                         modifier = Modifier.testTag("schedule-week-refresh"),
                     ) {
-                        if (scheduleRefreshing) {
-                            LoadingIndicator(modifier = Modifier.size(24.dp))
-                        } else {
-                            AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
-                        }
+                        if (scheduleRefreshing) LoadingIndicator(modifier = Modifier.size(24.dp))
+                        else AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
                     }
                     SearchAppBarAction.COMPOSE_MAIL -> IconButton(
                         onClick = { onMailCompose?.invoke() },
@@ -160,6 +170,13 @@ internal fun ContextSearchAppBar(
                         AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
                     }
                     SearchAppBarAction.NONE -> Unit
+                }
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.testTag("service-settings"),
+                ) {
+                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
+                }
             }
         },
     )
