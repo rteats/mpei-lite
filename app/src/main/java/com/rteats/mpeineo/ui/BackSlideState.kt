@@ -39,7 +39,9 @@ internal class BackSlideState(private val scope: CoroutineScope) {
 
     fun drag(deltaPx: Float, viewportPx: Float) {
         if (leaving) return
+        generation += 1
         animation?.cancel()
+        animation = null
         progress = backSwipeProgress(progress, deltaPx, viewportPx)
     }
 
@@ -81,8 +83,12 @@ internal class BackSlideState(private val scope: CoroutineScope) {
 
     /** Only used for a new browser overlay over the already visible native UI. */
     fun enter() {
-        if (leaving) return
+        // Opening another message/browser cancels any pending close callback
+        // instead of letting that older exit close the newly opened page.
+        leaving = false
+        generation += 1
         animation?.cancel()
+        animation = null
         progress = 1f
         animateProgress(0f, BACK_SLIDE_IN_MS)
     }
