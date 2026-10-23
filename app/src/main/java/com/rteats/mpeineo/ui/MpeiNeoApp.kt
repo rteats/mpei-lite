@@ -56,9 +56,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -193,12 +190,11 @@ fun MpeiNeoApp(
     val searchUi = rememberSearchOverlayState()
     // The bar switches context when navigation begins, not when its slide ends.
     var appBarService by remember { mutableStateOf(currentService) }
-    var searchHostBounds by remember { mutableStateOf(Rect.Zero) }
     val searchReveal by animateFloatAsState(
         targetValue = if (searchUi.isOpen) 1f else 0f,
         animationSpec = tween(300, easing = FastOutSlowInEasing),
         finishedListener = searchUi::onRevealSettled,
-        label = "search-anchored-container-reveal",
+        label = "search-elements-expansion",
     )
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
@@ -534,12 +530,7 @@ fun MpeiNeoApp(
 
     // Keep the underlying app bar mounted while Search expands. Removing it
     // during activation would remeasure the entire scaffold and visibly jump.
-    Box(
-        modifier = Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
-            val newBounds = coordinates.boundsInRoot()
-            if (newBounds != searchHostBounds) searchHostBounds = newBounds
-        },
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -727,25 +718,12 @@ fun MpeiNeoApp(
 
         }
     }
-    // Positioned above Scaffold and its top bar, not inside Scaffold's content
-    // padding. Clip starts at the actual tapped field and grows to the screen.
+    // Global search is composed of independently expanding elements:
+    // the field, edge controls, surface, and results. No full-page mask morph.
     if (searchUi.overlayMounted) {
-        val measured = searchUi.entryBounds
-        val relativeBounds = if (measured.width > 0f && measured.height > 0f) {
-            Rect(
-                measured.left - searchHostBounds.left,
-                measured.top - searchHostBounds.top,
-                measured.right - searchHostBounds.left,
-                measured.bottom - searchHostBounds.top,
-            )
-        } else Rect.Zero
         Box(
             modifier = Modifier.fillMaxSize().imePadding()
-                .graphicsLayer {
-                    clip = true
-                    shape = SearchRevealShape(relativeBounds, searchReveal)
-                }
-                .testTag("search-anchored-overlay"),
+                .testTag("search-elements-overlay"),
         ) {
             GlobalSearchScreen(
                 query = searchUi.query,
