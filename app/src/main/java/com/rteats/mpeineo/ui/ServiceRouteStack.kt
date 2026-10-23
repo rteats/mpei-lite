@@ -1,24 +1,29 @@
 package com.rteats.mpeineo.ui
 
-/**
- * Service routes are kept as stable enum names for rememberSaveable.
- * The only nested stack is Schedule → Maps when a classroom is selected.
- */
+/** Four primary destinations share one root. Only explicit links and Settings nest. */
 internal fun serviceRouteAfterOpen(
     current: List<String>,
     target: AppTab,
     viaClassroom: Boolean,
-): ArrayList<String> = if (
-    viaClassroom && current.lastOrNull() == AppTab.SCHEDULE.name &&
-    target == AppTab.MAPS
-) {
-    arrayListOf(AppTab.SCHEDULE.name, AppTab.MAPS.name)
-} else {
-    arrayListOf(target.name)
+): ArrayList<String> {
+    val active = current.lastOrNull()?.let { runCatching { AppTab.valueOf(it) }.getOrNull() }
+        ?: AppTab.SCHEDULE
+    val previousTab = if (active == AppTab.SETTINGS) {
+        current.dropLast(1).lastOrNull()?.let { runCatching { AppTab.valueOf(it) }.getOrNull() }
+            ?: AppTab.SCHEDULE
+    } else active
+    return when {
+        target == AppTab.SETTINGS -> arrayListOf(previousTab.name, AppTab.SETTINGS.name)
+        viaClassroom && target != previousTab ->
+            arrayListOf(previousTab.name, target.name)
+        else -> arrayListOf(target.name)
+    }
 }
 
-internal fun serviceRouteAfterBack(current: List<String>): ArrayList<String> =
-    ArrayList(current.dropLast(1))
+internal fun serviceRouteAfterBack(current: List<String>): ArrayList<String> {
+    if (current.size > 1) return ArrayList(current.dropLast(1))
+    return arrayListOf(AppTab.SCHEDULE.name)
+}
 
 internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
