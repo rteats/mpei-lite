@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rteats.mpeineo.ui.MainViewModel
 import com.rteats.mpeineo.ui.MpeiNeoApp
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
+import com.rteats.mpeineo.update.UpdateRelaunchState
 import com.rteats.mpeineo.data.InterfacePreferences
 
 data class MailNotificationTarget(val uid: Long, val validity: Long, val requestId: Int)
@@ -67,6 +68,9 @@ class MainActivity : ComponentActivity() {
         readMailTarget(intent)
         setContent {
             val interfacePrefs = remember { InterfacePreferences(applicationContext) }
+            val restoredUpdateRoutes = remember {
+                UpdateRelaunchState.consume(applicationContext, BuildConfig.VERSION_CODE)
+            }
             var theme by remember { mutableStateOf(interfacePrefs.theme) }
             MpeiNeoTheme(theme = theme) {
                 val application = application as MpeiNeoApplication
@@ -74,6 +78,7 @@ class MainActivity : ComponentActivity() {
                 MpeiNeoApp(
                     viewModel,
                     initialMailTab = intent.getBooleanExtra(EXTRA_OPEN_MAIL, false),
+                    restoredUpdateRoutes = restoredUpdateRoutes,
                     mailNotificationTarget = mailNotificationTarget,
                     interfaceTheme = theme,
                     onInterfaceThemeChange = { next ->

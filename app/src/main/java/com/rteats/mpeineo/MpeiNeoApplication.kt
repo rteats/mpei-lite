@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import com.rteats.mpeineo.ui.clearCampusRasterOnLowMemory
 import com.google.gson.GsonBuilder
+import com.rteats.mpeineo.update.UpdateForeground
+import com.rteats.mpeineo.update.UpdateAutomationScheduler
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.DiagnosticLog
@@ -29,6 +31,7 @@ class MpeiNeoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        UpdateForeground.attach(this)
         installCrashLogging()
 
         val cleanup = container.updater.cleanupAfterLaunch(BuildConfig.VERSION_CODE)
@@ -42,6 +45,7 @@ class MpeiNeoApplication : Application() {
         )
         // Preserve existing WorkManager cadence, but restore a missing registration.
         MailNotificationScheduler.reconcileOnStartup(this)
+        UpdateAutomationScheduler.reconcile(this)
     }
 
     override fun onTrimMemory(level: Int) {

@@ -27,3 +27,9 @@
 # Keep serialized field names and concrete constructors in optimized Dev builds.
 -keep class com.rteats.mpeineo.ui.CampusGeometry { *; }
 -keep class com.rteats.mpeineo.ui.CampusFeature { *; }
+
+# Shizuku constructs the UserService outside our process by reflection.
+# Its AIDL stubs and constructor must survive opt-in R8 builds.
+-keep class com.rteats.mpeineo.update.PrivilegedUpdateService { *; }
+-keep class com.rteats.mpeineo.update.IPrivilegedUpdater* { *; }
+-keep class com.rteats.mpeineo.update.IUpdateResult* { *; }

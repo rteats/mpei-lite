@@ -78,6 +78,7 @@ import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.R
 import com.rteats.mpeineo.data.MailNotificationPreferences
 import com.rteats.mpeineo.data.MailNotificationScheduler
+import com.rteats.mpeineo.update.InstallMode
 import com.rteats.mpeineo.data.InterfaceTheme
 import com.rteats.mpeineo.data.DiagnosticsArchive
 import com.rteats.mpeineo.data.DiagnosticsZipExporter
@@ -265,7 +266,11 @@ internal fun SettingsScreen(
         }
     }
     fun installDownloadedUpdate() {
-        if (context.packageManager.canRequestPackageInstalls()) {
+        // Shizuku uses shell privileges; unknown-sources permission applies only
+        // to the regular Android package installer.
+        if (updateState.installMode == InstallMode.SHIZUKU ||
+            context.packageManager.canRequestPackageInstalls()
+        ) {
             updateViewModel.installDownloadedUpdate(context)
         } else {
             installPermissionLauncher.launch(
@@ -462,6 +467,70 @@ internal fun SettingsScreen(
             ) {
                 UpdateCard(updateState, updateViewModel::checkForUpdates,
                     updateViewModel::downloadUpdate, ::installDownloadedUpdate)
+                SettingsAction(
+                    title = if (updateState.installMode == InstallMode.SHIZUKU)
+                        "Установка: Shizuku" else "Установка: Android",
+                    detail = if (updateState.installMode == InstallMode.SHIZUKU)
+                        "Тихая установка без системного диалога; нажмите для обычной"
+                    else "Обычная установка с подтверждением; нажмите для Shizuku",
+                    iconRes = AppIcons.InstallUpdate,
+                    onClick = {
+                        updateViewModel.setInstallMode(
+                            if (updateState.installMode == InstallMode.SHIZUKU)
+                                InstallMode.STANDARD else InstallMode.SHIZUKU,
+                        )
+                    },
+                )
+                if (updateState.installMode == InstallMode.SHIZUKU) {
+                    SettingsAction(
+                        title = "Доступ Shizuku",
+                        detail = updateState.shizukuStatus +
+                            " · нажмите, чтобы запросить доступ или обновить статус",
+                        iconRes = AppIcons.Confirm,
+                        onClick = {
+                            updateViewModel.requestShizukuPermission()
+                            updateViewModel.refreshShizukuStatus()
+                        },
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Автоматические обновления",
+                                style = MaterialTheme.typography.bodyLarge)
+                            Text("Проверка каждые ~6 часов, только с работающим Shizuku",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = updateState.automaticUpdates,
+                            onCheckedChange = updateViewModel::setAutomaticUpdates,
+                        )
+                    }
+                    if (updateState.automaticUpdates) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        ) {
+                            Text("Загрузка только по Wi-Fi",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = updateState.wifiOnly,
+                                onCheckedChange = updateViewModel::setWifiOnly,
+                            )
+                        }
+                    }
+                    Text(
+                        "При обновлении открытого приложения оно откроется снова на прежнем экране. " +
+                            "В фоне и на экране блокировки установка не открывает приложение. " +
+                            "Если Shizuku недоступен, ручная установка работает через Android.",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
         item {
@@ -620,6 +689,7 @@ private fun UpdateCard(
         it > BuildConfig.VERSION_CODE
     } == true
     val downloading = state.phase == UpdatePhase.DOWNLOADING
+    val installing = state.phase == UpdatePhase.INSTALLING
     val readyToInstall = state.phase == UpdatePhase.READY_TO_INSTALL &&
         !state.downloadedApkPath.isNullOrBlank()
 
@@ -642,12 +712,16 @@ private fun UpdateCard(
     if (available) {
         SettingsAction(
             title = when {
+                installing -> "Установка обновления"
                 readyToInstall -> "Установить обновление"
                 downloading -> "Скачивание обновления"
                 else -> "Скачать обновление"
             },
             detail = when {
-                readyToInstall -> "APK скачан и проверен. Открыть установщик Android"
+                installing -> "Тихая установка через Shizuku…"
+                readyToInstall -> if (state.installMode == InstallMode.SHIZUKU)
+                    "APK проверен · установить через Shizuku" else
+                    "APK проверен · открыть установщик Android"
                 downloading && state.progressPercent != null ->
                     "Загружено: ${state.progressPercent}%"
                 downloading -> "Получаем APK…"
@@ -659,7 +733,8 @@ private fun UpdateCard(
                 AppIcons.Download
             },
             onClick = if (readyToInstall) onInstall else onDownload,
-            enabled = !downloading && !state.checking,
+            enabled = !downloading && !state.checking && !installing,
+            busy = installing,
             downloading = downloading,
             progressPercent = state.progressPercent,
         )
