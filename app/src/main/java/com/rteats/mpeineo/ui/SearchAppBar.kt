@@ -9,6 +9,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSearchBarState
@@ -78,6 +79,7 @@ internal fun ContextSearchAppBar(
     scheduleRefreshing: Boolean = false,
     onMailCompose: (() -> Unit)? = null,
     onSettings: () -> Unit = {},
+    compact: Boolean = false,
     onSearchBoundsChanged: (Rect) -> Unit = {},
 ) {
     val searchBarState = rememberSearchBarState()
@@ -87,6 +89,44 @@ internal fun ContextSearchAppBar(
         else -> SearchAppBarAction.NONE
     }
     val endPadding = SEARCH_APP_BAR_END_WITH_ACTION
+
+    if (compact) {
+        TopAppBar(
+            title = {
+                Text(when (context.scope) {
+                    SearchScope.BARS -> "БАРС"
+                    SearchScope.MAIL -> "Почта"
+                    SearchScope.MAPS -> "Корпуса"
+                    SearchScope.SCHEDULE -> "Пары"
+                })
+            },
+            actions = {
+                IconButton(
+                    onClick = onSearch,
+                    modifier = Modifier.testTag("compact-search-action")
+                        .onGloballyPositioned { onSearchBoundsChanged(it.boundsInRoot()) },
+                ) {
+                    AppIcon(AppIcons.Search, contentDescription = "Поиск")
+                }
+                if (onMailCompose != null) {
+                    IconButton(
+                        onClick = onMailCompose,
+                        modifier = Modifier.testTag("mail-compose-fab"),
+                    ) {
+                        AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
+                    }
+                }
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.testTag("service-settings"),
+                ) {
+                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
+                }
+            },
+            modifier = modifier.testTag("search-app-bar"),
+        )
+        return
+    }
 
     AppBarWithSearch(
         state = searchBarState,
