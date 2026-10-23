@@ -108,13 +108,22 @@ internal fun ContextSearchAppBar(
                 ) {
                     AppIcon(AppIcons.Search, contentDescription = "Поиск")
                 }
-                if (onMailCompose != null) {
-                    IconButton(
-                        onClick = onMailCompose,
+                when (action) {
+                    SearchAppBarAction.REFRESH_WEEK -> IconButton(
+                        onClick = { onScheduleRefresh?.invoke() },
+                        enabled = !scheduleRefreshing,
+                        modifier = Modifier.testTag("schedule-week-refresh"),
+                    ) {
+                        if (scheduleRefreshing) LoadingIndicator(modifier = Modifier.size(24.dp))
+                        else AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
+                    }
+                    SearchAppBarAction.COMPOSE_MAIL -> IconButton(
+                        onClick = { onMailCompose?.invoke() },
                         modifier = Modifier.testTag("mail-compose-fab"),
                     ) {
                         AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
                     }
+                    SearchAppBarAction.NONE -> Unit
                 }
                 IconButton(
                     onClick = onSettings,
