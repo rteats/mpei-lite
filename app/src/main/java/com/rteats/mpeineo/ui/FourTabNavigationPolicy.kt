@@ -75,3 +75,10 @@ internal fun barsLayerTranslationX(
 } else {
     0f
 }
+
+/** Park the retained WebView off-screen only once its exit fade is fully invisible. */
+internal fun barsHiddenOffsetX(
+    isOnScene: Boolean,
+    opacity: Float,
+    viewportWidth: Float,
+): Float = if (!isOnScene && opacity <= 0f) viewportWidth else 0f
