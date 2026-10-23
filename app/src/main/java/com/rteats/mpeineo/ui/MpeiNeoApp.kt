@@ -649,9 +649,9 @@ fun MpeiNeoApp(
                     // zero made BARS disappear in a single frame on tab changes.
                     .graphicsLayer {
                         alpha = barsAlpha
-                        translationX = if (currentService == AppTab.BARS &&
-                            navigation.routes.size > 1
-                        ) widthPx * (1f - reveal) else 0f
+                        translationX = barsLayerTranslationX(
+                            currentService, navigation.routes.size > 1, reveal, widthPx,
+                        )
                     },
             ) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
