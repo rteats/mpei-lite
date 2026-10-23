@@ -75,6 +75,7 @@ import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.data.MailSummary
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.MpeiNeoApplication
+import com.rteats.mpeineo.update.UpdateRelaunchState
 import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -93,6 +94,7 @@ import kotlin.math.roundToInt
 fun MpeiNeoApp(
     viewModel: MainViewModel,
     initialMailTab: Boolean = false,
+    restoredUpdateRoutes: List<String> = emptyList(),
     mailNotificationTarget: MailNotificationTarget? = null,
     interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
     onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
@@ -177,12 +179,15 @@ fun MpeiNeoApp(
     }
 
     // Route ownership is separate from the rendering/transition state.
-    val navigation = rememberServiceNavigationState(initialMailTab)
+    val navigation = rememberServiceNavigationState(initialMailTab, restoredUpdateRoutes)
+    LaunchedEffect(navigation.routes) {
+        UpdateRelaunchState.record(application, navigation.routes)
+    }
     val currentService = navigation.current
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
     var reveal by rememberSaveable {
-        mutableFloatStateOf(if (initialMailTab) 1f else 0f)
+        mutableFloatStateOf(if (initialMailTab || restoredUpdateRoutes.isNotEmpty()) 1f else 0f)
     }
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionJob by remember { mutableStateOf<Job?>(null) }

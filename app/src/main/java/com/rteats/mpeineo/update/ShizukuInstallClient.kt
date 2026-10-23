@@ -71,7 +71,6 @@ internal object ShizukuInstallClient {
                                         IllegalStateException(message ?: "Silent install failed"),
                                     ))
                                 }
-                                runCatching { Shizuku.unbindUserService(args, this@object, false) }
                             }
                         }
                         // The service receives a duplicated FD and performs install on its own thread.

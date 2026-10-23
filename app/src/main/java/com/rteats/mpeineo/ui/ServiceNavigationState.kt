@@ -43,9 +43,18 @@ private val serviceNavigationSaver = listSaver<ServiceNavigationState, String>(
 )
 
 @Composable
-internal fun rememberServiceNavigationState(initialMailTab: Boolean): ServiceNavigationState =
+internal fun rememberServiceNavigationState(
+    initialMailTab: Boolean,
+    restoredRoutes: List<String> = emptyList(),
+): ServiceNavigationState =
     rememberSaveable(saver = serviceNavigationSaver) {
         ServiceNavigationState(
-            if (initialMailTab) listOf(AppTab.MAIL.name) else emptyList(),
+            when {
+                initialMailTab -> listOf(AppTab.MAIL.name)
+                restoredRoutes.isNotEmpty() -> restoredRoutes.filter { name ->
+                    AppTab.entries.any { it.name == name }
+                }
+                else -> emptyList()
+            },
         )
     }
