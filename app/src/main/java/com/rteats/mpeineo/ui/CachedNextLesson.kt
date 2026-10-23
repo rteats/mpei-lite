@@ -20,8 +20,8 @@ internal data class HomeLessonHighlight(
 )
 
 /**
- * Read only weeks already loaded by the schedule screen. A visit to Home must
- * never cause a new timetable request, and expired lessons must not be offered.
+ * Read only weeks already loaded by Schedule. The compact preview must not
+ * cause another timetable request or offer an expired lesson.
  */
 internal fun nextHomeLesson(
     weeks: Collection<ScheduleWeek>,
