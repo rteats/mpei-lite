@@ -631,6 +631,13 @@ fun MpeiNeoApp(
             modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) },
         ) {
+            // Explicit cross-service links keep their real origin below BARS.
+            // Its one retained WebView is drawn on top, never hidden by Schedule.
+            if (navigation.routes.size > 1 && currentService == AppTab.BARS &&
+                beneathService != null && beneathService != AppTab.BARS
+            ) {
+                serviceContent(beneathService, false)
+            }
             // Retain the BARS WebView in one composition during tab changes.
             val barsOnScene = currentService == AppTab.BARS || beneathService == AppTab.BARS
             val barsAlpha by animateFloatAsState(
@@ -643,7 +650,12 @@ fun MpeiNeoApp(
                     .offset {
                         IntOffset(if (barsOnScene) 0 else widthPx.roundToInt(), 0)
                     }
-                    .graphicsLayer { alpha = barsAlpha },
+                    .graphicsLayer {
+                        alpha = barsAlpha
+                        translationX = if (currentService == AppTab.BARS &&
+                            navigation.routes.size > 1
+                        ) widthPx * (1f - reveal) else 0f
+                    },
             ) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     BarsScreen(
@@ -666,7 +678,9 @@ fun MpeiNeoApp(
                 }
             }
             if (navigation.routes.size > 1) {
-                if (beneathService != null && beneathService != AppTab.BARS) {
+                if (beneathService != null && beneathService != AppTab.BARS &&
+                    currentService != AppTab.BARS
+                ) {
                     serviceContent(beneathService, false)
                 }
                 if (currentService != null && currentService != AppTab.BARS) {
