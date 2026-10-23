@@ -78,6 +78,10 @@ class UiSmokeTest {
             .onNodeWithContentDescription("Настройки")
             .performClick()
 
+        // Settings covers the whole tab shell instead of collapsing its navbar.
+        composeRule.onNodeWithTag("settings-fullscreen-layer").assertIsDisplayed()
+        composeRule.onNodeWithTag("four-tab-navigation").assertExists()
+
         composeRule
             .onNodeWithText("Обновления приложения")
             .assertIsDisplayed()

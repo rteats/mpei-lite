@@ -23,11 +23,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -182,6 +184,8 @@ fun MpeiNeoApp(
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
+    // Keep the original tab bar in place while Settings slides above it.
+    var settingsCoversTabs by remember { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
 
     var agendaScrolling by remember { mutableStateOf(false) }
@@ -264,7 +268,16 @@ fun MpeiNeoApp(
         }
         barsBrowserJustClosed = false
         val nested = target == AppTab.SETTINGS || viaClassroom
-        appBarService = target
+        if (target == AppTab.SETTINGS) {
+            settingsCoversTabs = navigation.routes.size == 1 &&
+                !(currentService == AppTab.BARS && (barsState.browserVisible ||
+                    barsState.authStage == BarsAuthStage.WEB_AUTH)) &&
+                !(currentService == AppTab.MAIL && (mailWebVisible ||
+                    mailState.selected != null || mailState.composing)) &&
+                !(currentService == AppTab.BARS && barsDetailOpen) && !imeVisible
+        }
+        // The original app bar stays behind the full-screen Settings layer.
+        appBarService = if (target == AppTab.SETTINGS) currentService else target
         navigation.open(target, viaClassroom)
         reveal = if (nested) 0f else 1f
         logNavigation("tab select " + target.name + " nested=" + nested)
@@ -554,7 +567,8 @@ fun MpeiNeoApp(
             val mailDetail = currentService == AppTab.MAIL &&
                 (mailState.selected != null || mailState.composing)
             val barsDetail = currentService == AppTab.BARS && barsDetailOpen
-            val showTabs = navigation.routes.size == 1 &&
+            val showTabs = (navigation.routes.size == 1 ||
+                (currentService == AppTab.SETTINGS && settingsCoversTabs)) &&
                 !searchUi.overlayMounted && !browser && !barsDetail &&
                 !mailDetail && !imeVisible
             AnimatedVisibility(
@@ -563,7 +577,9 @@ fun MpeiNeoApp(
                 exit = shrinkVertically(),
             ) {
                 FourTabNavigationBar(
-                    selected = currentService ?: AppTab.SCHEDULE,
+                    selected = if (currentService == AppTab.SETTINGS)
+                        beneathService ?: AppTab.SCHEDULE
+                        else currentService ?: AppTab.SCHEDULE,
                     unreadMail = mailState.configured && !mailState.loginRequired &&
                         mailState.items.any { it.unread },
                     onSelect = { tab ->
@@ -686,7 +702,8 @@ fun MpeiNeoApp(
                 ) {
                     serviceContent(beneathService, false)
                 }
-                if (currentService != null && currentService != AppTab.BARS) {
+                if (currentService != null && currentService != AppTab.BARS &&
+                    currentService != AppTab.SETTINGS) {
                     Box(
                         modifier = Modifier.fillMaxSize()
                             .graphicsLayer { translationX = widthPx * (1f - reveal) }
@@ -729,6 +746,39 @@ fun MpeiNeoApp(
                     } else {
                         Box(Modifier.fillMaxSize())
                     }
+                }
+            }
+        }
+    }
+    // Settings is a separate full-screen layer over the whole service shell.
+    // The underlying bottom bar never exits or shifts: Settings covers it,
+    // including during predictive Back and interactive swipe-to-dismiss.
+    if (currentService == AppTab.SETTINGS) {
+        Surface(
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer { translationX = widthPx * (1f - reveal) }
+                .serviceBackGesture(
+                    eligible = !isTransitioning && !imeVisible,
+                    interactive = true,
+                )
+                .testTag("settings-fullscreen-layer"),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                TopAppBar(
+                    title = { Text("Настройки") },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = { if (!isTransitioning) goBackOneService() },
+                            modifier = Modifier.testTag("settings-app-bar-back"),
+                        ) {
+                            AppIcon(AppIcons.Back, contentDescription = "Назад")
+                        }
+                    },
+                    modifier = Modifier.testTag("settings-app-bar"),
+                )
+                Box(Modifier.weight(1f).navigationBarsPadding()) {
+                    serviceContent(AppTab.SETTINGS, true)
                 }
             }
         }
