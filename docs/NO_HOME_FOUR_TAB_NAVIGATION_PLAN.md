@@ -5,6 +5,8 @@
 **Primary device:** compact Android phone, portrait first; tablets and landscape must remain usable.  
 **Source of truth:** this plan is proposed future behavior; README, UI_COMPONENTS and ARCHITECTURE describe the *current* application until implementation ships.
 
+**Companion motion specification:** [MOTION_SYSTEM_PLAN.md](MOTION_SYSTEM_PLAN.md). It defines the shared animation vocabulary, interactive/predictive Back, search expansion, transition interruption, code hotspots and tests for this same no-Home rollout. Treat both documents as one planning baseline; no implementation is included.
+
 ## 1. Decision and rationale
 
 MPEI Neo has four stable services: **Пары**, **БАРС**, **Почта**, **Корпуса**. The current Home presents a next-lesson preview followed by four editable service-launch tiles. This makes the UI recognizable, but the Home itself is also a mandatory stop when moving between ordinary services. Its tile editor (compact/regular/expanded, ordering, persistence) is disproportionate to a fixed set of four destinations.
@@ -153,7 +155,8 @@ Current code uses ServiceNavigationState + ServiceRouteSnapshot with an empty st
 - [ ] Implement hide/show policy for nested screens, Search, keyboard, embedded browsers and Settings; check edge-to-edge padding.
 - [ ] Implement deterministic root Back: nested child first, link origin second, non-Schedule root -> Schedule, Schedule root -> exit.
 - [ ] Remove root gesture and map Home-exit strip while retaining nested interactive back and Android system navigation.
-- [ ] Use a short and coherent transition for **tab switches** (not fake forward push/pop to a Home parent); keep real-time gesture slides for nested Back.
+- [ ] Use a short and coherent transition for **tab switches** (not fake forward push/pop to a Home parent); keep real-time gesture slides for nested Back. Implement against [MOTION_SYSTEM_PLAN.md](MOTION_SYSTEM_PLAN.md) rather than creating ad hoc animation durations.
+- [ ] Keep the selected tab, app bar, input/keyboard and content synchronized during rapid or interrupted navigation; support Android predictive Back for nested routes without intercepting system Back-to-home at Schedule root.
 
 ### Phase 2 — task-first Schedule
 - [ ] Move the useful next/current-lesson summary into Schedule using existing cached data and Moscow-time logic.
