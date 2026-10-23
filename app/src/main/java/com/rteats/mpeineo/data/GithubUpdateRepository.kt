@@ -12,6 +12,8 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -54,6 +56,7 @@ class GithubUpdateRepository(
 
     private val updateDirectory =
         File(application.cacheDir, "updates").apply { mkdirs() }
+    private val downloadMutex = Mutex()
 
     private val updateHttpClient = httpClient.newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -79,10 +82,23 @@ class GithubUpdateRepository(
     suspend fun downloadRelease(
         release: GithubReleaseInfo,
         onProgress: (Int?) -> Unit = {},
-    ): File = withContext(Dispatchers.IO) {
+    ): File = downloadMutex.withLock {
+        withContext(Dispatchers.IO) {
+        val finalFile = File(updateDirectory, release.apkName)
+        // The background checker and manual UI share this repository.
+        // Do not delete a verified Dev APK that the user already downloaded.
+        if (!release.sha256.isNullOrBlank() &&
+            preferences.getInt(KEY_PENDING_VERSION, -1) == release.versionCode &&
+            preferences.getString(KEY_PENDING_PATH, null) == finalFile.absolutePath &&
+            finalFile.isFile && finalFile.length() > 0L &&
+            runCatching { verifyDigestIfPresent(finalFile, release.sha256) }.isSuccess
+        ) {
+            diagnostics.log("UPDATE", "verified cached apk reused version=${release.versionCode}")
+            onProgress(100)
+            return@withContext finalFile
+        }
         pruneBeforeDownload()
 
-        val finalFile = File(updateDirectory, release.apkName)
         val partFile = File(updateDirectory, "${release.apkName}.part")
 
         partFile.delete()
@@ -151,6 +167,7 @@ class GithubUpdateRepository(
         )
         onProgress(100)
         finalFile
+        }
     }
 
     fun cleanupAfterLaunch(currentVersionCode: Int): UpdateCleanupResult {
