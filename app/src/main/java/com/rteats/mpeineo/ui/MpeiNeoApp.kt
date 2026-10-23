@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,6 +82,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * A single composited foreground page over a permanently mounted background.
@@ -644,9 +647,12 @@ fun MpeiNeoApp(
             )
             Box(
                 modifier = Modifier.fillMaxSize()
-                    // Keep the retained BARS WebView at its real position while
-                    // the root tab crossfades. Moving it away before alpha reaches
-                    // zero made BARS disappear in a single frame on tab changes.
+                    // Leave BARS in place for the full fade, then move its hidden
+                    // WebView outside hit testing of the currently active tab.
+                    .offset {
+                        IntOffset(barsHiddenOffsetX(barsOnScene, barsAlpha, widthPx)
+                            .roundToInt(), 0)
+                    }
                     .graphicsLayer {
                         alpha = barsAlpha
                         translationX = barsLayerTranslationX(
