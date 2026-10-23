@@ -166,6 +166,11 @@ internal fun ScheduleAgenda(
         val listState = rememberLazyListState(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
+        LaunchedEffect(todayJumpRequest, displayedWeek) {
+            if (displayedWeek == 0 && visibleWeek == 0) {
+                listState.animateScrollToItem(currentDayIndex)
+            }
+        }
         // Publish focus only after the day itself has finished scrolling.
         // The lesson card then brings its own bounds into view.
         var readyFocusId by remember(displayedWeek) { mutableIntStateOf(-1) }
