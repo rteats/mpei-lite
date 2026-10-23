@@ -7,7 +7,6 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
-import androidx.activity.compose.ExperimentalActivityComposeApi
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -89,8 +88,7 @@ import kotlin.math.roundToInt
  * A single composited foreground page over a permanently mounted background.
  * Drag progress and automatic push/pop share one reveal value.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class,
-    ExperimentalActivityComposeApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MpeiNeoApp(
     viewModel: MainViewModel,
