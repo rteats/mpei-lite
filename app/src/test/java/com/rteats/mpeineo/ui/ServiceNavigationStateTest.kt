@@ -6,16 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServiceNavigationStateTest {
-    @Test fun rootPushAndBackReturnToHome() {
+    @Test fun rootBackReturnsScheduleAndThenYieldsToSystem() {
         val nav = ServiceNavigationState()
-        assertEquals(null, nav.current)
+        assertEquals(AppTab.SCHEDULE, nav.current)
         assertFalse(nav.canPop)
         nav.open(AppTab.BARS)
         assertEquals(AppTab.BARS, nav.current)
         assertEquals(null, nav.beneath)
-        assertEquals(null, nav.peekBack())
+        assertEquals(AppTab.SCHEDULE, nav.peekBack())
         assertTrue(nav.pop())
-        assertEquals(null, nav.current)
+        assertEquals(AppTab.SCHEDULE, nav.current)
         assertFalse(nav.pop())
     }
 
@@ -36,7 +36,7 @@ class ServiceNavigationStateTest {
         nav.open(AppTab.SCHEDULE)
         nav.open(AppTab.MAPS, viaClassroom = true)
         nav.open(AppTab.SETTINGS)
-        assertEquals(listOf("SETTINGS"), nav.routes)
+        assertEquals(listOf("MAPS", "SETTINGS"), nav.routes)
     }
 
     @Test fun stateReconstructionUsesOnlyPersistableRouteNames() {
