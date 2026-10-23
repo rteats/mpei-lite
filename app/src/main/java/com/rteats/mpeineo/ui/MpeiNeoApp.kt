@@ -708,14 +708,21 @@ fun MpeiNeoApp(
                 }
             } else {
                 AnimatedContent(
-                    targetState = currentService.takeUnless { it == AppTab.BARS },
+                    // A full-size transparent slot for BARS keeps the crossfade
+                    // dimensions stable. A null slot measured as zero and caused
+                    // the other service to resize while BARS was fading away.
+                    targetState = currentService,
                     transitionSpec = {
                         fadeIn(tween(AppMotionTiming.TAB_SWITCH_MS)) togetherWith
                             fadeOut(tween(AppMotionTiming.TAB_SWITCH_MS))
                     },
                     label = "primary-tab-switch",
                 ) { tab ->
-                    if (tab != null) serviceContent(tab, tab == currentService)
+                    if (tab != null && tab != AppTab.BARS) {
+                        serviceContent(tab, tab == currentService)
+                    } else {
+                        Box(Modifier.fillMaxSize())
+                    }
                 }
             }
         }
