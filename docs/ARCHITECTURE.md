@@ -13,7 +13,7 @@ the owner of mutable state and the direction of dependencies must change.
 
 ```text
 App shell (navigation, animation, app bars)
-  ├── Home / Schedule / BARS / Mail / Campus / Settings screens
+  ├── Schedule / BARS / Mail / Campus tabs and secondary Settings
   │     └── feature ViewModel or state holder (commands + immutable view state)
   │            └── repositories / authenticated session coordinators
   │                   └── network, WebView bridge, local snapshot store
@@ -22,11 +22,11 @@ App shell (navigation, animation, app bars)
 Pure models, parsers, navigation policies and grade planners depend on no UI.
 ```
 
-**Full-page Back:** service transitions, BARS discipline, Mail message and
-Mail composer, and embedded WebView exits all use the same full-width,
-finger-following 20% swipe threshold and 260 ms exit / 310 ms entry policy.
-The underlying native page stays composed while a nested page slides away.
-Modal sheets and search reveal intentionally retain their own animations.
+**Navigation and motion:** Four equal-level services switch with a short
+crossfade and stable Material 3 bar. Settings and true native details reveal
+their actual parent during rightward Back. Browser exit and search expansion
+retain dedicated motion. Root Schedule yields system Back to Android.
+
 
 **Shell:** routes, back policy, transitions, IME coordination and deep-link
 dispatch. Does not initiate BARS extraction or Mail network calls.
@@ -40,11 +40,11 @@ one active session mode. UI cannot accidentally start two conflicting flows.
 
 ### Navigation and bars
 
-- Search belongs to the destination, not to the app shell. Home and searchable
+- Search belongs to the destination, not to the app shell. The primary
   services use a contextual search app bar; Settings has a title and Back button.
   More destination types can opt out without changing global search semantics.
 - The BARS WebView is one long-lived resource so cookies/2FA survive navigation.
-  It must not be recreated when Home becomes visible.
+  It must not be recreated during a tab change.
 - BARS and OWA use the same `EmbeddedBrowserToolbar` with history-based Back
   and Forward, a current-page Reload, and explicit Copy URL. Buttons are enabled
   from WebView history callbacks; the site label never displays the path or
@@ -52,7 +52,7 @@ one active session mode. UI cannot accidentally start two conflicting flows.
   fields. The browser toolbar does not replace system Back or native routing.
 - Both embedded portals have a small left-edge swipe exit strip, separate
   from WebView history Back. Mail returns to inbox; BARS returns to native
-  grades, or Home if the only visible UI is the official login/2FA form.
+  grades after login/2FA; it never returns to the removed Home route.
   Keep the edge target narrow so regular browser scrolling remains available.
 - Schedule lesson highlights originate only from explicit cross-feature links;
   the matched lesson acknowledges its one-shot request after the focus pulse,
@@ -88,7 +88,7 @@ of simultaneous choices on each level.
 2. Build and lint the signed PR APK. Verify BARS cold launch with cached
    marks, login/2FA, refresh, Summary timeout, and interactive browser while
    Summary discovery is pending on a physical device.
-3. Test Back and swipe-back on Home, Settings, BARS discipline and embedded
+3. Test Back and swipe-back on Schedule root, Settings, BARS discipline and embedded
    browsers; verify the IME never intercepts back navigation.
 4. Track *owners of mutable state*, *coupling across features*, and
    *duplicate code paths*, not just Kotlin line count.
@@ -139,7 +139,7 @@ an explicit check of account-switch and logout races.
   cancellation or document change.
 - Native grades and attendance remain visible on recoverable network failure.
 - Back navigation from a BARS discipline returns to its overview rather than
-  Home, including gesture navigation.
+  Schedule, including gesture navigation.
 - Search keeps its source-anchored animation and does not appear in Settings.
 - A new feature cannot silently add separate global-search/route flags to
   `MpeiNeoApp.kt`.
