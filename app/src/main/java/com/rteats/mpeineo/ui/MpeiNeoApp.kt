@@ -412,6 +412,9 @@ fun MpeiNeoApp(
                                     dispatchNavigation(AppNavigationRequest.LocateClassroom(room))
                                 },
                                 todayJumpRequest = todayJumpRequest,
+                                onPreviewLessonClick = { highlight ->
+                                    navigationTargets.focusHomeLesson(highlight, scheduleState.agendaWeeks)
+                                },
                                 focusLesson = navigationTargets.scheduleLessonFocus,
                                 onFocusConsumed = navigationTargets::consumeScheduleFocus,
                                 modifier = Modifier.fillMaxSize(),
