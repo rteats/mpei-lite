@@ -53,10 +53,10 @@ internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Bo
 
 /**
  * The BARS detail is a nested destination, just like a Mail message:
- * its rightward swipe should invoke its own BackHandler, never pop the
- * whole BARS service to Home. Browser, IME and transitions block gestures.
+ * its rightward swipe should invoke its own BackHandler, never switch
+ * primary tabs. Browser, IME and transitions block gestures.
  */
-internal enum class BarsSwipeTarget { DISABLED, DISCIPLINE_OVERVIEW, HOME }
+internal enum class BarsSwipeTarget { DISABLED, DISCIPLINE_OVERVIEW }
 
 internal fun barsSwipeTarget(
     foreground: Boolean,
@@ -69,7 +69,7 @@ internal fun barsSwipeTarget(
     if (!foreground || isTransitioning || imeVisible || browserVisible || !authenticated) {
         return BarsSwipeTarget.DISABLED
     }
-    return if (detailOpen) BarsSwipeTarget.DISCIPLINE_OVERVIEW else BarsSwipeTarget.HOME
+    return if (detailOpen) BarsSwipeTarget.DISCIPLINE_OVERVIEW else BarsSwipeTarget.DISABLED
 }
 
 /** Map-only back target is narrow; regular service pages retain full-width swipes. */
