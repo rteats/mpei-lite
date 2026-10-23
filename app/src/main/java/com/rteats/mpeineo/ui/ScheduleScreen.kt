@@ -81,7 +81,7 @@ internal fun ScheduleScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "Выберите избранное или найдите группу, преподавателя или аудиторию внизу.",
+                        "Выберите избранное или найдите группу, преподавателя или аудиторию вверху.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -107,8 +107,9 @@ internal fun ScheduleScreen(
             todayJumpRequest = todayJumpRequest,
             focusLesson = focusLesson,
             onFocusConsumed = onFocusConsumed,
-            modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
         )
+        }
     }
 }
 
