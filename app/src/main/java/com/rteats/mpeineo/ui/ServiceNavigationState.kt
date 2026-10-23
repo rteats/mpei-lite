@@ -55,7 +55,7 @@ internal fun rememberServiceNavigationState(
                     AppTab.entries.any { it.name == name }
                 }.let { restored ->
                     val last = restored.lastOrNull() ?: AppTab.SCHEDULE.name
-                    if (last == AppTab.SETTINGS) listOf(AppTab.SCHEDULE.name, last)
+                    if (last == AppTab.SETTINGS.name) listOf(AppTab.SCHEDULE.name, last)
                     else if (restored.size > 1) restored.takeLast(2)
                     else listOf(last)
                 }
