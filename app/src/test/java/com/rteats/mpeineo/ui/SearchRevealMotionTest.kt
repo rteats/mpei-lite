@@ -45,6 +45,18 @@ class SearchRevealMotionTest {
         assertEquals(1f, end.content, 0f)
     }
 
+    @Test fun stageProgressIsMonotonicAndClamped() {
+        val checkpoints = (0..20).map { searchElementsProgress(it / 20f) }
+        for ((previous, next) in checkpoints.zipWithNext()) {
+            assertTrue(next.field >= previous.field)
+            assertTrue(next.background >= previous.background)
+            assertTrue(next.controls >= previous.controls)
+            assertTrue(next.content >= previous.content)
+        }
+        assertEquals(0f, searchElementsProgress(-0.5f).background, 0f)
+        assertEquals(1f, searchElementsProgress(1.5f).content, 0f)
+    }
+
     @Test fun closingRetracesTheSameStageValues() {
         val progress = searchElementsProgress(0.42f)
         assertEquals(progress, searchElementsProgress(0.42f))
