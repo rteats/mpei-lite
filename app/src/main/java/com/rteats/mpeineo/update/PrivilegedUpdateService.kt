@@ -1,8 +1,6 @@
 package com.rteats.mpeineo.update
 
 import android.os.ParcelFileDescriptor
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 /**
  * Runs under Shizuku's shell/root UID, not the app UID.
@@ -23,7 +21,7 @@ class PrivilegedUpdateService : IPrivilegedUpdater.Stub() {
                 require(size > 0L)
                 require(packageName.matches(Regex("[a-zA-Z0-9_.]+")))
                 val process = ProcessBuilder(
-                    "pm", "install", "-r", "-S", size.toString(),
+                    "pm", "install", "-r", "-S", size.toString(), "-",
                 ).redirectErrorStream(true).start()
                 try {
                     ParcelFileDescriptor.AutoCloseInputStream(apk).use { input ->
