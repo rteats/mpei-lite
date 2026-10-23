@@ -551,9 +551,12 @@ fun MpeiNeoApp(
                 (barsState.browserVisible && currentService == AppTab.BARS) ||
                 (barsState.authStage == BarsAuthStage.WEB_AUTH &&
                     currentService == AppTab.BARS)
+            val mailDetail = currentService == AppTab.MAIL &&
+                (mailState.selected != null || mailState.composing)
+            val barsDetail = currentService == AppTab.BARS && barsDetailOpen
             val showTabs = navigation.routes.size == 1 &&
-                !searchUi.overlayMounted && !browser && !barsDetailOpen &&
-                mailState.selected == null && !mailState.composing && !imeVisible
+                !searchUi.overlayMounted && !browser && !barsDetail &&
+                !mailDetail && !imeVisible
             AnimatedVisibility(
                 visible = showTabs,
                 enter = expandVertically(),
