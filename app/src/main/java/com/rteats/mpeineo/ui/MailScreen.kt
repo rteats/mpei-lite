@@ -282,18 +282,13 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                item(key = "mail-view-header") {
+                                item(key = "mail-portal-action") {
                                     Row(
                                         modifier = Modifier.fillMaxWidth()
-                                            .padding(start = 4.dp, end = 4.dp, top = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                            .padding(end = 4.dp, top = 4.dp),
+                                        horizontalArrangement = Arrangement.End,
                                     ) {
-                                        Text(
-                                            "Почта",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
+                                        // The app bar already identifies the Mail service.
                                         PortalHeaderAction(label = "ОСЭП", onClick = onOpenPortal)
                                     }
                                 }
