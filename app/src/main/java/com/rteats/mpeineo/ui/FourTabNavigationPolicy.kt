@@ -63,3 +63,15 @@ internal object AppMotionTiming {
     const val SEARCH_EXPAND_MS = 300
     const val LOCAL_CONTENT_MS = 160
 }
+
+/** Root tab changes always fade BARS in place; only a linked BARS page slides. */
+internal fun barsLayerTranslationX(
+    selected: AppTab?,
+    nested: Boolean,
+    reveal: Float,
+    viewportWidth: Float,
+): Float = if (selected == AppTab.BARS && nested) {
+    viewportWidth * (1f - reveal.coerceIn(0f, 1f))
+} else {
+    0f
+}
