@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import com.rteats.mpeineo.data.GithubReleaseInfo
+import com.rteats.mpeineo.update.InstallMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -19,6 +20,31 @@ class UpdateFlowTest {
         apkName = "app.apk",
         sha256 = null,
     )
+
+    @Test fun updateChecksPreserveInstallerPreferences() {
+        val configured = UpdateUiState(
+            installMode = InstallMode.SHIZUKU,
+            automaticUpdates = true,
+            wifiOnly = false,
+            shizukuStatus = "Shizuku подключён",
+        )
+        val afterCheck = configured.afterReleaseCheck(release(201), installedVersionCode = 190)
+        assertEquals(InstallMode.SHIZUKU, afterCheck.installMode)
+        assertTrue(afterCheck.automaticUpdates)
+        assertFalse(afterCheck.wifiOnly)
+        assertEquals("Shizuku подключён", afterCheck.shizukuStatus)
+    }
+
+    @Test fun noUpdateClearsStaleDownloadedApk() {
+        val stale = UpdateUiState(
+            phase = UpdatePhase.READY_TO_INSTALL,
+            release = release(200),
+            downloadedApkPath = "/cache/updates/app.apk",
+        )
+        val afterCheck = stale.afterReleaseCheck(release(200), installedVersionCode = 200)
+        assertEquals(UpdatePhase.UP_TO_DATE, afterCheck.phase)
+        assertNull(afterCheck.downloadedApkPath)
+    }
 
     @Test fun firstSuccessfulCheckOffersDownload() {
         val result = UpdateUiState(

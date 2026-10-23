@@ -730,6 +730,7 @@ private fun UpdateCard(
             },
             onClick = if (readyToInstall) onInstall else onDownload,
             enabled = !downloading && !state.checking && !installing,
+            busy = installing,
             downloading = downloading,
             progressPercent = state.progressPercent,
         )
