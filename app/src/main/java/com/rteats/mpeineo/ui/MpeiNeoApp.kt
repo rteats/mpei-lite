@@ -339,10 +339,6 @@ fun MpeiNeoApp(
                 // Never reselect the timetable: that would drop the cached week.
                 if (currentService != AppTab.SCHEDULE) openService(AppTab.SCHEDULE)
             }
-            is AppNavigationRequest.FocusHomeLesson -> {
-                navigationTargets.focusHomeLesson(request.highlight, scheduleState.agendaWeeks)
-                openService(AppTab.SCHEDULE)
-            }
             is AppNavigationRequest.OpenMail -> {
                 closeGlobalSearch()
                 if (currentService != AppTab.MAIL) openService(AppTab.MAIL,
@@ -434,7 +430,7 @@ fun MpeiNeoApp(
                                 },
                                 todayJumpRequest = todayJumpRequest,
                                 onPreviewLessonClick = { highlight ->
-                                    navigationTargets.focusHomeLesson(highlight, scheduleState.agendaWeeks)
+                                    navigationTargets.focusUpcomingLesson(highlight, scheduleState.agendaWeeks)
                                 },
                                 focusLesson = navigationTargets.scheduleLessonFocus,
                                 onFocusConsumed = navigationTargets::consumeScheduleFocus,
