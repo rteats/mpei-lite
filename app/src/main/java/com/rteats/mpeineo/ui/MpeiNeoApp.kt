@@ -343,7 +343,8 @@ fun MpeiNeoApp(
             }
             is AppNavigationRequest.OpenMail -> {
                 closeGlobalSearch()
-                if (currentService != AppTab.MAIL) openService(AppTab.MAIL)
+                if (currentService != AppTab.MAIL) openService(AppTab.MAIL,
+                    viaClassroom = currentService == AppTab.SCHEDULE)
                 mailViewModel.switchMailbox(request.hit.folder)
                 mailViewModel.open(request.hit.message)
             }
@@ -356,7 +357,9 @@ fun MpeiNeoApp(
             is AppNavigationRequest.OpenBarsDiscipline -> {
                 closeGlobalSearch()
                 navigationTargets.focusBarsDiscipline(request.name)
-                if (currentService != AppTab.BARS) openService(AppTab.BARS)
+                if (currentService != AppTab.BARS) openService(
+                    AppTab.BARS, viaClassroom = currentService == AppTab.SCHEDULE,
+                )
             }
             is AppNavigationRequest.FocusCampus -> {
                 closeGlobalSearch()
