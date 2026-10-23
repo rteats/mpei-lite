@@ -2,17 +2,17 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Super-app home | SuperAppHome.kt | Root launcher with four customizable service tiles (Schedule, BARS, Mail, Campus), one prominent next-lesson card and concise sign-in/notification hints. Edit/Done and Settings controls live in the shared top app bar. No permanent navbar. |
-| Service push/pop | MpeiNeoApp.kt | Opening a service slides it in from the right; Android Back and full-width right-swipes pop toward Home (or the contextual Schedule origin). Native service page follows the finger, with a 20% threshold and a settling animation; the Android OS owns system-back edge zones. |
+| Four-tab navigation | FourTabNavigationBar.kt / MpeiNeoApp.kt | Material 3 tabs: Пары, БАРС, Почта, Корпуса. Schedule is default; Settings is secondary. Tab switches crossfade without creating a tab history. |
+| Nested Back | MpeiNeoApp.kt / BackSlideState.kt | Actual parent reveals under Settings and explicit Schedule-to-Campus links. Root Back from other tabs returns Schedule; root Schedule leaves system Back to Android. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
-| Shared search app bar | SearchAppBar.kt | Native Material 3 `AppBarWithSearch` in the root Scaffold top bar on every service; opens the current service's search with a contextual hint. The search has consistent 16dp leading/trailing screen margins. Home Edit/Done and Settings, Schedule refresh, and Mail compose occupy trailing app-bar slots. Context actions slide in/out through the right viewport edge, not from the search field corner. |
-| Unified results | GlobalSearchScreen.kt | Top-aligned input searches within the active service. Home defaults to timetable targets; BARS disciplines and Inbox/Sent headers are searched locally. Timetable suggestions continue using the existing debounced lookup. |
+| Shared search app bar | SearchAppBar.kt | Contextual top search, Schedule refresh, Mail compose, and Settings from each service. Search expands its field, edge controls and results separately. |
+| Scoped search results | GlobalSearchScreen.kt | Search is limited to the selected service; cached BARS/Mail matches and Schedule targets use existing providers. |
 | Schedule target picker | ScheduleDockedSearch.kt | A separate favorites button opens the existing specialized timetable picker, including favorites, rename and category filters. The normal search bar opens unified scoped search; week-refresh button remains. |
 | Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
 | Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
-| Class card | LessonCard / ScheduleScreen.kt | Collapsed by default: number pill, single-line ellipsized subject, classroom at right. Tap anywhere to expand; exact linked lessons (Home preview and search results) scroll into view and briefly show a Monet focus outline. |
+| Class card and summary | ScheduleNextLessonStrip.kt / ScheduleScreen.kt | Compact current/next-lesson strip links to the exact cached lesson in the timetable. Lesson cards retain inline type, classroom and progress. |
 | BARS «Автомат» plan | BarsAutoPlanner / BarsAutoPlan.kt / BarsAutoFocus.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, bounds and a compact cross-course focus panel. Actual BARS grades stay fixed. |
 | Settings | SettingsScreen.kt | Update, diagnostics and cache; refresh-on-launch toggle removed. |
 
@@ -29,37 +29,31 @@ and refreshed from the network; the user can also pull down in the agenda for
 an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
-Navigation uses a service launcher as its root instead of a bottom navigation bar. One next-lesson card appears above the service tiles; other services show concise tile status instead of duplicate preview cards. Home tile edit mode is held by the root and controlled from the same app bar as Search. A single Material 3 search app bar occupies the root Scaffold top slot, rather than floating over content. It changes its hint and search provider with the current service and opens a shared full-screen search view. Schedule favorites and target selection live in that search view.
+The application launches on Schedule. Four equal-level destinations occupy a
+Material 3 bottom navigation bar. A tab switch retains saveable state and uses
+a short crossfade. The BARS WebView remains in one long-lived composition.
+The bar hides for Settings, full-screen search, embedded browsers and native
+Mail/BARS details. Settings is available in the app-bar controls on each tab.
+
 
 ## Linked destination focus
 
-Navigation from Home's next-lesson card resolves the cached lesson's real week
-offset, date, start time and classroom. Schedule first enters that week, scrolls
-to its day and finally brings the exact lesson card into view. The same
-short-lived Monet outline is used for links from search results, BARS subject
-links (Home previews, cross-subject controls and search), and mail message
-links (Home preview, inbox/sent, search and notification). Normal service
-launches do not inherit a previous lesson target. The Campus map continues
-using its existing building centering and footprint highlight. Do not add
-fake links when a cached target is missing; open Schedule normally instead.
+The Schedule next-lesson strip resolves a cached lesson's real week,
+date, start time and classroom. Its one-shot target scrolls into view with
+the existing outline. Ordinary tab switching does not trigger highlights.
+Campus building links retain an explicit return origin; routine tab visits
+clear that transient link.
+
 
 ## Service navigation, back swipes and WebViews
 
-The four primary services are launched from Home, while Settings is opened
-from the Home action. Service entry uses a horizontal push animation;
-returning to the previous level uses a matching pop animation.
+Four primary services use direct tabs. Nested native details and Settings
+retain a parent-reveal rightward Back animation; tab changes do not slide
+over an imaginary Home page. Root Back returns to Schedule, where Android
+handles Back-to-home. The Campus root no longer has a service-exit swipe
+zone; a narrow zone is available for an explicit Schedule-to-Campus return.
+BARS and Mail WebViews preserve their separate history and exit behavior.
 
-On native pages, rightward dragging from anywhere outside Android's reserved
-system-back edge zones triggers an interactive swipe back. A release past 20%
-of screen width commits; a shorter gesture cancels. Back dispatches through
-the existing Android stack, so Mail messages and BARS discipline details
-close before leaving their service. The existing content animations handle
-these internal transitions. Browser-specific Back behavior is preserved.
-
-Schedule-to-Map classroom navigation returns to Schedule, not Home. The
-BARS and OWA embedded browsers retain native WebView gestures; Android's
-system Back remains available if the Compose gesture is not delivered through
-a WebView. There is no global horizontal pager or Home FAB.
 
 ## BARS weighted-grade forecasts
 
