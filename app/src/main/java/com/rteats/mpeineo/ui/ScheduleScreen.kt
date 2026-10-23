@@ -4,12 +4,7 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -160,27 +155,16 @@ internal fun LessonCard(
     val focusPulse = rememberDestinationFocusPulse(visibleFocusId)
     val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
         ?.container?.uiFrameProfiler
-    val motion = MaterialTheme.motionScheme
-    val cornerRadius by animateDpAsState(
-        targetValue = if (expanded) 20.dp else 28.dp,
-        animationSpec = motion.defaultSpatialSpec(),
-        label = "lesson-corner",
+    // Keep the linked-destination pulse, but don't independently animate shape,
+    // padding, colour and text measurement for every lesson card.
+    val cornerRadius = 28.dp
+    val container = lerp(
+        lessonContainerColor(lesson.kind),
+        MaterialTheme.colorScheme.primaryContainer,
+        if (focusPulse > 0f) 0.12f + focusPulse * 0.35f
+        else if (expanded) 0.12f else 0f,
     )
-    val container by animateColorAsState(
-        targetValue = lerp(
-            lessonContainerColor(lesson.kind),
-            MaterialTheme.colorScheme.primaryContainer,
-            if (focusPulse > 0f) 0.12f + focusPulse * 0.35f
-            else if (expanded) 0.12f else 0f,
-        ),
-        animationSpec = motion.defaultEffectsSpec(),
-        label = "lesson-container",
-    )
-    val verticalPadding by animateDpAsState(
-        targetValue = if (expanded) 13.dp else 10.dp,
-        animationSpec = motion.defaultSpatialSpec(),
-        label = "lesson-padding",
-    )
+    val verticalPadding = if (expanded) 13.dp else 10.dp
 
     Surface(
         onClick = {
@@ -224,9 +208,7 @@ internal fun LessonCard(
                 LessonNumber(lesson.startTime)
                 Text(
                     lesson.name,
-                    modifier = Modifier.weight(1f).animateContentSize(
-                        animationSpec = motion.defaultSpatialSpec(),
-                    ),
+                    modifier = Modifier.weight(1f),
                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge,
@@ -252,12 +234,12 @@ internal fun LessonCard(
                 visible = expanded,
                 enter = expandVertically(
                     expandFrom = Alignment.Top,
-                    animationSpec = motion.defaultSpatialSpec(),
-                ) + fadeIn(animationSpec = motion.defaultEffectsSpec()),
+                    animationSpec = androidx.compose.animation.core.tween(180),
+                ),
                 exit = shrinkVertically(
                     shrinkTowards = Alignment.Top,
-                    animationSpec = motion.defaultSpatialSpec(),
-                ) + fadeOut(animationSpec = motion.defaultEffectsSpec()),
+                    animationSpec = androidx.compose.animation.core.tween(140),
+                ),
             ) {
                 Column(
                     modifier = Modifier.padding(top = 12.dp),
