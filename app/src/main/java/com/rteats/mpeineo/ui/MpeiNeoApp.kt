@@ -34,10 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.IconButton
@@ -544,38 +540,19 @@ fun MpeiNeoApp(
                 enter = expandVertically(),
                 exit = shrinkVertically(),
             ) {
-                NavigationBar(modifier = Modifier.testTag("four-tab-navigation")) {
-                    val active = currentService ?: AppTab.SCHEDULE
-                    listOf(
-                        Triple(AppTab.SCHEDULE, "Пары", AppIcons.Schedule),
-                        Triple(AppTab.BARS, "БАРС", AppIcons.Bars),
-                        Triple(AppTab.MAIL, "Почта", AppIcons.Mail),
-                        Triple(AppTab.MAPS, "Корпуса", AppIcons.Location),
-                    ).forEach { (tab, title, icon) ->
-                        NavigationBarItem(
-                            selected = active == tab,
-                            onClick = {
-                                if (tab == currentService && tab == AppTab.SCHEDULE) {
-                                    todayJumpRequest++
-                                } else if (tab != currentService) {
-                                    searchUi.close()
-                                    openService(tab)
-                                }
-                            },
-                            icon = {
-                                if (tab == AppTab.MAIL && mailState.configured &&
-                                    !mailState.loginRequired && mailState.items.any { it.unread }
-                                ) {
-                                    BadgedBox(badge = { Badge() }) {
-                                        AppIcon(icon, contentDescription = null)
-                                    }
-                                } else AppIcon(icon, contentDescription = null)
-                            },
-                            label = { Text(title) },
-                            modifier = Modifier.testTag("tab-" + tab.name.lowercase()),
-                        )
-                    }
-                }
+                FourTabNavigationBar(
+                    selected = currentService ?: AppTab.SCHEDULE,
+                    unreadMail = mailState.configured && !mailState.loginRequired &&
+                        mailState.items.any { it.unread },
+                    onSelect = { tab ->
+                        if (tab == currentService && tab == AppTab.SCHEDULE) {
+                            todayJumpRequest++
+                        } else if (tab != currentService) {
+                            searchUi.close()
+                            openService(tab)
+                        }
+                    },
+                )
             }
         },
         topBar = {
