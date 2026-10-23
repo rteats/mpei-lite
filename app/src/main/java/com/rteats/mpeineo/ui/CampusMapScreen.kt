@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -560,7 +561,12 @@ internal fun CampusMapScreen(
         flingJob = null
     }
     var zoom by rememberSaveable { mutableFloatStateOf(1.45f) }
-    var pan by remember { mutableStateOf(Offset.Zero) }
+    var pan by rememberSaveable(
+        stateSaver = Saver<Offset, ArrayList<Float>>(
+            save = { arrayListOf(it.x, it.y) },
+            restore = { Offset(it[0], it[1]) },
+        ),
+    ) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
