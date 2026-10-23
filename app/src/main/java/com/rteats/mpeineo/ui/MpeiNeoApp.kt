@@ -603,6 +603,7 @@ fun MpeiNeoApp(
                     onSettings = {
                         if (!isTransitioning) openService(AppTab.SETTINGS)
                     },
+                    compact = appBarService != AppTab.SCHEDULE,
                 )
             }
         },
@@ -714,6 +715,7 @@ fun MpeiNeoApp(
                 onClose = ::closeGlobalSearch,
                 revealProgress = searchReveal,
                 sourceFieldBounds = searchUi.anchoredBounds(),
+                sourceIsIcon = searchUi.scope != SearchScope.SCHEDULE,
                 focusWhenReady = searchUi.isOpen && searchReveal >= 0.98f,
             )
         }
