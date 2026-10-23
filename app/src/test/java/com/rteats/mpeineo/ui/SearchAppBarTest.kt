@@ -46,7 +46,7 @@ class SearchAppBarTest {
             searchAppBarAction(AppTab.MAIL, mailListReady = false))
         assertEquals(SearchAppBarAction.NONE,
             searchAppBarAction(AppTab.MAPS, mailListReady = true))
-        assertEquals(SearchAppBarAction.HOME,
+        assertEquals(SearchAppBarAction.NONE,
             searchAppBarAction(null, mailListReady = true))
     }
 
