@@ -34,6 +34,7 @@ internal class BackSlideState(private val scope: CoroutineScope) {
     var progress by mutableFloatStateOf(0f)
         private set
     private var animation: Job? = null
+    private var generation = 0
     private var leaving = false
 
     fun drag(deltaPx: Float, viewportPx: Float) {
@@ -43,15 +44,24 @@ internal class BackSlideState(private val scope: CoroutineScope) {
     }
 
     private fun animateProgress(target: Float, duration: Int, after: () -> Unit = {}) {
+        val current = ++generation
         animation?.cancel()
         animation = scope.launch {
-            animate(
-                initialValue = progress,
-                targetValue = target,
-                animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
-            ) { value, _ -> progress = value }
-            progress = target
-            after()
+            try {
+                animate(
+                    initialValue = progress,
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
+                ) { value, _ ->
+                    if (generation == current) progress = value
+                }
+                if (generation == current) {
+                    progress = target
+                    after()
+                }
+            } finally {
+                if (generation == current) animation = null
+            }
         }
     }
 
@@ -78,7 +88,9 @@ internal class BackSlideState(private val scope: CoroutineScope) {
     }
 
     fun reset() {
+        generation += 1
         animation?.cancel()
+        animation = null
         leaving = false
         progress = 0f
     }
