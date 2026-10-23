@@ -266,7 +266,11 @@ internal fun SettingsScreen(
         }
     }
     fun installDownloadedUpdate() {
-        if (context.packageManager.canRequestPackageInstalls()) {
+        // Shizuku uses shell privileges; unknown-sources permission applies only
+        // to the regular Android package installer.
+        if (updateState.installMode == InstallMode.SHIZUKU ||
+            context.packageManager.canRequestPackageInstalls()
+        ) {
             updateViewModel.installDownloadedUpdate(context)
         } else {
             installPermissionLauncher.launch(
