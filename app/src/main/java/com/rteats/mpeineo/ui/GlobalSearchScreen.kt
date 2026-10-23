@@ -26,7 +26,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
@@ -145,12 +144,12 @@ internal fun GlobalSearchScreen(
     val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
     val keyboard = LocalSoftwareKeyboardController.current
     var targetFieldBounds by remember { mutableStateOf(Rect.Zero) }
-    val motion = searchFieldTransform(sourceFieldBounds, targetFieldBounds, revealProgress)
+    val elements = searchElementsProgress(revealProgress)
+    val motion = searchFieldTransform(sourceFieldBounds, targetFieldBounds, elements.field)
     val buttonTravel = with(LocalDensity.current) { 72.dp.toPx() }
-    val contentTravel = with(LocalDensity.current) { 88.dp.toPx() }
-    val motionProgress = revealProgress.coerceIn(0f, 1f)
+    val contentTravel = with(LocalDensity.current) { 48.dp.toPx() }
     BackHandler(onBack = onClose)
-    // Opening the keyboard before the container expansion has completed
+    // Opening the keyboard before the input field expansion has completed
     // causes a layout resize in the middle of the transition.
     LaunchedEffect(focusWhenReady) {
         if (focusWhenReady) {
@@ -179,15 +178,14 @@ internal fun GlobalSearchScreen(
         .take(if (searching) 19 else if (scope == SearchScope.MAPS) 19 else 4)
         else emptyList()
 
-    Surface(
-        modifier = Modifier.fillMaxSize().testTag("global-search-screen"),
-        color = lerp(
-            MaterialTheme.colorScheme.surfaceContainerHigh,
-            MaterialTheme.colorScheme.background,
-            revealProgress.coerceIn(0f, 1f),
-        ),
-    ) {
-        Column(modifier = Modifier.statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize().testTag("global-search-screen")) {
+        // The background is an independent surface. It does not clip, resize,
+        // or scale the input and result widgets as a single page.
+        Surface(
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = elements.background },
+            color = MaterialTheme.colorScheme.background,
+        ) {}
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -195,7 +193,8 @@ internal fun GlobalSearchScreen(
                 IconButton(
                     onClick = onClose,
                     modifier = Modifier.graphicsLayer {
-                        translationX = -buttonTravel * (1f - motionProgress)
+                        translationX = -buttonTravel * (1f - elements.controls)
+                        alpha = elements.controls
                     },
                 ) {
                     AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
@@ -242,7 +241,8 @@ internal fun GlobalSearchScreen(
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.graphicsLayer {
-                                    translationX = buttonTravel * (1f - motionProgress)
+                                    translationX = buttonTravel * (1f - elements.controls)
+                                    alpha = elements.controls
                                 },
                             ) {
                                 AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
@@ -256,8 +256,8 @@ internal fun GlobalSearchScreen(
             Box(modifier = Modifier.weight(1f).clipToBounds()) {
                 Column(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        translationY = -contentTravel * (1f - motionProgress)
-                        alpha = ((motionProgress - 0.05f) / 0.60f).coerceIn(0f, 1f)
+                        translationY = -contentTravel * (1f - elements.content)
+                        alpha = elements.content
                     },
                 ) {
             // Search is contextual: selecting another service happens through Home.
