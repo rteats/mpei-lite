@@ -1,6 +1,8 @@
 package com.rteats.mpeineo
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -20,7 +22,7 @@ class UiSmokeTest {
     @Test
     fun mailPortalNavbarBackReturnsToInbox() {
         composeRule.onNodeWithContentDescription("Почта").performClick()
-        composeRule.onNodeWithTag("portal-floating-ОСЭП").performClick()
+        composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
         composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
         composeRule.onNodeWithTag("mail-browser-controls").assertIsDisplayed()
         composeRule.onNodeWithTag("browser-overflow").performClick()
@@ -35,9 +37,10 @@ class UiSmokeTest {
 
     @Test
     fun primaryDestinationsRender() {
-        composeRule
-            .onNodeWithTag("search-app-bar-entry")
-            .performClick()
+        composeRule.onNodeWithTag("compact-search-action").assertIsDisplayed()
+        composeRule.onNodeWithTag("schedule-week-refresh").assertIsDisplayed()
+        composeRule.onNodeWithTag("search-app-bar-entry").assertDoesNotExist()
+        composeRule.onNodeWithTag("compact-search-action").performClick()
 
         composeRule
             .onNodeWithText("Все")
@@ -63,8 +66,12 @@ class UiSmokeTest {
             .onNodeWithTag("mail-inbox")
             .assertIsDisplayed()
 
+        // Mail has one toolbar title and one bottom-tab label, but no
+        // additional in-content "Почта" heading.
+        composeRule.onAllNodesWithText("Почта").assertCountEquals(2)
+
         composeRule
-            .onNodeWithTag("portal-floating-ОСЭП")
+            .onNodeWithTag("portal-header-ОСЭП")
             .assertIsDisplayed()
 
         composeRule
