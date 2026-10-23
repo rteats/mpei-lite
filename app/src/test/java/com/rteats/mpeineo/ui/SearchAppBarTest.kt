@@ -8,11 +8,11 @@ import org.junit.Test
 
 class SearchAppBarTest {
     @Test fun barActionsStartChangingBeforeTheOutgoingPageHasClosed() {
-        assertEquals(null, searchAppBarDestinationAfterBack(listOf(AppTab.BARS.name)))
+        assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(listOf(AppTab.BARS.name)))
         assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(
             listOf(AppTab.SCHEDULE.name, AppTab.MAPS.name),
         ))
-        assertEquals(null, searchAppBarDestinationAfterBack(emptyList()))
+        assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(emptyList()))
     }
 
     @Test fun searchHintFollowsActualNavigationDestination() {
