@@ -13,7 +13,7 @@ import androidx.compose.runtime.setValue
  *
  * Stored entries are stable enum names so Android can save/restore them.
  */
-internal class ServiceNavigationState(initialRoutes: List<String> = emptyList()) {
+internal class ServiceNavigationState(initialRoutes: List<String> = listOf(AppTab.SCHEDULE.name)) {
     var routes: List<String> by mutableStateOf(initialRoutes.toList())
         private set
 
@@ -21,7 +21,7 @@ internal class ServiceNavigationState(initialRoutes: List<String> = emptyList())
         get() = ServiceRouteSnapshot(routes).current
     val beneath: AppTab?
         get() = ServiceRouteSnapshot(routes).beneath
-    val canPop: Boolean get() = routes.isNotEmpty()
+    val canPop: Boolean get() = current != AppTab.SCHEDULE || routes.size > 1
 
     fun open(tab: AppTab, viaClassroom: Boolean = false) {
         routes = serviceRouteAfterOpen(routes, tab, viaClassroom)
@@ -53,8 +53,13 @@ internal fun rememberServiceNavigationState(
                 initialMailTab -> listOf(AppTab.MAIL.name)
                 restoredRoutes.isNotEmpty() -> restoredRoutes.filter { name ->
                     AppTab.entries.any { it.name == name }
+                }.let { restored ->
+                    val last = restored.lastOrNull() ?: AppTab.SCHEDULE.name
+                    if (last == AppTab.SETTINGS) listOf(AppTab.SCHEDULE.name, last)
+                    else if (restored.size > 1) restored.takeLast(2)
+                    else listOf(last)
                 }
-                else -> emptyList()
+                else -> listOf(AppTab.SCHEDULE.name)
             },
         )
     }
