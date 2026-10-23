@@ -4,14 +4,10 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -144,22 +140,13 @@ internal fun ScheduleAgenda(
             .getOrDefault(0)
     }
 
-    val motion = MaterialTheme.motionScheme
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
         modifier = modifier.fillMaxSize(),
         label = "schedule-week",
         transitionSpec = {
-            val forward = targetState > initialState
-            (slideInVertically(
-                initialOffsetY = { if (forward) it / 4 else -it / 4 },
-                animationSpec = motion.defaultSpatialSpec(),
-            ) + fadeIn(animationSpec = motion.defaultEffectsSpec())) togetherWith
-                (slideOutVertically(
-                    targetOffsetY = { if (forward) -it / 4 else it / 4 },
-                    animationSpec = motion.defaultSpatialSpec(),
-                ) + fadeOut(animationSpec = motion.defaultEffectsSpec()))
+            fadeIn(tween(140)) togetherWith fadeOut(tween(140))
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
@@ -376,23 +363,12 @@ private fun WeekPullIndicator(
     armed: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val reveal by animateFloatAsState(
-        targetValue = progress,
-        animationSpec = tween(durationMillis = if (progress == 0f) 190 else 80),
-        label = if (previous) "previous-week-cue" else "next-week-cue",
-    )
-    val color by animateColorAsState(
-        targetValue = if (armed) {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        } else MaterialTheme.colorScheme.surfaceContainer,
-        animationSpec = tween(durationMillis = 150),
-        label = "week-cue-color",
-    )
-    val contentColor by animateColorAsState(
-        targetValue = MaterialTheme.colorScheme.onSurface,
-        animationSpec = tween(durationMillis = 150),
-        label = "week-cue-content-color",
-    )
+    // Gesture feedback is driven directly by the finger, not by competing
+    // duration-based animations that can outlive a released pull.
+    val reveal = progress.coerceIn(0f, 1f)
+    val color = if (armed) MaterialTheme.colorScheme.surfaceContainerHigh
+        else MaterialTheme.colorScheme.surfaceContainer
+    val contentColor = MaterialTheme.colorScheme.onSurface
     Surface(
         modifier = modifier.graphicsLayer {
             alpha = reveal.coerceIn(0f, 1f)
@@ -410,21 +386,15 @@ private fun WeekPullIndicator(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Crossfade(
-                targetState = armed,
-                animationSpec = tween(durationMillis = 150),
-                label = if (previous) "previous-week-ready" else "next-week-ready",
-            ) { ready ->
-                AppIcon(
-                    icon = when {
-                        ready -> AppIcons.Confirm
-                        previous -> AppIcons.ExpandMore
-                        else -> AppIcons.ExpandLess
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            AppIcon(
+                icon = when {
+                    armed -> AppIcons.Confirm
+                    previous -> AppIcons.ExpandMore
+                    else -> AppIcons.ExpandLess
+                },
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
                     if (previous) "Предыдущая неделя" else "Следующая неделя",
