@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.IconButton
@@ -100,33 +102,9 @@ fun MpeiNeoApp(
     val diagnostics = application.container.diagnostics
     val hostView = LocalView.current
     val hapticFeedback = LocalHapticFeedback.current
-    val homePrefs = remember(application) { HomeLayoutPreferences(application) }
-    var homeTiles by remember(homePrefs) { mutableStateOf(homePrefs.read()) }
-    var homeEditing by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(homePrefs) {
-        diagnostics.log("HOME_LAYOUT", "restored=" + HomeTileLayout.encode(homeTiles))
-    }
     val interfacePrefs = remember(application) { InterfacePreferences(application) }
     var navigationHaptics by remember(interfacePrefs) {
         mutableStateOf(interfacePrefs.navigationHaptics)
-    }
-    fun changeHomeLayout(next: List<HomeTile>) {
-        val normalized = HomeTileLayout.normalize(next)
-        val before = homeTiles
-        if (before == normalized) return
-        homePrefs.write(normalized)
-        homeTiles = normalized
-        val oldIndex = before.map { it.tab }
-        val newIndex = normalized.map { it.tab }
-        if (oldIndex != newIndex) {
-            diagnostics.log("HOME_LAYOUT", "reorder=" + newIndex.joinToString(",") { it.name })
-        } else {
-            normalized.firstOrNull { tile ->
-                before.firstOrNull { it.tab == tile.tab }?.size != tile.size
-            }?.let { tile ->
-                diagnostics.log("HOME_LAYOUT", "resize=" + tile.tab.name + " size=" + tile.size.name)
-            }
-        }
     }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -183,9 +161,7 @@ fun MpeiNeoApp(
     val currentService = navigation.current
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
-    var reveal by rememberSaveable {
-        mutableFloatStateOf(if (initialMailTab || restoredUpdateRoutes.isNotEmpty()) 1f else 0f)
-    }
+    var reveal by remember { mutableFloatStateOf(1f) }
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionJob by remember { mutableStateOf<Job?>(null) }
     var motionGeneration by remember { mutableIntStateOf(0) }
@@ -215,7 +191,7 @@ fun MpeiNeoApp(
 
     // Route names are intentionally coarse; never record student or message data.
     val performanceScreen = if (searchUi.isOpen) "SEARCH"
-        else currentService?.name ?: "HOME"
+        else currentService?.name ?: "SCHEDULE"
     LaunchedEffect(performanceScreen) {
         application.container.uiFrameProfiler.markScreen(performanceScreen)
     }
@@ -268,33 +244,31 @@ fun MpeiNeoApp(
     }
 
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
-        // Ordinary navigation has no pending lesson cue. Deep-link dispatch
-        // installs a new request before opening Schedule, not before leaving it.
+        if (target == currentService && target != AppTab.SETTINGS && !viaClassroom) return
         if (target != AppTab.SCHEDULE) navigationTargets.clearScheduleFocus()
-        application.container.uiFrameProfiler.markInteraction("NAV_PUSH")
-        // If a programmatic navigation interrupts an exiting page, commit its
-        // back operation once before opening the next route.
+        application.container.uiFrameProfiler.markInteraction("NAV_" +
+            if (target == AppTab.SETTINGS || viaClassroom) "PUSH" else "TAB_SWITCH")
         transitionJob?.cancel()
+        motionGeneration++
         pendingExit.settle()
+        isTransitioning = false
         if (navigationHaptics && !viaClassroom) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
-        if (currentService == AppTab.MAIL && mailWebVisible) {
+        if (currentService == AppTab.MAIL && mailWebVisible && target != AppTab.MAIL) {
             dismissIme("mail-leave-service")
             mailWebVisible = false
         }
-        if (currentService == AppTab.BARS && barsState.browserVisible) {
+        if (currentService == AppTab.BARS && barsState.browserVisible && target != AppTab.BARS) {
             dismissIme("bars-leave-service")
         }
         barsBrowserJustClosed = false
-        barsDetailOpen = false
+        val nested = target == AppTab.SETTINGS || viaClassroom
         appBarService = target
         navigation.open(target, viaClassroom)
-        reveal = 0f
-        logNavigation("superapp push " + target.name +
-            " origin=" + (currentService?.name ?: "HOME") +
-            " classroom=" + viaClassroom)
-        animateReveal(1f)
+        reveal = if (nested) 0f else 1f
+        logNavigation("tab select " + target.name + " nested=" + nested)
+        if (nested) animateReveal(1f)
     }
 
     fun goBackOneService() {
@@ -303,19 +277,23 @@ fun MpeiNeoApp(
         if (navigationHaptics) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
-        logNavigation("superapp pop " + (currentService?.name ?: "HOME") +
+        logNavigation("tab back " + currentService?.name +
             " depth=" + navigation.routes.size)
-        if (mailWebVisible || barsState.browserVisible) dismissIme("superapp-pop")
+        if (mailWebVisible || barsState.browserVisible) dismissIme("tab-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
         appBarService = navigation.peekBack()
-        pendingExit.begin {
+        if (navigation.routes.size <= 1) {
             navigation.pop()
-            // The underlying service is already fully rendered, at rest.
-            reveal = if (!navigation.canPop) 0f else 1f
-            barsDetailOpen = false
+            reveal = 1f
+        } else {
+            pendingExit.begin {
+                navigation.pop()
+                reveal = 1f
+                barsDetailOpen = false
+            }
+            animateReveal(0f, pendingExit::settle)
         }
-        animateReveal(0f, pendingExit::settle)
     }
 
     fun closeMailBrowser() {
@@ -405,7 +383,7 @@ fun MpeiNeoApp(
     }
 
     // Nested BackHandlers in MailScreen and BARS take precedence over the root.
-    BackHandler(enabled = currentService != null && !mailWebVisible) {
+    BackHandler(enabled = navigation.canPop && !mailWebVisible && !searchUi.isOpen) {
         goBackOneService()
     }
     BackHandler(enabled = currentService == AppTab.MAIL && mailWebVisible) {
@@ -487,11 +465,6 @@ fun MpeiNeoApp(
                                 navigationHaptics = enabled
                                 diagnostics.log("UI_PREF", "navigation_haptics=" + enabled)
                             },
-                            onResetHomeLayout = {
-                                homePrefs.reset()
-                                homeTiles = HomeTileLayout.defaults
-                                diagnostics.log("HOME_LAYOUT", "reset=defaults")
-                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -502,8 +475,7 @@ fun MpeiNeoApp(
     }
 
 
-    // Shared swipe-back handler. BARS uses the same gesture even when its
-    // single WebView was initialized from the Home screen.
+    // Custom rightward swipe is reserved for genuine nested routes.
     fun Modifier.serviceBackGesture(
         eligible: Boolean,
         interactive: Boolean,
@@ -554,6 +526,45 @@ fun MpeiNeoApp(
     Scaffold(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            val browser = mailWebVisible ||
+                (barsState.browserVisible && currentService == AppTab.BARS) ||
+                (barsState.authStage == BarsAuthStage.WEB_AUTH &&
+                    currentService == AppTab.BARS)
+            val showTabs = navigation.routes.size == 1 &&
+                !searchUi.overlayMounted && !browser && !barsDetailOpen &&
+                mailState.selected == null && !mailState.composing && !imeVisible
+            AnimatedVisibility(
+                visible = showTabs,
+                enter = expandVertically(),
+                exit = shrinkVertically(),
+            ) {
+                NavigationBar(modifier = Modifier.testTag("four-tab-navigation")) {
+                    val active = currentService ?: AppTab.SCHEDULE
+                    listOf(
+                        Triple(AppTab.SCHEDULE, "Пары", AppIcons.Schedule),
+                        Triple(AppTab.BARS, "БАРС", AppIcons.Bars),
+                        Triple(AppTab.MAIL, "Почта", AppIcons.Mail),
+                        Triple(AppTab.MAPS, "Корпуса", AppIcons.Location),
+                    ).forEach { (tab, title, icon) ->
+                        NavigationBarItem(
+                            selected = active == tab,
+                            onClick = {
+                                if (tab == currentService && tab == AppTab.SCHEDULE) {
+                                    todayJumpRequest++
+                                } else if (tab != currentService) {
+                                    searchUi.close()
+                                    openService(tab)
+                                }
+                            },
+                            icon = { AppIcon(icon, contentDescription = null) },
+                            label = { Text(title) },
+                            modifier = Modifier.testTag("tab-" + tab.name.lowercase()),
+                        )
+                    }
+                }
+            }
+        },
         topBar = {
             // Embedded browsers own a dedicated Material app bar. Never stack
             // the contextual search app bar above their own overflow controls.
@@ -593,22 +604,12 @@ fun MpeiNeoApp(
                                 mailState.selected == null && !mailWebVisible,
                         ) == SearchAppBarAction.COMPOSE_MAIL
                     ) mailViewModel::startCompose else null,
-                    homeEditing = homeEditing,
                     onSearchBoundsChanged = { bounds ->
                         if (bounds != searchUi.entryBounds) searchUi.entryBounds = bounds
                     },
-                    onHomeEditToggle = if (!searchUi.isOpen && appBarService == null) ({
-                        if (!isTransitioning) {
-                            homeEditing = !homeEditing
-                            diagnostics.log("HOME_LAYOUT", "edit_mode=" + homeEditing)
-                        }
-                    }) else null,
-                    onHomeSettings = if (!searchUi.isOpen && appBarService == null) ({
-                        if (!isTransitioning) {
-                            homeEditing = false
-                            dispatchNavigation(AppNavigationRequest.Service(AppTab.SETTINGS))
-                        }
-                    }) else null,
+                    onSettings = {
+                        if (!isTransitioning) openService(AppTab.SETTINGS)
+                    },
                 )
             }
         },
@@ -617,111 +618,28 @@ fun MpeiNeoApp(
             modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) },
         ) {
-            // No decorative parallax: the outgoing page slides over its
-            // stationary parent, matching nested Mail/BARS/browser exits.
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (beneathService == null) {
-                    SuperAppHome(
-                        schedule = scheduleState,
-                        bars = barsState,
-                        mail = mailState,
-                        tiles = homeTiles,
-                        onChangeLayout = ::changeHomeLayout,
-                        editing = homeEditing,
-                        onOpen = { target ->
-                            if (currentService == null && !isTransitioning) {
-                                dispatchNavigation(AppNavigationRequest.Service(target))
-                            }
-                        },
-                        onOpenNextLesson = { highlight ->
-                            if (currentService == null && !isTransitioning) {
-                                dispatchNavigation(AppNavigationRequest.FocusHomeLesson(highlight))
-                            }
-                        },
-                        onOpenBarsDiscipline = { discipline ->
-                            if (currentService == null && !isTransitioning) {
-                                dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(discipline))
-                            }
-                        },
-                    )
-                } else serviceContent(beneathService, false)
-            }
-
-            if (currentService != null && currentService != AppTab.BARS) {
-                // This branch excludes BARS; browser-aware BARS gestures
-                // are handled by their own persistent sibling composition.
-                val canHandleGesture = !isTransitioning &&
-                    !imeVisible && !mailWebVisible
-                val canInteractivelyPop = canHandleGesture &&
-                    !barsDetailOpen &&
-                    !(currentService == AppTab.MAIL &&
-                        (mailState.selected != null || mailState.composing))
-                Box(
-                    modifier = Modifier.fillMaxSize()
-                        .graphicsLayer { translationX = widthPx * (1f - reveal) }
-                        .serviceBackGesture(
-                            canHandleGesture && canInteractivelyPop &&
-                                currentService != AppTab.MAPS,
-                            canInteractivelyPop,
-                        ),
-                ) {
-                    serviceContent(currentService, true)
-                    if (currentService == AppTab.MAPS && canHandleGesture) {
-                        // Reserve a slim left strip for the interactive pop.
-                        // Everywhere else is exclusively for map panning/pinching.
-                        // The alphabet keyboard now occupies the top of the
-                        // map. Start the left-edge back target below it so the
-                        // letter keys remain clickable (including the first
-                        // columns), while back-swipe is still available below.
-                        Box(
-                            modifier = Modifier.align(Alignment.CenterStart)
-                                .width(96.dp).fillMaxHeight()
-                                .padding(top = 248.dp, bottom = 200.dp)
-                                .testTag("campus-map-swipe-back-zone")
-                                .serviceBackGesture(
-                                    eligible = true,
-                                    interactive = canInteractivelyPop,
-                                    mapEdgeZone = true,
-                                ),
-                        )
-                    }
-                }
-            }
-            // The BARS composition is mounted exactly once, including on Home.
-            // Place it offscreen while inactive rather than recreating WebViews.
-            // Compose layout still grants the full viewport to BARS DOM extraction.
-            val barsForeground = currentService == AppTab.BARS
-            val barsSwipe = barsSwipeTarget(
-                foreground = barsForeground,
-                isTransitioning = isTransitioning,
-                imeVisible = imeVisible,
-                browserVisible = barsState.browserVisible,
-                authenticated = barsState.authStage == BarsAuthStage.AUTHENTICATED,
-                detailOpen = barsDetailOpen,
+            // Retain the BARS WebView in one composition during tab changes.
+            val barsOnScene = currentService == AppTab.BARS || beneathService == AppTab.BARS
+            val barsAlpha by animateFloatAsState(
+                targetValue = if (barsOnScene) 1f else 0f,
+                animationSpec = tween(AppMotionTiming.TAB_SWITCH_MS),
+                label = "bars-tab-visibility",
             )
             Box(
                 modifier = Modifier.fillMaxSize()
                     .offset {
-                        IntOffset(
-                            x = (widthPx *
-                                (if (barsForeground) 1f - reveal else 1f)).roundToInt(),
-                            y = 0,
-                        )
+                        IntOffset(if (barsOnScene) 0 else widthPx.roundToInt(), 0)
                     }
-                    .serviceBackGesture(
-                        // Nested discipline has its own real-time swipe layer.
-                        eligible = barsSwipe == BarsSwipeTarget.HOME,
-                        interactive = barsSwipe == BarsSwipeTarget.HOME,
-                    ),
+                    .graphicsLayer { alpha = barsAlpha },
             ) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     BarsScreen(
                         viewModel = barsViewModel,
                         onSearch = { openGlobalSearch(SearchScope.BARS) },
                         autoRefreshEnabled = barsAutoRefreshEnabled,
-                        active = barsForeground,
+                        active = currentService == AppTab.BARS,
                         allowBackgroundSync = barsAutoRefreshEnabled,
-                        onDetailOpenChange = { if (barsForeground) barsDetailOpen = it },
+                        onDetailOpenChange = { if (currentService == AppTab.BARS) barsDetailOpen = it },
                         openDisciplineName = navigationTargets.barsRequestedDiscipline,
                         openDisciplineRequest = navigationTargets.barsSearchRequest,
                         onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
@@ -729,12 +647,40 @@ fun MpeiNeoApp(
                             barsBrowserJustClosed = true
                             dismissIme("bars-browser-back")
                         },
-                        onAuthBrowserExit = ::goBackOneService,
+                        onAuthBrowserExit = { dismissIme("bars-auth-browser-exit") },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
-
+            if (navigation.routes.size > 1) {
+                if (beneathService != null && beneathService != AppTab.BARS) {
+                    serviceContent(beneathService, false)
+                }
+                if (currentService != null && currentService != AppTab.BARS) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .graphicsLayer { translationX = widthPx * (1f - reveal) }
+                            .serviceBackGesture(
+                                eligible = !isTransitioning && !imeVisible &&
+                                    !mailWebVisible && currentService != AppTab.MAIL,
+                                interactive = true,
+                            ),
+                    ) {
+                        serviceContent(currentService, true)
+                    }
+                }
+            } else {
+                AnimatedContent(
+                    targetState = currentService.takeUnless { it == AppTab.BARS },
+                    transitionSpec = {
+                        fadeIn(tween(AppMotionTiming.TAB_SWITCH_MS)) togetherWith
+                            fadeOut(tween(AppMotionTiming.TAB_SWITCH_MS))
+                    },
+                    label = "primary-tab-switch",
+                ) { tab ->
+                    if (tab != null) serviceContent(tab, tab == currentService)
+                }
+            }
         }
     }
     // Global search is composed of independently expanding elements:
