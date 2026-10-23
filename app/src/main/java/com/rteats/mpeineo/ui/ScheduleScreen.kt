@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -63,6 +64,7 @@ internal fun ScheduleScreen(
     onAgendaScrollingChanged: (Boolean) -> Unit,
     onLocateRoom: (String) -> Unit,
     todayJumpRequest: Int,
+    onPreviewLessonClick: (HomeLessonHighlight) -> Unit = {},
     focusLesson: ScheduleLessonFocus? = null,
     onFocusConsumed: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -89,6 +91,12 @@ internal fun ScheduleScreen(
             }
         }
     } else {
+        Column(modifier = modifier.fillMaxSize()) {
+            ScheduleNextLessonStrip(
+                state = state,
+                onClick = onPreviewLessonClick,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+            )
         ScheduleAgenda(
             state = state,
             onEnsureWeek = onEnsureAgendaWeek,
