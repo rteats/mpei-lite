@@ -35,6 +35,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
@@ -560,7 +562,15 @@ fun MpeiNeoApp(
                                     openService(tab)
                                 }
                             },
-                            icon = { AppIcon(icon, contentDescription = null) },
+                            icon = {
+                                if (tab == AppTab.MAIL && mailState.configured &&
+                                    !mailState.loginRequired && mailState.items.any { it.unread }
+                                ) {
+                                    BadgedBox(badge = { Badge() }) {
+                                        AppIcon(icon, contentDescription = null)
+                                    }
+                                } else AppIcon(icon, contentDescription = null)
+                            },
                             label = { Text(title) },
                             modifier = Modifier.testTag("tab-" + tab.name.lowercase()),
                         )
@@ -665,11 +675,24 @@ fun MpeiNeoApp(
                             .graphicsLayer { translationX = widthPx * (1f - reveal) }
                             .serviceBackGesture(
                                 eligible = !isTransitioning && !imeVisible &&
-                                    !mailWebVisible && currentService != AppTab.MAIL,
+                                    !mailWebVisible && currentService == AppTab.SETTINGS,
                                 interactive = true,
                             ),
                     ) {
                         serviceContent(currentService, true)
+                        if (currentService == AppTab.MAPS && !isTransitioning && !imeVisible) {
+                            Box(
+                                modifier = Modifier.align(Alignment.CenterStart)
+                                    .width(72.dp).fillMaxHeight()
+                                    .padding(top = 248.dp, bottom = 120.dp)
+                                    .testTag("campus-link-swipe-back-zone")
+                                    .serviceBackGesture(
+                                        eligible = true,
+                                        interactive = true,
+                                        mapEdgeZone = true,
+                                    ),
+                            )
+                        }
                     }
                 }
             } else {
