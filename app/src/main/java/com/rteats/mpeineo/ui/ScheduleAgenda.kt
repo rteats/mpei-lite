@@ -146,7 +146,8 @@ internal fun ScheduleAgenda(
         modifier = modifier.fillMaxSize(),
         label = "schedule-week",
         transitionSpec = {
-            fadeIn(tween(140)) togetherWith fadeOut(tween(140))
+            fadeIn(tween(AppMotionTiming.LOCAL_CONTENT_MS)) togetherWith
+                fadeOut(tween(AppMotionTiming.LOCAL_CONTENT_MS))
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
@@ -295,10 +296,8 @@ internal fun ScheduleAgenda(
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { translationY = visualPull * 0.22f },
                     state = listState,
-                    // The contextual search is docked at the BOTTOM now.
-                    // Bring Monday back to the top and leave room below Sunday
-                    // for the 56dp dock and system gesture area.
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 112.dp),
+                    // The global top app bar and persistent root navigation own insets.
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     for (dayIndex in 0..6) {
@@ -342,7 +341,7 @@ internal fun ScheduleAgenda(
                     progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
                     armed = pullDistance <= -overscrollThreshold,
                     modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(start = 8.dp, end = 8.dp, bottom = 96.dp),
+                        .padding(start = 8.dp, end = 8.dp, bottom = 16.dp),
                 )
             }
         }
