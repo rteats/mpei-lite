@@ -173,7 +173,7 @@ fun MpeiNeoApp(
     var appBarService by remember { mutableStateOf(currentService) }
     val searchReveal by animateFloatAsState(
         targetValue = if (searchUi.isOpen) 1f else 0f,
-        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        animationSpec = tween(AppMotionTiming.SEARCH_EXPAND_MS, easing = FastOutSlowInEasing),
         finishedListener = searchUi::onRevealSettled,
         label = "search-elements-expansion",
     )
