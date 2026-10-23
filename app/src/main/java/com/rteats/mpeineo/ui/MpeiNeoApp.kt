@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,7 +52,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,7 +80,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * A single composited foreground page over a permanently mounted background.
@@ -622,7 +619,7 @@ fun MpeiNeoApp(
                     onSettings = {
                         if (!isTransitioning) openService(AppTab.SETTINGS)
                     },
-                    compact = appBarService != AppTab.SCHEDULE,
+                    compact = true,
                 )
             }
         },
@@ -647,9 +644,9 @@ fun MpeiNeoApp(
             )
             Box(
                 modifier = Modifier.fillMaxSize()
-                    .offset {
-                        IntOffset(if (barsOnScene) 0 else widthPx.roundToInt(), 0)
-                    }
+                    // Keep the retained BARS WebView at its real position while
+                    // the root tab crossfades. Moving it away before alpha reaches
+                    // zero made BARS disappear in a single frame on tab changes.
                     .graphicsLayer {
                         alpha = barsAlpha
                         translationX = if (currentService == AppTab.BARS &&
@@ -748,7 +745,7 @@ fun MpeiNeoApp(
                 onClose = ::closeGlobalSearch,
                 revealProgress = searchReveal,
                 sourceFieldBounds = searchUi.anchoredBounds(),
-                sourceIsIcon = searchUi.scope != SearchScope.SCHEDULE,
+                sourceIsIcon = true,
                 focusWhenReady = searchUi.isOpen && searchReveal >= 0.98f,
             )
         }
