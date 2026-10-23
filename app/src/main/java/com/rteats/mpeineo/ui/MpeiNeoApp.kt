@@ -6,6 +6,8 @@ import android.view.WindowInsets as AndroidWindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.compose.ExperimentalActivityComposeApi
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -77,6 +79,7 @@ import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,7 +89,8 @@ import kotlin.math.roundToInt
  * A single composited foreground page over a permanently mounted background.
  * Drag progress and automatic push/pop share one reveal value.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class,
+    ExperimentalActivityComposeApi::class)
 @Composable
 fun MpeiNeoApp(
     viewModel: MainViewModel,
@@ -389,6 +393,24 @@ fun MpeiNeoApp(
     }
     BackHandler(enabled = currentService == AppTab.MAIL && mailWebVisible) {
         closeMailBrowser()
+    }
+
+    // Android predictive Back uses the same normalized nested page movement
+    // as the app's explicit Back button and custom swipe. Root Schedule leaves
+    // Back-to-home to the operating system.
+    PredictiveBackHandler(
+        enabled = navigation.routes.size > 1 && !isTransitioning &&
+            !mailWebVisible && !searchUi.isOpen &&
+            (currentService == AppTab.SETTINGS || currentService == AppTab.MAPS),
+    ) { events ->
+        try {
+            events.collect { event ->
+                reveal = (1f - event.progress).coerceIn(0f, 1f)
+            }
+            goBackOneService()
+        } catch (cancelled: CancellationException) {
+            animateReveal(1f)
+        }
     }
 
     // Share the existing screen instances and saveable state between push,
