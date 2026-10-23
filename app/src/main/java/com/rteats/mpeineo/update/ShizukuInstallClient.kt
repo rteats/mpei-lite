@@ -51,7 +51,7 @@ internal object ShizukuInstallClient {
                 ComponentName(context.packageName, PrivilegedUpdateService::class.java.name),
             ).processNameSuffix("updater")
                 .debuggable(BuildConfig.DEBUG)
-                .version(1)
+                .version(BuildConfig.VERSION_CODE)
 
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
