@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove obsolete GitHub Actions caches while preserving useful Gradle entries."""
+"""Maintain GitHub Actions caches and old run history without removing release records."""
 import argparse
 import json
 import os
@@ -120,12 +120,90 @@ class API:
             page += 1
 
 
+
+# Known retired workflows; names not recognized here are left untouched.
+RETIRED_WORKFLOWS = {
+    "Prune merged branches",
+    "PR APK",
+    "APK size experiment",
+    "R8 BARS runtime regression",
+    "Mail IMAP connectivity diagnostic",
+    "Refresh campus geometry",
+    "Android weekly leak check",
+    "Android CI and APK release",
+}
+ACTIVE_WORKFLOWS = {"Dev APK", "PR verification"}
+
+
+def stale_run_candidates(runs, now):
+    """Conservative retention: stable history forever; 10 recent active runs."""
+    recent = sorted(runs, key=lambda run: date(run.get("created_at")), reverse=True)
+    seen = defaultdict(int)
+    candidates = []
+    for run in recent:
+        name = run.get("name", "")
+        if run.get("status") != "completed" or name == "Stable release":
+            continue
+        if name not in RETIRED_WORKFLOWS and name not in ACTIVE_WORKFLOWS:
+            continue
+        seen[name] += 1
+        if name in ACTIVE_WORKFLOWS and seen[name] <= 10:
+            continue
+        if name in RETIRED_WORKFLOWS:
+            age_days = 0
+        else:
+            age_days = 3 if run.get("conclusion") == "cancelled" else 14
+        if date(run.get("created_at")) >= now - timedelta(days=age_days):
+            continue
+        candidates.append(run)
+    # Retired workflows first; delete oldest history before more recent history.
+    return sorted(candidates, key=lambda run: (
+        run.get("name") in ACTIVE_WORKFLOWS, date(run.get("created_at")),
+    ))
+
+
+def prune_runs(api, now, apply, max_deletions):
+    runs = []
+    for page in range(1, 21):
+        batch = api.call("GET", "actions/runs", {"per_page": 100, "page": page}).get(
+            "workflow_runs", []
+        )
+        runs.extend(batch)
+        if len(batch) < 100:
+            break
+    candidates = stale_run_candidates(runs, now)
+    selected = candidates[:max_deletions]
+    print(f"Run inventory: {len(runs)} completed/active runs inspected; "
+          f"stale: {len(candidates)}, per-build limit: {max_deletions}")
+    if not apply:
+        for run in selected[:20]:
+            print(f"Would remove {run.get('name')}: {run.get('id')}")
+        return 0
+
+    removed, failed = 0, 0
+    for run in selected:
+        try:
+            api.call("DELETE", f"actions/runs/{run['id']}")
+            removed += 1
+        except RuntimeError as exc:
+            failed += 1
+            print(f"::warning::{exc}", file=sys.stderr)
+        time.sleep(0.15)
+    print(f"Removed {removed} completed runs; failures: {failed}; "
+          "Stable release runs and 10 latest active workflow runs were preserved.")
+    return int(bool(failed))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--apply", action="store_true", help="Delete planned entries; otherwise dry-run")
+    p.add_argument("--runs-only", action="store_true", help="Clean old workflow run records, not caches")
+    p.add_argument("--max-run-deletes", type=int, default=75, help="Per-run safety cap")
     p.add_argument("--budget-gib", type=float, default=6.0)
     args = p.parse_args()
     api = API()
+    if args.runs_only:
+        return prune_runs(api, datetime.now(timezone.utc), args.apply, max(0, min(args.max_run_deletes, 75)))
     entries = api.caches()
     plan = prune_plan(entries, datetime.now(timezone.utc), int(args.budget_gib * GIB))
     candidates = sorted((c for c in entries if c["id"] in plan), key=used)

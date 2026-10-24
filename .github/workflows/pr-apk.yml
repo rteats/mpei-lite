@@ -24,6 +24,9 @@ jobs:
       - name: Verify architecture ownership boundaries
         run: python3 scripts/check_architecture.py
 
+      - name: Check maintenance cleanup safety
+        run: python3 -m unittest discover -s scripts -p "test_*.py" -q
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -52,12 +55,11 @@ jobs:
           echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
           echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
 
-      # Compile a release variant to catch packaging/R8 regressions, but only
-      # the rolling Dev workflow publishes installable APKs.
+      # Test a real optimized release build, but publish APKs only from main.
       - name: Run unit tests, UI test compilation, lint, and compile release
         run: |
           gradle --no-daemon testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
-            -POPTIMIZE_RELEASE=${{ startsWith(github.head_ref, 'test/r8-') }} \
+            -POPTIMIZE_RELEASE=true \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=0.5.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}

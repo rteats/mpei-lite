@@ -32,7 +32,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/prune_actions_cache.py --apply
+        run: python3 scripts/maintain_actions.py --apply
 
       - name: Verify architecture ownership boundaries
         run: python3 scripts/check_architecture.py
@@ -101,17 +101,6 @@ jobs:
           git tag -f dev "$GITHUB_SHA"
           git push origin refs/tags/dev --force
 
-      # GitHub's rolling Release retains assets not mentioned in the new build.
-      # Remove APKs from the discontinued MapKit multi-ABI packaging so nobody
-      # accidentally installs a stale, much larger version.
-      - name: Remove obsolete MapKit APK variants
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-            gh release delete-asset dev "MPEI-Neo-Dev-${abi}.apk" --yes || true
-          done
-
       - name: Publish rolling dev prerelease
         uses: softprops/action-gh-release@v3
         with:
@@ -134,3 +123,11 @@ jobs:
           files: |
             MPEI-Neo-Dev.apk
             update.json
+
+      # One small, bounded cleanup piggybacks on a successful Dev build.
+      # Do not delete Stable release runs or recent PR verification history.
+      - name: Prune retired Actions runs
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/maintain_actions.py --runs-only --apply
