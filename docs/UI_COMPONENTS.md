@@ -2,10 +2,10 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Four-tab navigation | FourTabNavigationBar.kt / MpeiNeoApp.kt / PrimaryServicePagerPolicy.kt | Material 3 tabs in order Пары → БАРС → Почта → Корпуса. A continuous HorizontalPager allows finger swipes; a themed spatial spring settles both gestures and tab-button transitions. No tab history. |
+| Four-tab navigation | FourTabNavigationBar.kt / MpeiNeoApp.kt / PrimaryServicePagerPolicy.kt | Material 3 Expressive ShortNavigationBar (EqualWeight on narrow screens, Centered on medium widths) in order Пары → БАРС → Почта → Корпуса. A continuous HorizontalPager allows finger swipes; a themed spatial spring settles both gestures and tab-button transitions. No tab history. |
 | Nested Back | MpeiNeoApp.kt / ServiceNavigationState.kt | System/explicit Back returns from Settings and linked destinations to the real origin. Root Back from other tabs returns Schedule; root Schedule leaves system Back to Android. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
-| Shared search app bar | SearchAppBar.kt | Contextual top search, Schedule refresh, Mail compose, and Settings from each service. Search expands its field, edge controls and results separately. |
+| Shared search app bar | SearchAppBar.kt | Contextual top search, Schedule refresh, Mail compose, and Settings from each service. Search uses a compact top-bar button and a scoped full-screen search view with Material search input tokens. |
 | Scoped search results | GlobalSearchScreen.kt | Search is limited to the selected service; cached BARS/Mail matches and Schedule targets use existing providers. |
 | Schedule targets | GlobalSearchScreen.kt | Scoped search supports favorites, renaming, target category filters and timetable selection; the agenda's week-refresh button remains. |
 | Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
@@ -13,13 +13,20 @@
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
 | Class card and summary | ScheduleNextLessonStrip.kt / ScheduleScreen.kt | Compact current/next-lesson strip links to the exact cached lesson in the timetable. Lesson cards retain inline type, classroom and progress. |
-| BARS «Автомат» plan | BarsAutoPlanner / BarsAutoPlan.kt / BarsAutoFocus.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, bounds and a compact cross-course focus panel. Actual BARS grades stay fixed. |
+| BARS «Автомат» plan | BarsAutoPlanner.kt / BarsAutoPlan.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, M3 connected grade toggles, wavy forecast progress and explicit bounds. Actual BARS grades stay fixed. |
 | Settings | SettingsScreen.kt | Update, diagnostics and cache; refresh-on-launch toggle removed. |
 
 ## Spring motion and pager
 
 See [the Material 3 Expressive motion implementation notes](MOTION_EXPRESSIVE.md)
 for spring-token choices, gesture precedence, session preservation and QA.
+
+## Expressive component adoption
+
+See [the component audit and behavior notes](EXPRESSIVE_COMPONENTS.md). The
+ShortNavigationBar, connected selectors, Material ListItems, Bars information
+sheets, wavy planner progress and transient Mail Snackbars use the existing
+theme's Expressive motion. Settings uses single-owner switch semantics.
 
 ## Data behavior
 
@@ -146,13 +153,13 @@ the ZIP exporter and log copy commands remain immediately accessible.
 ## BARS contextual information pattern
 
 The BARS overview, cross-course **Фокус на автомат**, per-discipline **План на автомат**,
-and Summary reports share `BarsInfoButton`: a 48dp accessible info icon opening a
-scrollable Material 3 dialog. Back, outside-tap or **Понятно** dismisses the dialog
+and Summary reports share `BarsInfoButton`: an accessible icon opening a scrollable
+Material 3 modal bottom sheet. Back, outside-tap, swipe-down or **Понятно** dismisses it
 without changing any BARS state.
 
 The normal view displays only the values and controls needed to make a decision:
 current target/status, progress, remaining KM mark selectors, week/weight and
-recommendation presets. The dialog contains the explanation of calculation
+recommendation presets. The sheet contains the explanation of calculation
 bounds, weights, incomplete BARS data, the recommendation heuristic and the
 important distinction between a hypothetical 4.2 forecast and an official
 automatic exam grade. It is never an automatic grade guarantee.
@@ -169,9 +176,9 @@ next user action; actual grade activities and planning inputs are not hidden.
   outside; confirm profile facts and priority explanations remain accessible.
 - Open a discipline with weighted future KM: tap info, check bounds, missing
   weights and guarantee explanation, then change grades 3/4/5. Ensure only the
-  preview changes and selection remains after closing the dialog.
+  preview changes and selection remains after closing the sheet.
 - Open **По неделям**, **Посещаемость** and **Контрольные**: open info to read
   source notes, verification time and reading instructions. Data cards should
   remain scannable with no duplicated explanatory footer.
 - Check narrow portrait layout, system font scaling, dark/light Monet colors
-  and screen-reader descriptions. The dialogs scroll for long notes.
+  and screen-reader descriptions. The sheets scroll for long notes.

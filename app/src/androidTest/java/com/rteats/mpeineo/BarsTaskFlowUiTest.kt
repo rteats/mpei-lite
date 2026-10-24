@@ -51,6 +51,9 @@ class BarsTaskFlowUiTest {
         rule.onNodeWithTag("bars-auto-planner").assertDoesNotExist()
         rule.onNodeWithTag("bars-auto-goal-toggle").performClick()
         rule.onNodeWithTag("bars-auto-planner").assertExists()
+        rule.onNodeWithTag("bars-auto-info").performClick()
+        rule.onNodeWithTag("bars-auto-info-sheet").assertExists()
+        rule.onNodeWithText("Как работает «Автомат»").assertExists()
     }
 
     private fun sampleDiscipline() = BarsDiscipline(

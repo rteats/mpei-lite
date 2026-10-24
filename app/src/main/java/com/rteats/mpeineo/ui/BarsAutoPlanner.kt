@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,17 +9,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,6 +93,7 @@ internal fun barsAutoExplanations(plan: AutoPlanResult): List<BarsInfoSection> {
  * A what-if planner, not an official BARS final grade.
  * There are no network writes: grade buttons only change hypothetical scores.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun BarsAutoPlanner(
     discipline: BarsDiscipline,
@@ -184,7 +190,9 @@ internal fun BarsAutoPlanner(
                             else colors.onSurfaceVariant,
                     )
                 }
-                LinearProgressIndicator(
+                // A personal grade projection is exploratory; expressive wavy
+                // progress makes it distinct from a precise APK download.
+                LinearWavyProgressIndicator(
                     progress = { (scenario.sum / plan.target).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -242,23 +250,35 @@ internal fun BarsAutoPlanner(
                                     color = colors.onSurfaceVariant,
                                 )
                             }
-                            SingleChoiceSegmentedButtonRow {
+                            // M3 connected single-choice toggles use pressed/
+                            // checked shape transitions from MotionScheme.
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    ButtonGroupDefaults.ConnectedSpaceBetween,
+                                ),
+                            ) {
                                 listOf(3, 4, 5).forEachIndexed { i, grade ->
-                                    SegmentedButton(
-                                        selected = chosen[index] == grade,
-                                        onClick = {
-                                            val next = chosen.toMutableList()
-                                            next[index] = grade
-                                            onScenarioChange(encodeAutoScenario(next))
+                                    ToggleButton(
+                                        checked = chosen[index] == grade,
+                                        onCheckedChange = {
+                                            if (chosen[index] != grade) {
+                                                val next = chosen.toMutableList()
+                                                next[index] = grade
+                                                onScenarioChange(encodeAutoScenario(next))
+                                            }
                                         },
-                                        shape = SegmentedButtonDefaults.itemShape(
-                                            index = i, count = 3,
+                                        modifier = Modifier.semantics { role = Role.RadioButton },
+                                        shapes = when (i) {
+                                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                            2 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                                        },
+                                        colors = ToggleButtonDefaults.colors(
+                                            containerColor = colors.surfaceContainerHighest,
+                                            contentColor = colors.onSurface,
                                         ),
-                                        icon = {},
-                                        label = {
-                                            Text(grade.toString())
-                                        },
-                                    )
+                                        contentPadding = PaddingValues(horizontal = 12.dp),
+                                    ) { Text(grade.toString()) }
                                 }
                             }
                         }

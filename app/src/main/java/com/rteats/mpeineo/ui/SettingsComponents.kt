@@ -3,6 +3,7 @@ package com.rteats.mpeineo.ui
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +17,15 @@ import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -108,40 +112,41 @@ internal fun SettingsAction(
     downloading: Boolean = false,
     progressPercent: Int? = null,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SettingsBadge(iconRes)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
+    // A native ListItem gives row text, icon, state and touch target a single
+    // Material density/layout system. Progress remains determinate for APKs.
+    ListItem(
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        leadingContent = { SettingsBadge(iconRes) },
+        headlineContent = {
             Text(title, fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodyLarge)
-            Text(detail, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (downloading) {
-                if (progressPercent != null) {
-                    LinearProgressIndicator(
-                        progress = { (progressPercent / 100f).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
+        },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(detail, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (downloading) {
+                    if (progressPercent != null) {
+                        LinearProgressIndicator(
+                            progress = { (progressPercent / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                    }
                 }
             }
-        }
-        if (busy) {
+        },
+        trailingContent = if (busy) {{
             ContainedLoadingIndicator(modifier = Modifier.size(28.dp))
-        }
-    }
+        }} else null,
+        colors = ListItemDefaults.colors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        ),
+    )
 }
 
 @Composable
@@ -153,22 +158,31 @@ internal fun SettingsSwitchRow(
     enabled: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
-    Row(
+    // Make the entire row one accessible switch instead of two nested
+    // click targets that can toggle twice under accessibility services.
+    ListItem(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled) { onChange(!checked) }
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SettingsBadge(iconRes)
-        Column(modifier = Modifier.weight(1f)) {
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onChange,
+            ),
+        leadingContent = { SettingsBadge(iconRes) },
+        headlineContent = {
             Text(title, style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold)
+        },
+        supportingContent = {
             Text(description, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
-    }
+        },
+        trailingContent = {
+            Switch(checked = checked, enabled = enabled, onCheckedChange = null)
+        },
+        colors = ListItemDefaults.colors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        ),
+    )
 }
-

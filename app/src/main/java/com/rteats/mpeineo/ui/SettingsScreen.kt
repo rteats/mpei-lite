@@ -282,12 +282,6 @@ internal fun SettingsScreen(
                 interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
             ) {
                 Text(
-                    "Порядок и размер кнопок меняются значком редактирования на главной.",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
                     "Оформление",
                     modifier = Modifier.padding(start = 12.dp, top = 8.dp),
                     style = MaterialTheme.typography.labelLarge,

@@ -92,7 +92,7 @@ internal class MailComposeController(
     }
 
     fun startCompose() {
-        _state.update { it.copy(composing = true, sendError = null,
+        _state.update { it.copy(composing = true, sendError = null, notice = null,
             activeRecipientField = null, recipientSuggestions = emptyList()) }
     }
 

@@ -547,7 +547,7 @@ internal class MailViewModel(
         if (_state.value.savingAttachment != null) return
         val version = sessionVersion
         viewModelScope.launch {
-            _state.update { it.copy(savingAttachment = attachment.partPath, error = null) }
+            _state.update { it.copy(savingAttachment = attachment.partPath, error = null, notice = null) }
             try {
                 val saved = owaMailRepository.downloadAttachment(attachment)
                 if (version != sessionVersion) return@launch

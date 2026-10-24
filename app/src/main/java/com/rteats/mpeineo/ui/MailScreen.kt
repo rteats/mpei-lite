@@ -31,7 +31,11 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,8 +45,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +76,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
@@ -91,6 +102,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.DateFormat
 import java.util.Date
 
+/** Short-lived success is a Snackbar; cached/offline notices remain visible banners. */
+internal fun mailNoticeInSnackbar(note: String?): Boolean =
+    note == "Письмо отправлено" || note?.startsWith("Сохранено:") == true
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailScreen(
@@ -101,6 +116,13 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(state.notice) {
+        val note = state.notice
+        if (mailNoticeInSnackbar(note)) {
+            snackbarHostState.showSnackbar(note!!, duration = SnackbarDuration.Short)
+        }
+    }
     // The ViewModel survives navigation. Pause nonessential Sent enrichment
     // immediately when the screen is hidden, then resume cached work on return.
     DisposableEffect(active, state.mailbox, state.selected, state.composing) {
@@ -156,6 +178,7 @@ internal fun MailScreen(
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         // The app scaffold already handles safe-area insets; no second blank header.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
@@ -194,7 +217,7 @@ internal fun MailScreen(
                         },
                     )
                 } else {
-                    state.notice?.let { note ->
+                    state.notice?.takeUnless(::mailNoticeInSnackbar)?.let { note ->
                         ServiceStatus(
                             title = note,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -268,16 +291,6 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                item(key = "mail-portal-action") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth()
-                                            .padding(end = 4.dp, top = 4.dp),
-                                        horizontalArrangement = Arrangement.End,
-                                    ) {
-                                        // The app bar already identifies the Mail service.
-                                        PortalHeaderAction(label = "ОСЭП", onClick = onOpenPortal)
-                                    }
-                                }
                                 stickyHeader(key = "inbox-search") {
                                     Surface(color = MaterialTheme.colorScheme.background) {
                                         Column(
@@ -286,21 +299,49 @@ internal fun MailScreen(
                                         ) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(
+                                                    ButtonGroupDefaults.ConnectedSpaceBetween,
+                                                ),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                FilterChip(
-                                                    selected = state.mailbox == OwaMailFolder.INBOX,
-                                                    onClick = { viewModel.switchMailbox(OwaMailFolder.INBOX) },
-                                                    label = { Text("Входящие") },
-                                                    modifier = Modifier.testTag("mail-folder-inbox"),
-                                                )
-                                                FilterChip(
-                                                    selected = state.mailbox == OwaMailFolder.SENT,
-                                                    onClick = { viewModel.switchMailbox(OwaMailFolder.SENT) },
-                                                    label = { Text("Отправленные") },
-                                                    modifier = Modifier.testTag("mail-folder-sent"),
-                                                )
+                                                listOf(
+                                                    OwaMailFolder.INBOX to "Входящие",
+                                                    OwaMailFolder.SENT to "Отправленные",
+                                                ).forEachIndexed { index, (folder, label) ->
+                                                    ToggleButton(
+                                                        checked = state.mailbox == folder,
+                                                        onCheckedChange = {
+                                                            if (state.mailbox != folder) {
+                                                                viewModel.switchMailbox(folder)
+                                                            }
+                                                        },
+                                                        modifier = Modifier.weight(1f)
+                                                            .semantics { role = Role.RadioButton }
+                                                            .testTag(if (folder == OwaMailFolder.INBOX)
+                                                                "mail-folder-inbox" else "mail-folder-sent"),
+                                                        shapes = if (index == 0)
+                                                            ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                                        else ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                                                        colors = ToggleButtonDefaults.colors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            contentColor = MaterialTheme.colorScheme.onSurface,
+                                                        ),
+                                                    ) {
+                                                        Text(label, maxLines = 1)
+                                                    }
+                                                }
+                                                // A secondary portal action belongs with Mail's folder controls,
+                                                // not in its own mostly empty row above the mailbox.
+                                                FilledTonalIconButton(
+                                                    onClick = onOpenPortal,
+                                                    modifier = Modifier.size(48.dp)
+                                                        .testTag("portal-header-ОСЭП"),
+                                                ) {
+                                                    AppIcon(
+                                                        AppIcons.OpenPortal,
+                                                        contentDescription = "Открыть ОСЭП",
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -434,19 +475,11 @@ private fun MailInboxRow(
             )
         } else MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            MailSenderAvatar(correspondent, summary.unread)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
+        // Native Material two-line list row owns density, alignment and
+        // leading/trailing layout. The clickable outer surface owns semantics.
+        ListItem(
+            headlineContent = {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -454,33 +487,32 @@ private fun MailInboxRow(
                         if (isSent) "Кому: $correspondent" else correspondent,
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (summary.unread) {
-                            FontWeight.Bold
-                        } else FontWeight.Medium,
+                        fontWeight = if (summary.unread) FontWeight.Bold else FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        DateFormat.getDateInstance(DateFormat.SHORT)
-                            .format(Date(summary.sentAt)),
+                        DateFormat.getDateInstance(DateFormat.SHORT).format(Date(summary.sentAt)),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            },
+            supportingContent = {
                 Text(
-                    summary.subject.ifBlank { "<Без темы>" },
+                    summary.subject.ifBlank { "Без темы" },
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (summary.unread) {
-                        FontWeight.SemiBold
-                    } else FontWeight.Normal,
-                    color = if (summary.unread) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (summary.unread) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (summary.unread) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-        }
+            },
+            leadingContent = { MailSenderAvatar(correspondent, summary.unread) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+        )
     }
 }
 
