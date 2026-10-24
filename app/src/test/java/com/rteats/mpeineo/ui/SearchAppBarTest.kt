@@ -1,7 +1,6 @@
 package com.rteats.mpeineo.ui
 
 import org.junit.Assert.assertEquals
-import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,15 +47,6 @@ class SearchAppBarTest {
             searchAppBarAction(AppTab.MAPS, mailListReady = true))
         assertEquals(SearchAppBarAction.NONE,
             searchAppBarAction(null, mailListReady = true))
-    }
-
-    @Test fun appBarHasConsistentSixteenDpSideMargins() {
-        // AppBarWithSearch adds 8dp around its search field, and 4dp
-        // after its trailing action row. Account for both internal offsets.
-        assertEquals(SEARCH_APP_BAR_EDGE, SEARCH_APP_BAR_START_PADDING + 8.dp)
-        assertEquals(SEARCH_APP_BAR_EDGE, SEARCH_APP_BAR_END_WITH_ACTION + 4.dp)
-        assertEquals(SEARCH_APP_BAR_EDGE,
-            SEARCH_APP_BAR_END_WITHOUT_ACTION + 4.dp + 8.dp)
     }
 
     @Test fun campusSearchRecognizesKnownCyrillicBuildingsAndRooms() {

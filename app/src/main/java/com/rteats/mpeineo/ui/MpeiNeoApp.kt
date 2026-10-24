@@ -450,7 +450,6 @@ fun MpeiNeoApp(
                     onSettings = {
                         openService(AppTab.SETTINGS)
                     },
-                    compact = true,
                 )
             }
         },
