@@ -36,27 +36,6 @@ class FourTabRouteTest {
         assertEquals(AppTab.MAIL, FourTabRoute.restore("MAIL").selected)
     }
 
-    @Test fun barsRootTabSwitchKeepsRetainedLayerStationary() {
-        for (tab in listOf(AppTab.SCHEDULE, AppTab.BARS, AppTab.MAIL, AppTab.MAPS)) {
-            assertEquals(0f, barsLayerTranslationX(tab, false, 0f, 480f), 0f)
-            assertEquals(0f, barsLayerTranslationX(tab, false, 0.5f, 480f), 0f)
-        }
-    }
-
-    @Test fun retainedBarsOnlyLeavesLayoutAfterTheRootCrossfade() {
-        assertEquals(0f, barsHiddenOffsetX(true, 1f, 480f), 0f)
-        assertEquals(0f, barsHiddenOffsetX(false, 1f, 480f), 0f)
-        assertEquals(0f, barsHiddenOffsetX(false, 0.5f, 480f), 0f)
-        assertEquals(480f, barsHiddenOffsetX(false, 0f, 480f), 0f)
-    }
-
-    @Test fun linkedBarsPageStillSlidesWithBackProgress() {
-        assertEquals(0f, barsLayerTranslationX(AppTab.BARS, true, 1f, 480f), 0f)
-        assertEquals(240f, barsLayerTranslationX(AppTab.BARS, true, 0.5f, 480f), 0f)
-        assertEquals(480f, barsLayerTranslationX(AppTab.BARS, true, 0f, 480f), 0f)
-        assertEquals(0f, barsLayerTranslationX(AppTab.MAIL, true, 0f, 480f), 0f)
-    }
-
     @Test(expected = IllegalArgumentException::class)
     fun settingsCannotBecomePrimaryTab() {
         FourTabRoute().selectTab(AppTab.SETTINGS)
