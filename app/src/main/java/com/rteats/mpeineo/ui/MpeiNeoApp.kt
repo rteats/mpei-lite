@@ -441,17 +441,9 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            val browser = mailWebVisible ||
-                (barsState.browserVisible && currentService == AppTab.BARS) ||
-                (barsState.authStage == BarsAuthStage.WEB_AUTH &&
-                    currentService == AppTab.BARS)
-            val mailDetail = currentService == AppTab.MAIL &&
-                (mailState.selected != null || mailState.composing)
-            val barsDetail = currentService == AppTab.BARS && barsDetailOpen
-            val showTabs = (navigation.routes.size == 1 ||
-                currentService == AppTab.SETTINGS) &&
-                !searchUi.isOpen && !browser && !barsDetail &&
-                !mailDetail && !imeVisible
+            // Detail screens, portal views, search and the keyboard must not
+            // remove the global navigation bar. Only Settings owns it.
+            val showTabs = currentService != AppTab.SETTINGS
             SpatialExpansion(expanded = showTabs) {
                 FourTabNavigationBar(
                     selected = if (currentService == AppTab.SETTINGS)
