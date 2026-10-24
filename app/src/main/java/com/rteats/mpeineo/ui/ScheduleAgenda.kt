@@ -5,6 +5,8 @@ import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -30,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -141,6 +144,10 @@ internal fun ScheduleAgenda(
 
     // transitionSpec is not @Composable: resolve tokens while in composition.
     val weekSpatialSpring = MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+    // A linked lesson jump must not look like a root pager tab switch.
+    // Use an unobtrusive opacity change, and keep manual week pulls spatial.
+    val focusWeekEffects = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
+    val focusJumpPending = focusLesson != null
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
@@ -149,14 +156,19 @@ internal fun ScheduleAgenda(
         transitionSpec = {
             // For the spatial-motion trial, week changes travel in the
             // direction of the selected week instead of fading in place.
-            val forward = targetState >= initialState
-            slideInHorizontally(
-                initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
-                animationSpec = weekSpatialSpring,
-            ) togetherWith slideOutHorizontally(
-                targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
-                animationSpec = weekSpatialSpring,
-            )
+            if (focusJumpPending) {
+                fadeIn(animationSpec = focusWeekEffects) togetherWith
+                    fadeOut(animationSpec = focusWeekEffects)
+            } else {
+                val forward = targetState >= initialState
+                slideInHorizontally(
+                    initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
+                    animationSpec = weekSpatialSpring,
+                ) togetherWith slideOutHorizontally(
+                    targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
+                    animationSpec = weekSpatialSpring,
+                )
+            }
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
@@ -176,8 +188,10 @@ internal fun ScheduleAgenda(
             initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
         )
         LaunchedEffect(todayJumpRequest, displayedWeek) {
-            if (displayedWeek == 0 && visibleWeek == 0) {
-                listState.animateScrollToItem(currentDayIndex)
+            if (displayedWeek == 0 && visibleWeek == 0 && focusLesson == null) {
+                // Jump requests own the list position while they are pending.
+                // Do not start a competing "today" scroll on composition.
+                listState.scrollToItem(currentDayIndex)
             }
         }
         // Publish focus only after the day itself has finished scrolling.
@@ -197,7 +211,9 @@ internal fun ScheduleAgenda(
                 state.agendaWeeks[displayedWeek] == null) return@LaunchedEffect
             val index = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
                 .getOrDefault(0).coerceIn(0, 6)
-            listState.animateScrollToItem(index)
+            // Move directly to the target day. A second animated scroll here
+            // looked like a spurious view switch before the focus highlight.
+            listState.scrollToItem(index)
             readyFocusId = request.requestId
         }
         // Only this distance determines both the week switch and visual feedback.
