@@ -153,9 +153,11 @@ internal fun BarsNativeDashboard(
   var destinationFocusSerial by remember {
     androidx.compose.runtime.mutableIntStateOf(0)
   }
-  fun openDisciplineWithFocus(name: String) {
-    focusDisciplineName = name
-    destinationFocusSerial++
+  fun openDisciplineWithFocus(name: String, fromLink: Boolean = false) {
+    // A normal card tap must not pulse its detail title. Only a link into
+    // BARS should highlight the destination.
+    focusDisciplineName = if (fromLink) name else null
+    if (fromLink) destinationFocusSerial++
     selectedDisciplineName = name
   }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
@@ -187,7 +189,7 @@ internal fun BarsNativeDashboard(
       state.disciplines, active) {
     if (active && openDisciplineName != null &&
         state.disciplines.any { it.disciplineName == openDisciplineName }) {
-      openDisciplineWithFocus(openDisciplineName)
+      openDisciplineWithFocus(openDisciplineName, fromLink = true)
       onOpenDisciplineConsumed()
     }
   }
