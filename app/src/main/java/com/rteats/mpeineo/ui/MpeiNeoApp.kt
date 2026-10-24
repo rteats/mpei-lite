@@ -6,6 +6,7 @@ import android.view.WindowInsets as AndroidWindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
@@ -45,6 +46,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.AppIcon
@@ -142,6 +145,13 @@ fun MpeiNeoApp(
     // Full-page movement uses the theme's slow spatial spring, not a tween.
     val pageSpring = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
     var programmaticPaging by remember { mutableStateOf(false) }
+    var pagerGesturePending by remember { mutableStateOf(false) }
+    var visualPages by remember { mutableStateOf(PRIMARY_TABS) }
+    var navigationBarHeightPx by remember { mutableIntStateOf(0) }
+    val pagerDragging by pagerState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(pagerDragging) {
+        if (pagerDragging && !programmaticPaging) pagerGesturePending = true
+    }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
     // The bar shows the committed tab while the pager follows the gesture.
@@ -197,6 +207,7 @@ fun MpeiNeoApp(
             dismissIme("bars-leave-service")
         }
         barsBrowserJustClosed = false
+        pagerGesturePending = false
         navigation.open(target, viaClassroom)
         logNavigation("tab select " + target.name +
             " nested=" + (target == AppTab.SETTINGS || viaClassroom))
@@ -292,15 +303,33 @@ fun MpeiNeoApp(
         }
     }
 
-    // Programmatic navigation uses the same spring as finger flings. The guard
-    // prevents an intermediate pager page from changing the real route.
+    // For distant taps, put the target next to the source in a temporary
+    // keyed page order. Animate one viewport, then restore the real order.
     LaunchedEffect(foregroundTab) {
         val requested = primaryPageFor(foregroundTab)
-        if (pagerState.settledPage != requested || pagerState.isScrollInProgress) {
+        val source = visualPages.getOrNull(pagerState.currentPage) ?: foregroundTab
+        if (source != foregroundTab || pagerState.isScrollInProgress ||
+            visualPages != PRIMARY_TABS) {
             programmaticPaging = true
+            pagerGesturePending = false
             try {
-                pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
+                val order = adjacentProgrammaticPages(source, foregroundTab)
+                if (order != PRIMARY_TABS) {
+                    visualPages = order
+                    withFrameNanos { } // Allow keyed slots to relocate first.
+                    pagerState.animateScrollToPage(
+                        order.indexOf(foregroundTab), animationSpec = pageSpring,
+                    )
+                    visualPages = PRIMARY_TABS
+                    pagerState.requestScrollToPage(requested)
+                } else {
+                    pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
+                }
             } finally {
+                if (visualPages != PRIMARY_TABS) {
+                    visualPages = PRIMARY_TABS
+                    pagerState.requestScrollToPage(requested)
+                }
                 programmaticPaging = false
             }
         }
@@ -324,12 +353,13 @@ fun MpeiNeoApp(
     // remains route-first, and explicit links retain their back origin.
     LaunchedEffect(
         pagerState.settledPage, pagerState.isScrollInProgress,
-        rootPagingEnabled, programmaticPaging,
+        rootPagingEnabled, programmaticPaging, pagerGesturePending,
     ) {
         if (!rootPagingEnabled || programmaticPaging ||
-            pagerState.isScrollInProgress
+            !pagerGesturePending || pagerState.isScrollInProgress
         ) return@LaunchedEffect
-        val settled = PRIMARY_TABS[pagerState.settledPage]
+        pagerGesturePending = false
+        val settled = visualPages[pagerState.settledPage]
         if (settled != currentService) openService(settled)
     }
 
@@ -369,6 +399,7 @@ fun MpeiNeoApp(
                                 },
                                 todayJumpRequest = todayJumpRequest,
                                 onPreviewLessonClick = { highlight ->
+                                    pagerGesturePending = false
                                     navigationTargets.focusUpcomingLesson(highlight, scheduleState.agendaWeeks)
                                 },
                                 focusLesson = navigationTargets.scheduleLessonFocus,
@@ -445,6 +476,7 @@ fun MpeiNeoApp(
             // remove the global navigation bar. Only Settings owns it.
             val showTabs = currentService != AppTab.SETTINGS
             SpatialExpansion(expanded = showTabs) {
+                Box(Modifier.onSizeChanged { navigationBarHeightPx = it.height }) {
                 FourTabNavigationBar(
                     selected = if (currentService == AppTab.SETTINGS)
                         beneathService ?: AppTab.SCHEDULE
@@ -460,6 +492,7 @@ fun MpeiNeoApp(
                         }
                     },
                 )
+                }
             }
         },
         topBar = {
@@ -504,11 +537,12 @@ fun MpeiNeoApp(
                     state = pagerState,
                     snapAnimationSpec = pageSpring,
                 ),
-                key = { PRIMARY_TABS[it].name },
+                key = { visualPages[it].name },
             ) { page ->
-                val destination = PRIMARY_TABS[page]
+                val destination = visualPages[page]
                 if (shouldComposePrimaryPage(
                         page, pagerState.currentPage, pagerState.targetPage,
+                        isBarsPage = destination == AppTab.BARS,
                     )
                 ) {
                     if (destination == AppTab.BARS) {
@@ -576,7 +610,9 @@ fun MpeiNeoApp(
     // Search moves as a complete spatial overlay without cloning its input state.
     SpatialScreenOverlay(
         visible = searchUi.isOpen,
-        modifier = Modifier.imePadding().testTag("search-elements-overlay"),
+        modifier = Modifier.imePadding()
+            .padding(bottom = with(LocalDensity.current) { navigationBarHeightPx.toDp() })
+            .testTag("search-elements-overlay"),
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
