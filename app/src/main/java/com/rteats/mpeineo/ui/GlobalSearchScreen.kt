@@ -134,9 +134,6 @@ internal fun GlobalSearchScreen(
     onMail: (SearchMailHit) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
-    revealProgress: Float = 1f,
-    sourceFieldBounds: Rect = Rect.Zero,
-    sourceIsIcon: Boolean = false,
     focusWhenReady: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
@@ -144,11 +141,6 @@ internal fun GlobalSearchScreen(
     var renameText by remember { mutableStateOf("") }
     val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
     val keyboard = LocalSoftwareKeyboardController.current
-    var targetFieldBounds by remember { mutableStateOf(Rect.Zero) }
-    val elements = searchElementsProgress(revealProgress)
-    val motion = searchFieldTransform(sourceFieldBounds, targetFieldBounds, elements.field)
-    val buttonTravel = with(LocalDensity.current) { 72.dp.toPx() }
-    val contentTravel = with(LocalDensity.current) { 48.dp.toPx() }
     BackHandler(onBack = onClose)
     // Opening the keyboard before the input field expansion has completed
     // causes a layout resize in the middle of the transition.
@@ -183,7 +175,7 @@ internal fun GlobalSearchScreen(
         // The background is an independent surface. It does not clip, resize,
         // or scale the input and result widgets as a single page.
         Surface(
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = elements.background },
+            modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {}
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
@@ -191,38 +183,20 @@ internal fun GlobalSearchScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.graphicsLayer {
-                        translationX = -buttonTravel * (1f - elements.controls)
-                        alpha = elements.controls
-                    },
-                ) {
+                IconButton(onClick = onClose) {
                     AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
                 }
                 // Measure the final slot, not the transformed input, to avoid
                 // a feedback loop during the movement between the two bounds.
                 Box(
-                    modifier = Modifier.weight(1f).onGloballyPositioned { coordinates ->
-                        val bounds = coordinates.boundsInRoot()
-                        if (targetFieldBounds != bounds) targetFieldBounds = bounds
-                    },
+                    modifier = Modifier.weight(1f),
                 ) {
                     TextField(
                         value = query,
                         onValueChange = onQueryChange,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                            .testTag("global-search-input")
-                            .graphicsLayer {
-                                translationX = motion.translationX
-                                translationY = motion.translationY
-                                scaleX = motion.scaleX
-                                scaleY = motion.scaleY
-                                if (sourceIsIcon) {
-                                    alpha = ((elements.field - 0.12f) / 0.4f).coerceIn(0f, 1f)
-                                }
-                            },
+                            .testTag("global-search-input"),
                         placeholder = { Text(when (scope) {
                             SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
                             SearchScope.BARS -> "Поиск дисциплины в БАРС"
@@ -244,10 +218,6 @@ internal fun GlobalSearchScreen(
                         trailingIcon = if (query.isNotBlank()) {{
                             IconButton(
                                 onClick = { onQueryChange("") },
-                                modifier = Modifier.graphicsLayer {
-                                    translationX = buttonTravel * (1f - elements.controls)
-                                    alpha = elements.controls
-                                },
                             ) {
                                 AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
                             }
@@ -259,12 +229,9 @@ internal fun GlobalSearchScreen(
             // view. Clipping the body prevents drawing through the header.
             Box(modifier = Modifier.weight(1f).clipToBounds()) {
                 Column(
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        translationY = -contentTravel * (1f - elements.content)
-                        alpha = elements.content
-                    },
+                    modifier = Modifier.fillMaxSize(),
                 ) {
-            // Search is contextual: selecting another service happens through Home.
+            // Search is contextual and independent of navigation transitions.
             // Schedule alone exposes target-type filters.
             if (scope == SearchScope.SCHEDULE) {
                 androidx.compose.foundation.lazy.LazyRow(

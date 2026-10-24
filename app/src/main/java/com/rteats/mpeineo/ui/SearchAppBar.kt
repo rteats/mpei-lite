@@ -80,7 +80,6 @@ internal fun ContextSearchAppBar(
     onMailCompose: (() -> Unit)? = null,
     onSettings: () -> Unit = {},
     compact: Boolean = false,
-    onSearchBoundsChanged: (Rect) -> Unit = {},
 ) {
     val searchBarState = rememberSearchBarState()
     val action = when {
