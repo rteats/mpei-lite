@@ -38,6 +38,8 @@ object AppIcons {
     @get:DrawableRes val Edit: Int get() = R.drawable.ms_edit
     @get:DrawableRes val Search: Int get() = R.drawable.ms_search
     @get:DrawableRes val Refresh: Int get() = R.drawable.ms_refresh
+    @get:DrawableRes val ZoomIn: Int get() = R.drawable.ms_add
+    @get:DrawableRes val ZoomOut: Int get() = R.drawable.ms_remove
     @get:DrawableRes val Location: Int get() = R.drawable.ms_location_on
     @get:DrawableRes val Person: Int get() = R.drawable.ms_person
     @get:DrawableRes val GroupList: Int get() = R.drawable.ms_list

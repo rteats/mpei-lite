@@ -34,6 +34,29 @@ The sections below record the **original token decisions** from PR #96; this
 temporary trial supersedes its effects-spring selections. A real-device review
 will decide which spatial motions should become effects again.
 
+## October 24 follow-up: navigation and component refinements
+
+- Distant navbar jumps temporarily put the destination beside the source
+  and move one pager-width. The canonical order is restored after settling;
+  normal swipes still follow Schedule–BARS–Mail–Campus. Pager keys retain
+  the existing BARS WebView. Only an actual drag may commit a route on settle,
+  preventing a schedule lesson-focus request from causing an unrelated tab jump.
+- The service-title transition clips both texts and moves in the same
+  direction as the corresponding page, without overlapping glyphs.
+- The bottom navigation remains visible for Mail/BARS details, portals,
+  Search, and the keyboard. Only Settings covers the navbar.
+- Campus zoom actions use the native Material 3
+  [vertical floating toolbar](https://m3.material.io/components/toolbars/specs)
+  with symmetric 24dp Material Symbols and accessible controls.
+- Normal Mail and BARS detail selection no longer pulses the title; BARS
+  retains a focus cue for explicit cross-service search links.
+- Remove the hypothetical Автомат projection progress indicator. The
+  value and reachability message remain available without a duplicate bar.
+
+Check on device: rapid distant-tab switching, mid-flight reversal, persistent
+BARS 2FA session, text clipping with large font scale, map zoom controls,
+next-lesson focus, navbar in search with IME, and the Mail/BARS Back path.
+
 ## Physics instead of independent duration constants
 
 Google's M3 Expressive motion system specifies **spatial** and **effects**

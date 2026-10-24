@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ToggleButton
@@ -190,12 +189,6 @@ internal fun BarsAutoPlanner(
                             else colors.onSurfaceVariant,
                     )
                 }
-                // A personal grade projection is exploratory; expressive wavy
-                // progress makes it distinct from a precise APK download.
-                LinearWavyProgressIndicator(
-                    progress = { (scenario.sum / plan.target).toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
 
                 if (plan.upcoming.isNotEmpty()) {
                     Row(

@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.VerticalFloatingToolbar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -898,26 +900,35 @@ internal fun CampusMapScreen(
             }
         }
 
-        Surface(
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = colors.surfaceContainerHigh,
-            shadowElevation = 2.dp,
+        // Native M3 Expressive floating toolbar uses its own container, spacing
+        // and 48dp touch targets. Vector symbols share the same 24dp optical box.
+        VerticalFloatingToolbar(
+            expanded = true,
+            modifier = Modifier.align(Alignment.CenterEnd)
+                .padding(end = FloatingToolbarDefaults.ScreenOffset)
+                .testTag("campus-zoom-toolbar"),
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { changeZoom(1.25f) }) {
-                    Text("+", style = MaterialTheme.typography.headlineSmall)
-                }
-                IconButton(onClick = { changeZoom(1f / 1.25f) }) {
-                    Text("−", style = MaterialTheme.typography.headlineSmall)
-                }
-                IconButton(onClick = {
+            IconButton(
+                onClick = { changeZoom(1.25f) },
+                modifier = Modifier.testTag("campus-zoom-in"),
+            ) {
+                AppIcon(AppIcons.ZoomIn, contentDescription = "Приблизить")
+            }
+            IconButton(
+                onClick = { changeZoom(1f / 1.25f) },
+                modifier = Modifier.testTag("campus-zoom-out"),
+            ) {
+                AppIcon(AppIcons.ZoomOut, contentDescription = "Отдалить")
+            }
+            IconButton(
+                onClick = {
                     stopFling()
                     zoom = 1.45f
                     pan = fitPan(Offset.Zero, zoom)
-                }) {
-                    AppIcon(AppIcons.Refresh, contentDescription = "Показать весь кампус")
-                }
+                },
+                modifier = Modifier.testTag("campus-zoom-reset"),
+            ) {
+                AppIcon(AppIcons.Refresh, contentDescription = "Показать весь кампус")
             }
         }
 
