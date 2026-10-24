@@ -22,13 +22,13 @@ internal fun rememberDestinationFocusPulse(requestKey: Any?): Float {
     val pulse = remember { Animatable(0f) }
     // Focus only changes emphasis (alpha/color), not geometry. Effects
     // springs avoid overshoot; the pause is an intentional reading interval.
-    val focusEnter = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
-    val focusExit = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val focusEnter = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
+    val focusExit = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     LaunchedEffect(requestKey) {
         pulse.snapTo(0f)
         pulse.animateTo(1f, animationSpec = focusEnter)
         delay(850L)
         pulse.animateTo(0f, animationSpec = focusExit)
     }
-    return pulse.value
+    return pulse.value.coerceIn(0f, 1f)
 }
