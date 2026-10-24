@@ -544,7 +544,7 @@ fun MpeiNeoApp(
                     } else {
                         serviceContent(
                             destination,
-                            active = currentService == destination && !searchUi.isOpen,
+                            currentService == destination && !searchUi.isOpen,
                         )
                     }
                 } else {
