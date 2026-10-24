@@ -5,8 +5,8 @@ import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -140,18 +140,23 @@ internal fun ScheduleAgenda(
     }
 
     // transitionSpec is not @Composable: resolve tokens while in composition.
-    val weekEnterEffects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-    val weekExitEffects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val weekSpatialSpring = MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
         modifier = modifier.fillMaxSize(),
         label = "schedule-week",
         transitionSpec = {
-            // Opacity is an effects role: never apply a bouncy spatial spring
-            // to fades. Keep incoming content more gradual than outgoing.
-            fadeIn(weekEnterEffects) togetherWith
-                fadeOut(weekExitEffects)
+            // For the spatial-motion trial, week changes travel in the
+            // direction of the selected week instead of fading in place.
+            val forward = targetState >= initialState
+            slideInHorizontally(
+                initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
+                animationSpec = weekSpatialSpring,
+            ) togetherWith slideOutHorizontally(
+                targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
+                animationSpec = weekSpatialSpring,
+            )
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
