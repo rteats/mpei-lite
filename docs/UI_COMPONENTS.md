@@ -2,19 +2,24 @@
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |
-| Four-tab navigation | FourTabNavigationBar.kt / MpeiNeoApp.kt | Material 3 tabs: Пары, БАРС, Почта, Корпуса. Schedule is default; Settings is secondary. Tab switches crossfade without creating a tab history. |
-| Nested Back | MpeiNeoApp.kt / BackSlideState.kt | Actual parent reveals under Settings and explicit Schedule-to-Campus links. Root Back from other tabs returns Schedule; root Schedule leaves system Back to Android. |
+| Four-tab navigation | FourTabNavigationBar.kt / MpeiNeoApp.kt / PrimaryServicePagerPolicy.kt | Material 3 tabs in order Пары → БАРС → Почта → Корпуса. A continuous HorizontalPager allows finger swipes; a themed spatial spring settles both gestures and tab-button transitions. No tab history. |
+| Nested Back | MpeiNeoApp.kt / ServiceNavigationState.kt | System/explicit Back returns from Settings and linked destinations to the real origin. Root Back from other tabs returns Schedule; root Schedule leaves system Back to Android. |
 | Schedule service | MpeiNeoApp.kt / ScheduleAgenda.kt | Schedule has its own scrolling and week gestures, independent of service navigation. |
 | Shared search app bar | SearchAppBar.kt | Contextual top search, Schedule refresh, Mail compose, and Settings from each service. Search expands its field, edge controls and results separately. |
 | Scoped search results | GlobalSearchScreen.kt | Search is limited to the selected service; cached BARS/Mail matches and Schedule targets use existing providers. |
-| Schedule target picker | ScheduleDockedSearch.kt | A separate favorites button opens the existing specialized timetable picker, including favorites, rename and category filters. The normal search bar opens unified scoped search; week-refresh button remains. |
+| Schedule targets | GlobalSearchScreen.kt | Scoped search supports favorites, renaming, target category filters and timetable selection; the agenda's week-refresh button remains. |
 | Campus building selector | CampusMapScreen.kt | Map uses its alphabetic building keyboard rather than a misleading free-text search: choosing a building focuses/highlights the actual vector geometry. |
-| Favorite row overflow | ScheduleDockedSearch.kt | Rename or remove favorite. Blank name restores the original display name. |
+| Favorite row overflow | GlobalSearchScreen.kt | Rename or remove favorite. Blank name restores the original display name. |
 | Custom-name persistence | UserPreferences.kt | Names stored separately by schedule-target type and id; existing favorites are preserved. |
 | Date-grouped timeline | ScheduleAgenda.kt | Native sticky day headers in a bounded, scrolling LazyColumn. Pull to refresh; weeks loaded on demand. |
 | Class card and summary | ScheduleNextLessonStrip.kt / ScheduleScreen.kt | Compact current/next-lesson strip links to the exact cached lesson in the timetable. Lesson cards retain inline type, classroom and progress. |
 | BARS «Автомат» plan | BarsAutoPlanner / BarsAutoPlan.kt / BarsAutoFocus.kt | Goal-first weighted 4.20 planner with impact-ranked upcoming tests, editable future marks (3/4/5), a minimum-grade-step recommendation, bounds and a compact cross-course focus panel. Actual BARS grades stay fixed. |
 | Settings | SettingsScreen.kt | Update, diagnostics and cache; refresh-on-launch toggle removed. |
+
+## Spring motion and pager
+
+See [the Material 3 Expressive motion implementation notes](MOTION_EXPRESSIVE.md)
+for spring-token choices, gesture precedence, session preservation and QA.
 
 ## Data behavior
 
@@ -30,8 +35,10 @@ an explicit refresh. The former month/year, Today button, stale badge, refresh
 button, and target selector card are removed.
 
 The application launches on Schedule. Four equal-level destinations occupy a
-Material 3 bottom navigation bar. A tab switch retains saveable state and uses
-a short crossfade. The BARS WebView remains in one long-lived composition.
+Material 3 bottom navigation bar. The selected page slides with continuous
+HorizontalPager drag and a slow spatial spring from the theme. The pager
+retains the BARS page and its one WebView even when it is far offscreen;
+other distant feature UI is lazily unmounted with saveable state retained.
 The bar hides for Settings, full-screen search, embedded browsers and native
 Mail/BARS details. Settings is available in the app-bar controls on each tab.
 
@@ -47,10 +54,9 @@ clear that transient link.
 
 ## Service navigation, back swipes and WebViews
 
-Four primary services use direct tabs. Nested native details and Settings
-retain a parent-reveal rightward Back animation; tab changes do not slide
-over an imaginary Home page. Root Back returns to Schedule, where Android
-handles Back-to-home. The Campus root no longer has a service-exit swipe
+Four primary services are horizontal pager pages with direct bottom-bar
+selection. Nested native details and Settings own Back independently of tab
+paging. Root Back returns to Schedule, where Android handles Back-to-home. The Campus root no longer has a service-exit swipe
 zone; a narrow zone is available for an explicit Schedule-to-Campus return.
 BARS and Mail WebViews preserve their separate history and exit behavior.
 
@@ -122,14 +128,13 @@ selected timetable. Mail result navigation selects Inbox or Sent before
 opening the message. The Campus alphabetic building keyboard remains a
 separate spatial control.
 
-The source search field animates into the destination field; the IME opens
-after the expansion to avoid layout jumps. Verify search activation/reversal
-on narrow screens in light/dark Monet themes, including navigation and
-WebView keyboard transitions.
+Search opens as a separate contextual screen. While open, the root page
+pager is disabled, so text editing, keyboard Back and list gestures do not
+change services. Verify keyboard behavior on narrow screens and both themes.
 
 ## Maintainer boundaries
 
-`MpeiNeoApp.kt` hosts Compose presentation and common transitions.
+`MpeiNeoApp.kt` hosts Compose presentation and the single service pager.
 `ServiceRouteStack.kt` owns route identity, stack and gesture decisions;
 `ServiceRouteSnapshot` derives the foreground and beneath destinations.
 BARS extraction-related flags share one `BarsWebFlowState`, while

@@ -5,7 +5,6 @@ import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -146,8 +145,10 @@ internal fun ScheduleAgenda(
         modifier = modifier.fillMaxSize(),
         label = "schedule-week",
         transitionSpec = {
-            fadeIn(tween(AppMotionTiming.LOCAL_CONTENT_MS)) togetherWith
-                fadeOut(tween(AppMotionTiming.LOCAL_CONTENT_MS))
+            // Opacity is an effects role: never apply a bouncy spatial spring
+            // to fades. Keep incoming content more gradual than outgoing.
+            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) togetherWith
+                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
@@ -203,7 +204,9 @@ internal fun ScheduleAgenda(
         }
         val visualPull by animateFloatAsState(
             targetValue = pullDistance,
-            animationSpec = tween(durationMillis = if (pullDistance == 0f) 220 else 65),
+            // Fast spatial spring retargets on finger reversals and release;
+            // threshold detection still reads the raw gesture distance.
+            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>(),
             label = "schedule-week-pull-stretch",
         )
 

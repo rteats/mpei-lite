@@ -37,6 +37,7 @@ class UiSmokeTest {
 
     @Test
     fun primaryDestinationsRender() {
+        composeRule.onNodeWithTag("primary-service-pager").assertExists()
         composeRule.onNodeWithTag("compact-search-action").assertIsDisplayed()
         composeRule.onNodeWithTag("schedule-week-refresh").assertIsDisplayed()
         composeRule.onNodeWithTag("search-app-bar-entry").assertDoesNotExist()

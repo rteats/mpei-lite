@@ -242,11 +242,12 @@ internal fun LessonCard(
                 visible = expanded,
                 enter = expandVertically(
                     expandFrom = Alignment.Top,
-                    animationSpec = androidx.compose.animation.core.tween(180),
+                    // Local expansion is a small spatial change, not an opacity effect.
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                 ),
                 exit = shrinkVertically(
                     shrinkTowards = Alignment.Top,
-                    animationSpec = androidx.compose.animation.core.tween(140),
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                 ),
             ) {
                 Column(

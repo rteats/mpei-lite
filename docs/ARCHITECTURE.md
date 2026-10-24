@@ -7,15 +7,17 @@ without Android UI.
 
 ## Application shell
 
-`MpeiNeoApp.kt` composes four top-level services, secondary Settings and a
-single contextual search screen. `ServiceNavigationState` owns route changes.
-Screen changes take effect directly, without custom transition jobs or
-per-frame Back-slide progress. The system Back action and explicit Back buttons
+`MpeiNeoApp.kt` composes four top-level HorizontalPager pages, secondary
+Settings and a single contextual search screen. `ServiceNavigationState`
+owns committed routes; Foundation Pager owns finger-driven page movement
+and spring settling. There are no custom transition jobs or Back-slide
+progress controllers. See [motion notes](MOTION_EXPRESSIVE.md). The system Back action and explicit Back buttons
 close nested destinations.
 
-BARS has a retained, full-size WebView composition even when its tab is not
-visible. Moving its hidden layout outside the input region must not destroy
-the WebView or expose it to the active tab's touch or accessibility focus.
+BARS has a retained, full-size WebView composition in its dedicated pager
+page even when offscreen. All four pager slots stay precomposed, but only the
+nearby non-BARS feature content mounts; no detached duplicate WebView or
+cross-page touch layer is needed.
 
 ## Feature ownership
 
