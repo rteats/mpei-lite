@@ -23,6 +23,32 @@ class PrimaryServicePagerPolicyTest {
         assertTrue(shouldComposePrimaryPage(2, 1, 1))
     }
 
+    @Test fun distantTabTapsTravelOneVirtualPageInEitherDirection() {
+        val forward = adjacentProgrammaticPages(AppTab.SCHEDULE, AppTab.MAPS)
+        assertEquals(AppTab.SCHEDULE, forward[0])
+        assertEquals(AppTab.MAPS, forward[1])
+        assertEquals(PRIMARY_TABS.toSet(), forward.toSet())
+        val backward = adjacentProgrammaticPages(AppTab.MAPS, AppTab.SCHEDULE)
+        assertEquals(AppTab.MAPS, backward[3])
+        assertEquals(AppTab.SCHEDULE, backward[2])
+        assertEquals(PRIMARY_TABS.toSet(), backward.toSet())
+        assertEquals(PRIMARY_TABS, adjacentProgrammaticPages(AppTab.BARS, AppTab.MAIL))
+        assertEquals(PRIMARY_TABS, adjacentProgrammaticPages(AppTab.MAIL, AppTab.MAIL))
+    }
+
+    @Test fun barsCompositionUsesItsKeyAfterVirtualReordering() {
+        val order = adjacentProgrammaticPages(AppTab.SCHEDULE, AppTab.MAPS)
+        val barsIndex = order.indexOf(AppTab.BARS)
+        assertTrue(shouldComposePrimaryPage(barsIndex, 0, 1, isBarsPage = true))
+        assertFalse(shouldComposePrimaryPage(barsIndex, 0, 1, isBarsPage = false))
+    }
+
+    @Test fun titleTravelMatchesServiceDirection() {
+        assertEquals(1, titleTravelDirection(SearchScope.SCHEDULE, SearchScope.MAPS))
+        assertEquals(-1, titleTravelDirection(SearchScope.MAPS, SearchScope.MAIL))
+        assertEquals(-1, titleTravelDirection(SearchScope.BARS, SearchScope.SCHEDULE))
+    }
+
     @Test fun nestedAndImeGesturesDoNotChangeRootTab() {
         fun allowed(
             root: Boolean = true, search: Boolean = false, ime: Boolean = false,
