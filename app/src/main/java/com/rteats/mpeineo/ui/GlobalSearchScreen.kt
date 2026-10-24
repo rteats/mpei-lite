@@ -113,6 +113,9 @@ internal object GlobalSearchIndex {
             }.take(20)
 }
 
+// The expanded search retains the existing controlled query and remote
+// debounce; Material SearchBar input colors/shape keep its field consistent.
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun GlobalSearchScreen(
     query: String,
@@ -199,17 +202,15 @@ internal fun GlobalSearchScreen(
                             SearchScope.MAPS -> "Корпус или аудитория"
                         }) },
                         leadingIcon = { AppIcon(AppIcons.Search, contentDescription = null) },
-                        shape = MaterialTheme.shapes.extraLarge,
+                        shape = SearchBarDefaults.inputFieldShape,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
                             keyboard?.hide()
                         }),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                        ),
+                        // SearchBar input tokens on the existing controlled
+                        // field preserve direct query/remote debounce ownership;
+                        // no second SearchBarState or nested search popup.
+                        colors = SearchBarDefaults.inputFieldColors(),
                         trailingIcon = if (query.isNotBlank()) {{
                             IconButton(
                                 onClick = { onQueryChange("") },
@@ -348,7 +349,7 @@ internal fun GlobalSearchScreen(
                     item {
                         Row(Modifier.fillMaxWidth().padding(20.dp),
                             horizontalArrangement = Arrangement.Center) {
-                            CircularProgressIndicator(Modifier.size(22.dp))
+                            LoadingIndicator(Modifier.size(32.dp).testTag("search-loading"))
                         }
                     }
                 }
