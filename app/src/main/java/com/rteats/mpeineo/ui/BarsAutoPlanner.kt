@@ -246,9 +246,8 @@ internal fun BarsAutoPlanner(
                             // M3 connected single-choice toggles use pressed/
                             // checked shape transitions from MotionScheme.
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(
-                                    ButtonGroupDefaults.ConnectedSpaceBetween,
-                                ),
+                                // Treat the 3/4/5 options as one compact group.
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 listOf(3, 4, 5).forEachIndexed { i, grade ->
                                     ToggleButton(
@@ -270,7 +269,7 @@ internal fun BarsAutoPlanner(
                                             containerColor = colors.surfaceContainerHighest,
                                             contentColor = colors.onSurface,
                                         ),
-                                        contentPadding = PaddingValues(horizontal = 12.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp),
                                     ) { Text(grade.toString()) }
                                 }
                             }
