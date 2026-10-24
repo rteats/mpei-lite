@@ -834,11 +834,16 @@ internal fun CampusMapScreen(
                     enter = androidx.compose.animation.expandVertically(
                         expandFrom = Alignment.Top,
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                    ) + androidx.compose.animation.fadeIn(),
+                    ) + androidx.compose.animation.fadeIn(
+                        // Opacity must not overshoot as the panel expands.
+                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    ),
                     exit = androidx.compose.animation.shrinkVertically(
                         shrinkTowards = Alignment.Top,
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                    ) + androidx.compose.animation.fadeOut(),
+                    ) + androidx.compose.animation.fadeOut(
+                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    ),
                 ) {
                     Surface(
                         shape = MaterialTheme.shapes.extraLarge,

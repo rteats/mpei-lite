@@ -6,6 +6,9 @@ import android.view.WindowInsets as AndroidWindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,10 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -31,17 +32,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -61,11 +58,10 @@ import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.delay
-import kotlin.math.roundToInt
 
 /**
- * A single composited foreground page over a permanently mounted background.
- * Drag progress and automatic push/pop share one reveal value.
+ * Four horizontally scrolling service pages. The navigation state owns committed
+ * routes; Pager owns gesture physics. BARS always remains composed for 2FA.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -136,14 +132,23 @@ fun MpeiNeoApp(
     val currentService = navigation.current
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
-    var widthPx by remember { mutableFloatStateOf(1f) }
+    val foregroundTab = if (currentService == AppTab.SETTINGS) {
+        beneathService ?: AppTab.SCHEDULE
+    } else currentService ?: AppTab.SCHEDULE
+    val pagerState = rememberPagerState(
+        initialPage = primaryPageFor(foregroundTab),
+        pageCount = { PRIMARY_TABS.size },
+    )
+    // Full-page movement uses the theme's slow spatial spring, not a tween.
+    val pageSpring = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+    var programmaticPaging by remember { mutableStateOf(false) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
-    // The bar switches context when navigation begins, not when its slide ends.
+    // The bar shows the committed tab while the pager follows the gesture.
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
-    // Keep the original tab bar in place while Settings slides above it.
+    // Settings overlays the same mounted tab shell.
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
 
     var agendaScrolling by remember { mutableStateOf(false) }
@@ -224,7 +229,6 @@ fun MpeiNeoApp(
         searchUi.close()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        // Preserve visible results until the reverse reveal has fully closed.
         viewModel.updateSearchQuery("")
     }
 
@@ -286,6 +290,47 @@ fun MpeiNeoApp(
                 }
             }
         }
+    }
+
+    // Programmatic navigation uses the same spring as finger flings. The guard
+    // prevents an intermediate pager page from changing the real route.
+    LaunchedEffect(foregroundTab) {
+        val requested = primaryPageFor(foregroundTab)
+        if (pagerState.settledPage != requested || pagerState.isScrollInProgress) {
+            programmaticPaging = true
+            try {
+                pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
+            } finally {
+                programmaticPaging = false
+            }
+        }
+    }
+
+    val mailDetailForeground = currentService == AppTab.MAIL &&
+        (mailState.selected != null || mailState.composing)
+    val barsBrowserForeground = currentService == AppTab.BARS &&
+        (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH)
+    val rootPagingEnabled = canSwipePrimaryPages(
+        atRoot = navigation.routes.size == 1 && currentService != AppTab.SETTINGS,
+        searchOpen = searchUi.isOpen,
+        imeVisible = imeVisible,
+        mailBrowser = mailWebVisible,
+        barsBrowser = barsBrowserForeground,
+        mailDetail = mailDetailForeground,
+        barsDetail = currentService == AppTab.BARS && barsDetailOpen,
+    )
+
+    // Only a settled *finger swipe* commits a new tab. Normal tab selection
+    // remains route-first, and explicit links retain their back origin.
+    LaunchedEffect(
+        pagerState.settledPage, pagerState.isScrollInProgress,
+        rootPagingEnabled, programmaticPaging,
+    ) {
+        if (!rootPagingEnabled || programmaticPaging ||
+            pagerState.isScrollInProgress
+        ) return@LaunchedEffect
+        val settled = PRIMARY_TABS[pagerState.settledPage]
+        if (settled != currentService) openService(settled)
     }
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
@@ -454,40 +499,57 @@ fun MpeiNeoApp(
             }
         },
     ) { innerPadding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
-                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) },
-        ) {
-            // Keep one full-size BARS WebView instance but move it outside
-            // touch and accessibility bounds when another tab is active.
-            val visibleService = if (currentService == AppTab.SETTINGS) {
-                beneathService ?: AppTab.SCHEDULE
-            } else currentService ?: AppTab.SCHEDULE
-            if (visibleService != AppTab.BARS) {
-                serviceContent(visibleService, currentService == visibleService)
-            }
-            Box(
-                modifier = Modifier.fillMaxSize().offset {
-                    IntOffset(if (visibleService == AppTab.BARS) 0 else widthPx.roundToInt(), 0)
-                },
-            ) {
-                BarsScreen(
-                    viewModel = barsViewModel,
-                    onSearch = { openGlobalSearch(SearchScope.BARS) },
-                    autoRefreshEnabled = barsAutoRefreshEnabled,
-                    active = currentService == AppTab.BARS,
-                    allowBackgroundSync = barsAutoRefreshEnabled,
-                    onDetailOpenChange = { if (currentService == AppTab.BARS) barsDetailOpen = it },
-                    openDisciplineName = navigationTargets.barsRequestedDiscipline,
-                    openDisciplineRequest = navigationTargets.barsSearchRequest,
-                    onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
-                    onBrowserExit = {
-                        barsBrowserJustClosed = true
-                        dismissIme("bars-browser-back")
-                    },
-                    onAuthBrowserExit = { dismissIme("bars-auth-browser-exit") },
-                    modifier = Modifier.fillMaxSize(),
-                )
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // Four lightweight slots let Pager drag continuously. Only the
+            // current/target neighborhood mounts costly non-BARS UI.
+            // BARS is ALWAYS mounted, even when three pages offscreen.
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize().testTag("primary-service-pager"),
+                userScrollEnabled = rootPagingEnabled,
+                beyondViewportPageCount = PRIMARY_TABS.lastIndex,
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapAnimationSpec = pageSpring,
+                ),
+                key = { PRIMARY_TABS[it].name },
+            ) { page ->
+                val destination = PRIMARY_TABS[page]
+                if (shouldComposePrimaryPage(
+                        page, pagerState.currentPage, pagerState.targetPage,
+                    )
+                ) {
+                    if (destination == AppTab.BARS) {
+                        // Preserve this single authenticated WebView across
+                        // swipes; it must never be disposed by lazy paging.
+                        BarsScreen(
+                            viewModel = barsViewModel,
+                            onSearch = { openGlobalSearch(SearchScope.BARS) },
+                            autoRefreshEnabled = barsAutoRefreshEnabled,
+                            active = currentService == AppTab.BARS,
+                            allowBackgroundSync = barsAutoRefreshEnabled,
+                            onDetailOpenChange = {
+                                if (currentService == AppTab.BARS) barsDetailOpen = it
+                            },
+                            openDisciplineName = navigationTargets.barsRequestedDiscipline,
+                            openDisciplineRequest = navigationTargets.barsSearchRequest,
+                            onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
+                            onBrowserExit = {
+                                barsBrowserJustClosed = true
+                                dismissIme("bars-browser-back")
+                            },
+                            onAuthBrowserExit = { dismissIme("bars-auth-browser-exit") },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        serviceContent(
+                            destination,
+                            currentService == destination && !searchUi.isOpen,
+                        )
+                    }
+                } else {
+                    Box(Modifier.fillMaxSize())
+                }
             }
         }
     }
