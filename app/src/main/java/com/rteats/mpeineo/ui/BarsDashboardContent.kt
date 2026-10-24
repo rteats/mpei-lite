@@ -672,7 +672,7 @@ private fun DisciplineExpandedCard(
                 contentDescription = if (plannerExpanded) "Свернуть план" else "Открыть план",
                 tint = MaterialTheme.colorScheme.primary)
             }
-            if (plannerExpanded) {
+            SpatialExpansion(expanded = plannerExpanded) {
               BarsAutoPlanner(
                 discipline = discipline,
                 savedScenario = savedAutoScenario,
