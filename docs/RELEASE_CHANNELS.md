@@ -32,3 +32,16 @@ the manual workflow dispatch input. Stable Android `versionCode` is derived as:
 
 Dev and stable are separate Android apps and can be installed side by side.
 Their app data, WebView cookies and BARS sessions are intentionally independent.
+
+## Continuous integration and Actions hygiene
+
+- PR verification runs JVM unit tests, Kotlin instrumentation-test compilation,
+  Android lint, an optimized release build, and small maintenance-script tests.
+  It does not start an emulator or upload an APK for every PR.
+- Every merge to main builds the rolling Dev APK and runs unit tests again.
+- Stable release alone runs an emulator smoke check before publishing.
+- The Dev job prunes unused Gradle caches and at most 75 completed, stale
+  Actions runs per build. All Stable release runs are kept, as are the 10 newest
+  Dev and PR verification runs; unrecognized workflows are never deleted.
+  Cache and run cleanup are best-effort and cannot fail a successful build.
+- Historical branch pruning no longer starts a workflow on every push.
