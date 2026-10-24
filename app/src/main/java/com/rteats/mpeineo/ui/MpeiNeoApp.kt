@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -472,28 +475,11 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            // Detail screens, portal views, search and the keyboard must not
-            // remove the global navigation bar. Only Settings owns it.
-            val showTabs = currentService != AppTab.SETTINGS
-            SpatialExpansion(expanded = showTabs) {
-                Box(Modifier.onSizeChanged { navigationBarHeightPx = it.height }) {
-                FourTabNavigationBar(
-                    selected = if (currentService == AppTab.SETTINGS)
-                        beneathService ?: AppTab.SCHEDULE
-                        else currentService ?: AppTab.SCHEDULE,
-                    unreadMail = mailState.configured && !mailState.loginRequired &&
-                        mailState.items.any { it.unread },
-                    onSelect = { tab ->
-                        if (tab == currentService && tab == AppTab.SCHEDULE) {
-                            todayJumpRequest++
-                        } else if (tab != currentService) {
-                            searchUi.close()
-                            openService(tab)
-                        }
-                    },
-                )
-                }
-            }
+            // Reserve the measured navigation row. The row itself is drawn
+            // after Search so neither Search nor IME can cover it.
+            Spacer(Modifier.height(with(LocalDensity.current) {
+                navigationBarHeightPx.toDp()
+            }))
         },
         topBar = {
             // Embedded browsers own a dedicated Material app bar. Never stack
@@ -635,6 +621,33 @@ fun MpeiNeoApp(
                 onClose = ::closeGlobalSearch,
                 focusWhenReady = searchUi.isOpen,
             )
+        }
+    }
+    // Draw the navbar above Search, portals and the keyboard. The IME inset
+    // is OUTSIDE the measured bar, avoiding a double keyboard-size spacer.
+    SpatialExpansion(
+        expanded = currentService != AppTab.SETTINGS,
+        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            .imePadding().testTag("persistent-primary-nav"),
+    ) {
+        Box(Modifier.fillMaxWidth().onSizeChanged {
+            navigationBarHeightPx = it.height
+        }) {
+                FourTabNavigationBar(
+                    selected = if (currentService == AppTab.SETTINGS)
+                        beneathService ?: AppTab.SCHEDULE
+                        else currentService ?: AppTab.SCHEDULE,
+                    unreadMail = mailState.configured && !mailState.loginRequired &&
+                        mailState.items.any { it.unread },
+                    onSelect = { tab ->
+                        if (tab == currentService && tab == AppTab.SCHEDULE) {
+                            todayJumpRequest++
+                        } else if (tab != currentService) {
+                            searchUi.close()
+                            openService(tab)
+                        }
+                    },
+                )
         }
     }
     }
