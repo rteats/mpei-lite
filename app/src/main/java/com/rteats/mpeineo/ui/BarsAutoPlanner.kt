@@ -63,7 +63,7 @@ internal fun barsAutoExplanations(plan: AutoPlanResult): List<BarsInfoSection> {
                 "Что означает вес",
                 "Вес показывает вклад КМ в итоговую взвешенную сумму. " +
                     "Изменение оценки на один балл добавляет ровно вес этого КМ. " +
-                    "Список отсортирован по влиянию; неделя помогает выбрать время подготовки.",
+                    "Чем выше вес мероприятия, тем сильнее оценка влияет на результат.",
             ),
             BarsInfoSection(
                 "Полнота данных",
@@ -112,7 +112,7 @@ internal fun BarsAutoPlanner(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "План на автомат",
+                "Прогноз 4,2",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -195,7 +195,7 @@ internal fun BarsAutoPlanner(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Оставшиеся КМ",
+                            "Будущие оценки",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Medium,
@@ -211,23 +211,9 @@ internal fun BarsAutoPlanner(
                                 onScenarioChange(encodeAutoScenario(plan.recommended))
                             },
                             modifier = Modifier.testTag("bars-auto-optimal"),
-                        ) { Text("Рекомендация") }
-                        TextButton(
-                            onClick = {
-                                onScenarioChange(
-                                    encodeAutoScenario(List(plan.upcoming.size) { 3 }),
-                                )
-                            },
-                        ) { Text("Все 3") }
-                        TextButton(
-                            onClick = {
-                                onScenarioChange(
-                                    encodeAutoScenario(List(plan.upcoming.size) { 5 }),
-                                )
-                            },
-                        ) { Text("Все 5") }
+                        ) { Text("Рекомендуемые") }
                     }
-                    autoPriorities(plan).forEachIndexed { rank, slot ->
+                    autoPriorities(plan).forEachIndexed { _, slot ->
                         val index = plan.upcoming.indexOf(slot)
                         HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.45f))
                         Row(
@@ -243,8 +229,7 @@ internal fun BarsAutoPlanner(
                                 Text(
                                     slot.name,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (rank == 0) FontWeight.SemiBold
-                                        else FontWeight.Medium,
+                                    fontWeight = FontWeight.Medium,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )

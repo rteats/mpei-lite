@@ -2,10 +2,6 @@ package com.rteats.mpeineo.ui
 
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,11 +82,7 @@ internal fun SettingsExpansion(
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(animationSpec = tween(140)),
-                exit = shrinkVertically(animationSpec = tween(120)),
-            ) {
+            if (expanded) {
                 Column(
                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),

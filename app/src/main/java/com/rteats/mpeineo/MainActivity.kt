@@ -14,7 +14,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rteats.mpeineo.ui.MainViewModel
 import com.rteats.mpeineo.ui.MpeiNeoApp
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
-import com.rteats.mpeineo.update.UpdateRelaunchState
 import com.rteats.mpeineo.data.InterfacePreferences
 
 data class MailNotificationTarget(val uid: Long, val validity: Long, val requestId: Int)
@@ -51,26 +50,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Android 12+ plays the five vector parts in the system splash window.
-        // Keep that window visible just long enough to finish the sequence,
-        // without adding any delay on ordinary activity resumes.
-        val launchStart = android.os.SystemClock.uptimeMillis()
-        val splash = installSplashScreen()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
-            android.animation.ValueAnimator.areAnimatorsEnabled()
-        ) {
-            splash.setKeepOnScreenCondition {
-                android.os.SystemClock.uptimeMillis() - launchStart < 620L
-            }
-        }
+        // Use Android's normal splash screen without an artificial delay.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         readMailTarget(intent)
         setContent {
             val interfacePrefs = remember { InterfacePreferences(applicationContext) }
-            val restoredUpdateRoutes = remember {
-                UpdateRelaunchState.consume(applicationContext, BuildConfig.VERSION_CODE)
-            }
             var theme by remember { mutableStateOf(interfacePrefs.theme) }
             MpeiNeoTheme(theme = theme) {
                 val application = application as MpeiNeoApplication
@@ -78,7 +64,6 @@ class MainActivity : ComponentActivity() {
                 MpeiNeoApp(
                     viewModel,
                     initialMailTab = intent.getBooleanExtra(EXTRA_OPEN_MAIL, false),
-                    restoredUpdateRoutes = restoredUpdateRoutes,
                     mailNotificationTarget = mailNotificationTarget,
                     interfaceTheme = theme,
                     onInterfaceThemeChange = { next ->

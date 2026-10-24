@@ -78,7 +78,6 @@ import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.R
 import com.rteats.mpeineo.data.MailNotificationPreferences
 import com.rteats.mpeineo.data.MailNotificationScheduler
-import com.rteats.mpeineo.update.InstallMode
 import com.rteats.mpeineo.data.InterfaceTheme
 import com.rteats.mpeineo.data.DiagnosticsArchive
 import com.rteats.mpeineo.data.DiagnosticsZipExporter
@@ -103,11 +102,6 @@ internal fun SettingsScreen(
     val context = LocalContext.current
     val application = context.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
-    val uiProfiler = application.container.uiFrameProfiler
-    val hostActivity = remember(context) {
-        generateSequence<Context>(context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>().firstOrNull()
-    }
     val owaAuthScope = rememberCoroutineScope()
     val exportScope = rememberCoroutineScope()
     var owaAuthBusy by remember { mutableStateOf(false) }
@@ -236,7 +230,7 @@ internal fun SettingsScreen(
             notificationsEnabled = true
             notificationError = null
         } else {
-            notificationError = "Разрешите уведомления для MPEI Neo в настройках Android."
+            notificationError = "Разрешите уведомления для MPEI Lite в настройках Android."
         }
     }
 
@@ -265,11 +259,7 @@ internal fun SettingsScreen(
         }
     }
     fun installDownloadedUpdate() {
-        // Shizuku uses shell privileges; unknown-sources permission applies only
-        // to the regular Android package installer.
-        if (updateState.installMode == InstallMode.SHIZUKU ||
-            context.packageManager.canRequestPackageInstalls()
-        ) {
+        if (context.packageManager.canRequestPackageInstalls()) {
             updateViewModel.installDownloadedUpdate(context)
         } else {
             installPermissionLauncher.launch(
@@ -287,7 +277,7 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "Интерфейс",
-                "Главная, оформление и отклик",
+                "Оформление и отклик",
                 AppIcons.Appearance,
                 interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
             ) {
@@ -460,70 +450,7 @@ internal fun SettingsScreen(
             ) {
                 UpdateCard(updateState, updateViewModel::checkForUpdates,
                     updateViewModel::downloadUpdate, ::installDownloadedUpdate)
-                SettingsAction(
-                    title = if (updateState.installMode == InstallMode.SHIZUKU)
-                        "Установка: Shizuku" else "Установка: Android",
-                    detail = if (updateState.installMode == InstallMode.SHIZUKU)
-                        "Тихая установка без системного диалога; нажмите для обычной"
-                    else "Обычная установка с подтверждением; нажмите для Shizuku",
-                    iconRes = AppIcons.InstallUpdate,
-                    onClick = {
-                        updateViewModel.setInstallMode(
-                            if (updateState.installMode == InstallMode.SHIZUKU)
-                                InstallMode.STANDARD else InstallMode.SHIZUKU,
-                        )
-                    },
-                )
-                if (updateState.installMode == InstallMode.SHIZUKU) {
-                    SettingsAction(
-                        title = "Доступ Shizuku",
-                        detail = updateState.shizukuStatus +
-                            " · нажмите, чтобы запросить доступ или обновить статус",
-                        iconRes = AppIcons.Confirm,
-                        onClick = {
-                            updateViewModel.requestShizukuPermission()
-                            updateViewModel.refreshShizukuStatus()
-                        },
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Автоматические обновления",
-                                style = MaterialTheme.typography.bodyLarge)
-                            Text("Проверка каждые ~6 часов, только с работающим Shizuku",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(
-                            checked = updateState.automaticUpdates,
-                            onCheckedChange = updateViewModel::setAutomaticUpdates,
-                        )
-                    }
-                    if (updateState.automaticUpdates) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        ) {
-                            Text("Загрузка только по Wi-Fi",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium)
-                            Switch(
-                                checked = updateState.wifiOnly,
-                                onCheckedChange = updateViewModel::setWifiOnly,
-                            )
-                        }
-                    }
-                    Text(
-                        "При обновлении открытого приложения оно откроется снова на прежнем экране. " +
-                            "В фоне и на экране блокировки установка не открывает приложение. " +
-                            "Если Shizuku недоступен, ручная установка работает через Android.",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+
             }
         }
         item {
@@ -535,26 +462,11 @@ internal fun SettingsScreen(
             ) {
                 SettingsExpansion(
                     "Дополнительные проверки",
-                    "Замеры плавности, ОСЭП и уведомления",
+                    "ОСЭП и уведомления",
                     AppIcons.Diagnostics,
                     advancedDiagnosticsExpanded,
                     { advancedDiagnosticsExpanded = !advancedDiagnosticsExpanded },
                 ) {
-                    SettingsAction(
-                        title = if (uiProfiler.active) "Завершить замер плавности"
-                            else "Замерить плавность интерфейса",
-                        detail = if (uiProfiler.active) {
-                            "Сбор кадров идёт. Перейдите в нужный раздел; автостоп через 60 секунд."
-                        } else {
-                            "60 секунд · задержки кадров по разделам · результат в журнале"
-                        },
-                        iconRes = AppIcons.Analytics,
-                        enabled = uiProfiler.active || hostActivity != null,
-                        onClick = {
-                            if (uiProfiler.active) uiProfiler.stop()
-                            else hostActivity?.let { uiProfiler.start(it.window) }
-                        },
-                    )
                     SettingsAction(
                         title = "Проверить сессию ОСЭП",
                         detail = owaAuthSummary
@@ -604,7 +516,7 @@ internal fun SettingsScreen(
                     title = "Экспортировать ZIP",
                     detail = exportStatus
                         ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                            "Сохранить в Загрузки/MPEI Neo/Diagnostics и открыть отправку"
+                            "Сохранить в Загрузки/MPEI Lite/Diagnostics и открыть отправку"
                         else "Выбрать папку для ZIP и открыть отправку",
                     iconRes = AppIcons.Download,
                     enabled = !exporting,
@@ -628,7 +540,7 @@ internal fun SettingsScreen(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
                             as ClipboardManager
                         clipboard.setPrimaryClip(
-                            ClipData.newPlainText("MPEI Neo diagnostics", content))
+                            ClipData.newPlainText("MPEI Lite diagnostics", content))
                         copied = true
                         diagnostics.log("DIAGNOSTICS", "log copied to clipboard")
                     },
@@ -646,12 +558,12 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "О приложении",
-                "MPEI Neo · " + BuildConfig.VERSION_NAME,
+                "MPEI Lite · " + BuildConfig.VERSION_NAME,
                 AppIcons.About,
                 aboutExpanded, { changeSection("about", !aboutExpanded) },
             ) {
                 Text(
-                    "MPEI Neo " + BuildConfig.VERSION_NAME + " (" +
+                    "MPEI Lite " + BuildConfig.VERSION_NAME + " (" +
                         BuildConfig.VERSION_CODE + ")",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     fontWeight = FontWeight.Bold,
@@ -682,7 +594,6 @@ private fun UpdateCard(
         it > BuildConfig.VERSION_CODE
     } == true
     val downloading = state.phase == UpdatePhase.DOWNLOADING
-    val installing = state.phase == UpdatePhase.INSTALLING
     val readyToInstall = state.phase == UpdatePhase.READY_TO_INSTALL &&
         !state.downloadedApkPath.isNullOrBlank()
 
@@ -705,16 +616,12 @@ private fun UpdateCard(
     if (available) {
         SettingsAction(
             title = when {
-                installing -> "Установка обновления"
                 readyToInstall -> "Установить обновление"
                 downloading -> "Скачивание обновления"
                 else -> "Скачать обновление"
             },
             detail = when {
-                installing -> "Тихая установка через Shizuku…"
-                readyToInstall -> if (state.installMode == InstallMode.SHIZUKU)
-                    "APK проверен · установить через Shizuku" else
-                    "APK проверен · открыть установщик Android"
+                readyToInstall -> "APK проверен · открыть установщик Android"
                 downloading && state.progressPercent != null ->
                     "Загружено: ${state.progressPercent}%"
                 downloading -> "Получаем APK…"
@@ -726,8 +633,8 @@ private fun UpdateCard(
                 AppIcons.Download
             },
             onClick = if (readyToInstall) onInstall else onDownload,
-            enabled = !downloading && !state.checking && !installing,
-            busy = installing,
+            enabled = !downloading && !state.checking,
+            busy = false,
             downloading = downloading,
             progressPercent = state.progressPercent,
         )

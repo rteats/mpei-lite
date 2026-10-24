@@ -149,21 +149,9 @@ internal fun MailScreen(
             }
         }
     }
-    val composeSlide = rememberBackSlideState()
-    var composeViewportPx by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(state.composing) {
-        if (state.composing) composeSlide.enter() else composeSlide.reset()
-    }
-    val messageSlide = rememberBackSlideState()
-    var messageViewportPx by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(state.selected?.uid, state.selected?.uidValidity) {
-        if (state.selected != null) messageSlide.enter() else messageSlide.reset()
-    }
-
     BackHandler(enabled = active && !state.composing && state.selected != null) {
-        messageSlide.exit(viewModel::closeMessage)
+        viewModel.closeMessage()
     }
-
 
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
@@ -172,8 +160,7 @@ internal fun MailScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(insets)
-                .onSizeChanged { composeViewportPx = it.width.toFloat().coerceAtLeast(1f) },
+            modifier = Modifier.fillMaxSize().padding(insets),
         ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (state.configured) {
@@ -256,8 +243,7 @@ internal fun MailScreen(
                 // Keep the Inbox mounted underneath a real sliding detail page,
                 // preserving scroll position during a cancelled rightward swipe.
                 Box(
-                    modifier = Modifier.weight(1f)
-                        .onSizeChanged { messageViewportPx = it.width.toFloat().coerceAtLeast(1f) },
+                    modifier = Modifier.weight(1f),
                 ) {
                         val refreshState = rememberPullToRefreshState()
                         PullToRefreshBox(
@@ -372,11 +358,7 @@ internal fun MailScreen(
                         }
                     if (state.selected != null) {
                         Box(
-                            modifier = Modifier.fillMaxSize()
-                                .graphicsLayer {
-                                    translationX = messageViewportPx * messageSlide.progress
-                                }
-                                .testTag("mail-message-slide-layer"),
+                            modifier = Modifier.fillMaxSize().testTag("mail-message-slide-layer"),
                         ) {
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
@@ -391,18 +373,11 @@ internal fun MailScreen(
                                             viewModel.localOpenFailed()
                                         }
                                     },
-                                    onBack = { messageSlide.exit(viewModel::closeMessage) },
+                                    onBack = { viewModel.closeMessage() },
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
-                            EmbeddedBrowserExitZone(
-                                onExit = { messageSlide.exit(viewModel::closeMessage) },
-                                onDrag = { delta -> messageSlide.drag(delta, messageViewportPx) },
-                                onRelease = { messageSlide.release(viewModel::closeMessage) },
-                                onCancel = messageSlide::cancel,
-                                modifier = Modifier.align(Alignment.CenterStart)
-                                    .testTag("mail-detail-swipe-back-zone"),
-                            )
+
                         }
                     }
                 }
@@ -412,11 +387,7 @@ internal fun MailScreen(
             // Keep the mailbox visible under the composer, just like a
             // service-to-Home Back. Unsaved input remains in MailComposeController.
             Box(
-                modifier = Modifier.fillMaxSize()
-                    .graphicsLayer {
-                        translationX = composeViewportPx * composeSlide.progress
-                    }
-                    .testTag("mail-compose-slide-layer"),
+                modifier = Modifier.fillMaxSize().testTag("mail-compose-slide-layer"),
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -426,19 +397,10 @@ internal fun MailScreen(
                         state = state,
                         viewModel = viewModel,
                         modifier = Modifier.fillMaxSize(),
-                        onExit = { composeSlide.exit(viewModel::closeCompose) },
+                        onExit = { viewModel.closeCompose() },
                     )
                 }
-                if (!state.sending) {
-                    EmbeddedBrowserExitZone(
-                        onExit = { composeSlide.exit(viewModel::closeCompose) },
-                        onDrag = { delta -> composeSlide.drag(delta, composeViewportPx) },
-                        onRelease = { composeSlide.release(viewModel::closeCompose) },
-                        onCancel = composeSlide::cancel,
-                        modifier = Modifier.align(Alignment.CenterStart)
-                            .testTag("mail-compose-swipe-back-zone"),
-                    )
-                }
+
             }
         }
         }
