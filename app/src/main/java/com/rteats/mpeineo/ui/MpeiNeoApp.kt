@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -435,11 +436,7 @@ fun MpeiNeoApp(
             } else if (currentService != AppTab.SETTINGS) {
             ContextSearchAppBar(
                     context = searchAppBarContext(currentService),
-                    onSearch = {
-                        {
-                            openGlobalSearch(searchAppBarContext(currentService).scope)
-                        }
-                    },
+                    onSearch = { openGlobalSearch(searchAppBarContext(currentService).scope) },
                     onScheduleRefresh = if (!searchUi.isOpen && currentService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
@@ -495,9 +492,7 @@ fun MpeiNeoApp(
             }
         }
     }
-    // Settings is a separate full-screen layer over the whole service shell.
-    // The underlying bottom bar never exits or shifts: Settings covers it,
-    // including during predictive Back and interactive swipe-to-dismiss.
+    // Settings covers the app shell without moving it.
     if (currentService == AppTab.SETTINGS) {
         Surface(
             modifier = Modifier.fillMaxSize()
@@ -523,8 +518,7 @@ fun MpeiNeoApp(
             }
         }
     }
-    // Global search is composed of independently expanding elements:
-    // the field, edge controls, surface, and results. No full-page mask morph.
+    // Search is a static screen scoped to the active service.
     if (searchUi.isOpen) {
         Box(
             modifier = Modifier.fillMaxSize().imePadding()

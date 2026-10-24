@@ -31,17 +31,6 @@ internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
     serviceRouteAfterBack(routes).lastOrNull()?.let(AppTab::valueOf)
 
-/** Preserve the existing pager-policy unit tests while using stack navigation. */
-internal fun lockedBrowserTab(
-    intended: AppTab,
-    mailWebVisible: Boolean,
-    barsWebVisible: Boolean,
-): AppTab? = when (intended) {
-    AppTab.MAIL -> AppTab.MAIL.takeIf { mailWebVisible }
-    AppTab.BARS -> AppTab.BARS.takeIf { barsWebVisible }
-    else -> null
-}
-
 internal fun scheduleDockRevealProgress(
     currentPage: Int,
     pageOffsetFraction: Float,

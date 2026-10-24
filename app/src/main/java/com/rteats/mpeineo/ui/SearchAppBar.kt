@@ -99,8 +99,7 @@ internal fun ContextSearchAppBar(
             actions = {
                 IconButton(
                     onClick = onSearch,
-                    modifier = Modifier.testTag("compact-search-action")
-                        .onGloballyPositioned { onSearchBoundsChanged(it.boundsInRoot()) },
+                    modifier = Modifier.testTag("compact-search-action"),
                 ) {
                     AppIcon(AppIcons.Search, contentDescription = "Поиск")
                 }
@@ -146,8 +145,7 @@ internal fun ContextSearchAppBar(
                 leadingIcon = {
                     AppIcon(AppIcons.Search, contentDescription = null)
                 },
-                modifier = Modifier.testTag("search-app-bar-entry")
-                    .onGloballyPositioned { onSearchBoundsChanged(it.boundsInRoot()) },
+                modifier = Modifier.testTag("search-app-bar-entry"),
             )
         },
         modifier = modifier.fillMaxWidth().testTag("search-app-bar"),

@@ -11,10 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -25,7 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.graphicsLayer
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.data.MailSummary
@@ -186,8 +182,7 @@ internal fun GlobalSearchScreen(
                 IconButton(onClick = onClose) {
                     AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
                 }
-                // Measure the final slot, not the transformed input, to avoid
-                // a feedback loop during the movement between the two bounds.
+                // The search input is not tied to source-button geometry.
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -225,8 +220,7 @@ internal fun GlobalSearchScreen(
                     )
                 }
             }
-            // Search chips and results start behind the field and slide into
-            // view. Clipping the body prevents drawing through the header.
+            // Search results remain inside a scrollable static screen.
             Box(modifier = Modifier.weight(1f).clipToBounds()) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
