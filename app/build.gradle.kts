@@ -7,7 +7,7 @@ val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNul
 val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.4.0-dev"
 // PR artifacts use a separate package so test builds cannot replace the rolling dev app.
 val prNumber = providers.gradleProperty("PR_NUMBER").orNull?.toIntOrNull()?.takeIf { it > 0 }
-// Experimental only: the published Dev and Stable APKs stay unminified until validated.
+// R8 remains an explicit release build property; CI controls the production setting.
 val optimizeRelease = providers.gradleProperty("OPTIMIZE_RELEASE").orNull == "true"
 
 val devStoreFile = providers.environmentVariable("ANDROID_DEV_KEYSTORE_FILE").orNull
@@ -75,7 +75,7 @@ android {
             dimension = "channel"
             applicationIdSuffix = ".dev" + (prNumber?.let { ".pr$it" } ?: "")
             manifestPlaceholders["appLabel"] =
-                prNumber?.let { "MPEI Neo PR #$it" } ?: "MPEI Neo Dev"
+                prNumber?.let { "MPEI Lite PR #$it" } ?: "MPEI Lite Dev"
             buildConfigField("String", "UPDATE_CHANNEL", "\"dev\"")
             if (devSigningReady) {
                 signingConfig = signingConfigs.getByName("ciDev")
@@ -84,7 +84,7 @@ android {
 
         create("stable") {
             dimension = "channel"
-            manifestPlaceholders["appLabel"] = "MPEI Neo"
+            manifestPlaceholders["appLabel"] = "MPEI Lite"
             buildConfigField("String", "UPDATE_CHANNEL", "\"stable\"")
             if (releaseSigningReady) {
                 signingConfig = signingConfigs.getByName("ciRelease")

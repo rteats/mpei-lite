@@ -1,4 +1,4 @@
-# MPEI Neo · UI component map
+# MPEI Lite · UI component map
 
 | What you see | Compose implementation | Behavior |
 | --- | --- | --- |

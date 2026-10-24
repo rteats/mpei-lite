@@ -1,10 +1,10 @@
 # Release channels
 
-MPEI Neo uses two Android application channels.
+MPEI Lite uses two Android application channels.
 
 ## Dev
 
-- App name: **MPEI Neo Dev**
+- App name: **MPEI Lite Dev**
 - Application ID: `com.rteats.mpeineo.dev`
 - Update channel: `dev`
 - Built automatically on every push to `main`
@@ -12,12 +12,12 @@ MPEI Neo uses two Android application channels.
 - Published as the rolling GitHub prerelease tagged `dev`
 - Version format: `0.4.0-dev.<workflow run number>`
 
-The rolling dev release is intended for rapid device testing. The `dev` tag is force-moved
+The rolling dev release is intended for rapid device testing. Keep the legacy APK asset name for update-manifest compatibility. The `dev` tag is force-moved
 to the newest main commit and the fixed `MPEI-Neo-Dev.apk` asset is replaced.
 
 ## Stable
 
-- App name: **MPEI Neo**
+- App name: **MPEI Lite**
 - Application ID: `com.rteats.mpeineo`
 - Update channel: `stable`
 - Signed only with the protected production signing secrets

@@ -116,7 +116,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: dev
-          name: MPEI Neo Dev ${{ env.DEV_BASE_VERSION }}-dev.${{ github.run_number }}
+          name: MPEI Lite Dev ${{ env.DEV_BASE_VERSION }}-dev.${{ github.run_number }}
           prerelease: true
           make_latest: false
           overwrite_files: true

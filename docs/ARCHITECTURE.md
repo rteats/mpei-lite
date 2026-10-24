@@ -1,148 +1,47 @@
-# MPEI Neo architecture and UX contracts
+# MPEI Lite architecture
 
-Merged branch maintenance is automated by `.github/workflows/prune-merged-branches.yml`:
-after each `main` push the workflow deletes only unprotected, PR-free
-branch heads which are provably ancestors of `main`. Release branches,
-unmerged work and open PRs are never removed.
+MPEI Lite uses a single Android app module. The important boundaries are
+**feature UI → ViewModel/coordinator → repository → network and persistence**.
+Pure models, search rules, grade calculations and route rules remain testable
+without Android UI.
 
-The project intentionally stays in **one Gradle module** until the boundaries
-below are stable and measured. A package or file split alone is not a refactor:
-the owner of mutable state and the direction of dependencies must change.
+## Application shell
 
-## Dependency direction
+`MpeiNeoApp.kt` composes four top-level services, secondary Settings and a
+single contextual search screen. `ServiceNavigationState` owns route changes.
+Screen changes take effect directly, without custom transition jobs or
+per-frame Back-slide progress. The system Back action and explicit Back buttons
+close nested destinations.
 
-```text
-App shell (navigation, animation, app bars)
-  ├── Schedule / BARS / Mail / Campus tabs and secondary Settings
-  │     └── feature ViewModel or state holder (commands + immutable view state)
-  │            └── repositories / authenticated session coordinators
-  │                   └── network, WebView bridge, local snapshot store
-  └── shared theme, components and diagnostics
+BARS has a retained, full-size WebView composition even when its tab is not
+visible. Moving its hidden layout outside the input region must not destroy
+the WebView or expose it to the active tab's touch or accessibility focus.
 
-Pure models, parsers, navigation policies and grade planners depend on no UI.
-```
+## Feature ownership
 
-**Navigation and motion:** Four equal-level services switch with a short
-crossfade and stable Material 3 bar. Settings and true native details reveal
-their actual parent during rightward Back. Browser exit and search expansion
-retain dedicated motion. Root Schedule yields system Back to Android.
+- **Schedule:** repository and file cache own target and agenda data. Search
+  provides group/teacher/classroom matches and saved favorites.
+- **BARS:** `BarsSessionCoordinator` controls extraction sessions, expiry,
+  cancellation and browser mode. `BarsWebViewTransport` owns Android WebView
+  lifecycle and JavaScript bridge. The UI does not own capture operations.
+  Local 4.2 projections are not official exam decisions.
+- **Mail:** `MailViewModel` and `MailComposeController` own drafts and mailbox
+  actions. OWA repositories own authenticated network requests and cache.
+  WorkManager remains for notification polling.
+- **Campus:** the bundled OSM geometry is rendered offline, with pan/zoom,
+  selected building and classroom focus managed by the campus screen.
+- **Updates:** manual GitHub APK download, package/version/signature validation,
+  and the standard Android installer. No privileged or background APK install.
+- **Diagnostics:** keep bounded logs and ZIP export. Performance investigations
+  can use developer profiling tools without adding a user-facing mode.
 
+## Verification and ownership
 
-**Shell:** routes, back policy, transitions, IME coordination and deep-link
-dispatch. Does not initiate BARS extraction or Mail network calls.
-**Feature UI:** renders immutable state and invokes commands. Does not decide
-authentication, retries, cache freshness or multi-document workflows.
-**Feature coordinator:** owns operations that span several asynchronous
-steps, such as a BARS Main → Summary capture. It enforces cancellation and
-one active session mode. UI cannot accidentally start two conflicting flows.
-**Repository:** snapshots, freshness, source provenance and persistence.
-**Domain:** deterministic rules for planning and mapping raw BARS activities.
+`scripts/check_architecture.py` checks key session and route boundaries.
+Unit tests protect parsers, grade algorithms, cache integrity and navigation.
+Device testing is required for real BARS 2FA, OWA login, notifications,
+accessibility and WebView lifecycle. Do not treat a passing compile job as a
+complete integration test.
 
-### Navigation and bars
-
-- Search belongs to the destination, not to the app shell. The primary
-  services use a contextual search app bar; Settings has a title and Back button.
-  More destination types can opt out without changing global search semantics.
-- The BARS WebView is one long-lived resource so cookies/2FA survive navigation.
-  It must not be recreated during a tab change.
-- BARS and OWA use the same `EmbeddedBrowserToolbar` with history-based Back
-  and Forward, a current-page Reload, and explicit Copy URL. Buttons are enabled
-  from WebView history callbacks; the site label never displays the path or
-  auth parameters. Controls reserve their own height instead of covering form
-  fields. The browser toolbar does not replace system Back or native routing.
-- Both embedded portals have a small left-edge swipe exit strip, separate
-  from WebView history Back. Mail returns to inbox; BARS returns to native
-  grades after login/2FA; it never returns to the removed Home route.
-  Keep the edge target narrow so regular browser scrolling remains available.
-- Schedule lesson highlights originate only from explicit cross-feature links;
-  the matched lesson acknowledges its one-shot request after the focus pulse,
-  and ordinary service navigation clears any stale pending request.
-- BARS browser mode is user-controlled. Auto-navigation to Summary must stop
-  before the interactive browser is exposed. Pending route-discovery and
-  delayed callbacks must be invalidated.
-- Extracting Main while browsing is read-only, but a stale Summary payload
-  must never update the repository after browser mode begins.
-- A failed Summary capture does **not** erase cached grades or a previously
-  valid Summary snapshot. The UI presents partial-success states explicitly.
-- The app shell navigates to the BARS feature; the BARS feature owns its own
-  overview → discipline → goal plan route.
-
-## UX: task-first BARS
-
-1. **Overview:** disciplines and grade/progress summary, compact next-action
-   hint; do not duplicate a complete planner above the discipline list.
-2. **Discipline:** evaluated and remaining activities, current average and
-   one 4.2 goal affordance.
-3. **Goal plan:** future-grade scenarios with explanations behind a single
-   info affordance; share the exact same planning function as the overview.
-4. **Reports:** attendance, weekly grade matrix, and raw diagnostics remain
-   accessible but are secondary to the overview.
-
-The app can be simplified without removing features by reducing the number
-of simultaneous choices on each level.
-
-## Rollout checks
-
-1. Unit-test top-bar policy, stack routes, BARS mode/cancellation, and grade
-   planning. Document risks before refactoring a source adapter.
-2. Build and lint the signed PR APK. Verify BARS cold launch with cached
-   marks, login/2FA, refresh, Summary timeout, and interactive browser while
-   Summary discovery is pending on a physical device.
-3. Test Back and swipe-back on Schedule root, Settings, BARS discipline and embedded
-   browsers; verify the IME never intercepts back navigation.
-4. Track *owners of mutable state*, *coupling across features*, and
-   *duplicate code paths*, not just Kotlin line count.
-5. Only merge independently verified PRs and publish a Dev build after the
-   integration check.
-
-## Implemented boundaries (October 2026)
-
-- `BarsSessionCoordinator`: pure Kotlin state machine for automatic Main and
-  Summary extraction, once-per-document marks, generation cancellation and
-  browser takeover. The WebView remains an adapter in `BarsScreen` for now.
-- `BarsWebFlowState`: presentation-only WebView flags (viewport, diagnostics,
-  manual connection intention), not the owner of extraction operations.
-- `ServiceNavigationState`: one saveable owner for service push/pop, Back preview
-  and the Schedule → Campus nested service stack.
-- `AppNavigationRequest`: typed cross-feature navigation and focus intent.
-  `AppNavigationTargets` owns unique IDs and acknowledgement for lesson,
-  discipline and campus highlights; the shell only dispatches and animates.
-- `SearchOverlayState`: query, search scope, activation, frozen source bounds,
-  reverse transition lifetime and restoration.
-- `MailComposeController`: draft/account snapshot, autosave, debounced recipient
-  lookup, outgoing SAF grants and sending; the Mail ViewModel remains the
-  combined UI state facade and owns mailbox sync and message pagination.
-- `MailPagePolicy`: pure inbox/Sent pagination invariants (server offsets,
-  deduplicated visible rows, preserving sent-recipient enrichment, and
-  exhaustion). The Mail ViewModel retains account sessions and I/O orchestration.
-- `scripts/check_architecture.py`: CI guard for the above ownership boundaries.
-  The guard runs for every PR and rolling Dev push.
-
-The Android-specific BARS WebView adapter is now `BarsWebViewTransport`.
-It owns WebView configuration, retained session instance, main-frame callbacks,
-JS bridge, document readiness watchdogs, background refresh and teardown.
-`BarsScreen` only composes native content and WebView visibility and forwards
-user commands; it must not make extraction or navigation decisions.
-`BarsSessionCoordinator` remains the pure policy/state machine, separate
-from Android transport.
-
-Still outstanding: test real university 2FA, cold-start session restoration,
-Main→Summary transition, interrupted captures and IME/gesture behavior on a
-physical device. The root shell retains platform IME and transition coordination;
-feature-specific one-shot focus targets are owned by AppNavigationTargets.
-A future Mail synchronization refactor should follow device validation and
-an explicit check of account-switch and logout races.
-
-## Next review criteria
-
-- No second owner of session operation state; callbacks are ignored after
-  cancellation or document change.
-- Native grades and attendance remain visible on recoverable network failure.
-- Back navigation from a BARS discipline returns to its overview rather than
-  Schedule, including gesture navigation.
-- Search keeps its source-anchored animation and does not appear in Settings.
-- A new feature cannot silently add separate global-search/route flags to
-  `MpeiNeoApp.kt`.
-
-Keep Mail and Schedule data providers independent; stay in one Gradle module
-until these boundaries have survived device testing.
+Keep internal package names and app IDs intact so installed users retain their
+data and can update in place. Visual branding may change independently.
