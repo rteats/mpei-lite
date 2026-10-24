@@ -10,7 +10,7 @@ MPEI Lite uses two Android application channels.
 - Built automatically on every push to `main`
 - Signed with the public disposable key in `ci/mpei-neo-dev.p12.b64`
 - Published as the rolling GitHub prerelease tagged `dev`
-- Version format: `0.4.0-dev.<workflow run number>`
+- Version format: `0.5.0-dev.<workflow run number>`
 
 The rolling dev release is intended for rapid device testing. Keep the legacy APK asset name for update-manifest compatibility. The `dev` tag is force-moved
 to the newest main commit and the fixed `MPEI-Neo-Dev.apk` asset is replaced.
@@ -23,7 +23,7 @@ to the newest main commit and the fixed `MPEI-Neo-Dev.apk` asset is replaced.
 - Signed only with the protected production signing secrets
 - Built by `.github/workflows/stable-release.yml`
 - Runs unit tests, lint and an emulator smoke test before publishing
-- Version format: semantic `MAJOR.MINOR.PATCH`, for example `0.4.0`
+- Version format: semantic `MAJOR.MINOR.PATCH`, for example `0.5.0`
 
 A stable release can be started either by pushing a `vMAJOR.MINOR.PATCH` tag or through
 the manual workflow dispatch input. Stable Android `versionCode` is derived as:

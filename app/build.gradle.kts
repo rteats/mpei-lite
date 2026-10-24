@@ -4,7 +4,7 @@ plugins {
 }
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
-val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.4.0-dev"
+val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.5.0-dev"
 // PR artifacts use a separate package so test builds cannot replace the rolling dev app.
 val prNumber = providers.gradleProperty("PR_NUMBER").orNull?.toIntOrNull()?.takeIf { it > 0 }
 // R8 remains an explicit release build property; CI controls the production setting.

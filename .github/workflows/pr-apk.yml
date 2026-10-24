@@ -60,7 +60,7 @@ jobs:
             -POPTIMIZE_RELEASE=${{ startsWith(github.head_ref, 'test/r8-') }} \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
-            -PVERSION_NAME=0.4.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}
+            -PVERSION_NAME=0.5.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}
 
       - name: Upload verification reports on failure
         if: failure()
