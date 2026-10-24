@@ -116,6 +116,14 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    // Retain the outgoing snapshot while its spatial exit spring settles.
+    // The ViewModel clears selected/composing on Back, not after the animation.
+    var lastDetailState by remember { mutableStateOf<MailUiState?>(null) }
+    var lastComposerState by remember { mutableStateOf<MailUiState?>(null) }
+    LaunchedEffect(state) {
+        if (state.selected != null) lastDetailState = state
+        if (state.composing) lastComposerState = state
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) {
         val note = state.notice
@@ -397,17 +405,19 @@ internal fun MailScreen(
                                 }
                             }
                         }
-                    if (state.selected != null) {
-                        Box(
-                            modifier = Modifier.fillMaxSize().testTag("mail-message-slide-layer"),
-                        ) {
+                    SpatialScreenOverlay(
+                        visible = state.selected != null,
+                        modifier = Modifier.testTag("mail-message-slide-layer"),
+                    ) {
+                        val detailState = if (state.selected != null) state else lastDetailState
+                        if (detailState != null) {
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
                                 color = MaterialTheme.colorScheme.background,
                             ) {
                                 MailMessage(
-                                    state = state,
-                                    isSent = state.mailbox == OwaMailFolder.SENT,
+                                    state = detailState,
+                                    isSent = detailState.mailbox == OwaMailFolder.SENT,
                                     onDownload = viewModel::download,
                                     onOpenLocal = { attachment, uri ->
                                         if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
@@ -418,30 +428,28 @@ internal fun MailScreen(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
-
                         }
                     }
                 }
             }
         }
-        if (state.composing) {
-            // Keep the mailbox visible under the composer, just like a
-            // service-to-Home Back. Unsaved input remains in MailComposeController.
-            Box(
-                modifier = Modifier.fillMaxSize().testTag("mail-compose-slide-layer"),
-            ) {
+        SpatialScreenOverlay(
+            visible = state.composing,
+            modifier = Modifier.testTag("mail-compose-slide-layer"),
+        ) {
+            val composerState = if (state.composing) state else lastComposerState
+            if (composerState != null) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     MailComposeScreen(
-                        state = state,
+                        state = composerState,
                         viewModel = viewModel,
                         modifier = Modifier.fillMaxSize(),
                         onExit = { viewModel.closeCompose() },
                     )
                 }
-
             }
         }
         }
