@@ -1,16 +1,14 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
@@ -19,8 +17,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -55,17 +54,6 @@ internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab)
 
 internal enum class SearchAppBarAction { NONE, REFRESH_WEEK, COMPOSE_MAIL }
 
-/** A title always travels in the same direction as its destination page. */
-internal fun titleTravelDirection(from: SearchScope, to: SearchScope): Int {
-    fun index(scope: SearchScope): Int = when (scope) {
-        SearchScope.SCHEDULE -> 0
-        SearchScope.BARS -> 1
-        SearchScope.MAIL -> 2
-        SearchScope.MAPS -> 3
-    }
-    return if (index(to) >= index(from)) 1 else -1
-}
-
 internal fun searchAppBarAction(tab: AppTab?, mailListReady: Boolean): SearchAppBarAction =
     when {
         tab == AppTab.SCHEDULE -> SearchAppBarAction.REFRESH_WEEK
@@ -89,23 +77,19 @@ internal fun ContextSearchAppBar(
         onMailCompose != null -> SearchAppBarAction.COMPOSE_MAIL
         else -> SearchAppBarAction.NONE
     }
-    val titleSpring = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+    // The app-wide spatial-only scheme makes long text moves too elastic.
+    // Use the native Expressive *effects* spring specifically for this title.
+    val titleEffects = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
     val actionSpring = MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()
     TopAppBar(
         title = {
             AnimatedContent(
                 targetState = context.scope,
-                modifier = Modifier.fillMaxWidth().clipToBounds(),
-                contentAlignment = Alignment.CenterStart,
                 transitionSpec = {
-                    val direction = titleTravelDirection(initialState, targetState)
-                    (slideInHorizontally(
-                        initialOffsetX = { width -> direction * width },
-                        animationSpec = titleSpring,
-                    ) togetherWith slideOutHorizontally(
-                        targetOffsetX = { width -> -direction * width },
-                        animationSpec = titleSpring,
-                    )).using(SizeTransform(clip = true))
+                    // Remove the old glyphs immediately: no two service
+                    // titles occupy the same position during a crossfade.
+                    fadeIn(animationSpec = titleEffects) togetherWith
+                        fadeOut(animationSpec = snap())
                 },
                 label = "service-app-bar-title",
             ) { scope ->
