@@ -144,6 +144,10 @@ def stale_run_candidates(runs, now):
         name = run.get("name", "")
         if run.get("status") != "completed" or name == "Stable release":
             continue
+        # Preserve successful pushed builds from retired release pipelines as
+        # an audit trail, even though their YAML definitions are gone.
+        if run.get("event") == "push" and run.get("conclusion") == "success":
+            continue
         if name not in RETIRED_WORKFLOWS and name not in ACTIVE_WORKFLOWS:
             continue
         seen[name] += 1

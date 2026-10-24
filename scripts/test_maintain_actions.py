@@ -23,6 +23,12 @@ class ActionsRetentionTest(unittest.TestCase):
         ]
         self.assertEqual([1], [r["id"] for r in stale_run_candidates(runs, NOW)])
 
+    def test_successful_pushed_legacy_release_is_preserved(self):
+        pushed = run(5, "Android CI and APK release", 100)
+        pushed["event"] = "push"
+        cancelled = run(6, "Android CI and APK release", 100, conclusion="cancelled")
+        self.assertEqual([6], [r["id"] for r in stale_run_candidates([pushed, cancelled], NOW)])
+
     def test_active_workflow_keeps_newest_ten_and_recent_history(self):
         old = [run(i, "PR verification", 30 + i) for i in range(12)]
         recent = [run(100 + i, "PR verification", 1) for i in range(10)]
