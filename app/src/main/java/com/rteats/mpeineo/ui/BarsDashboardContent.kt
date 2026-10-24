@@ -178,6 +178,11 @@ internal fun BarsNativeDashboard(
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
   }
+  // Keep the outgoing detail content intact while its spring slides away.
+  var retainedDiscipline by remember { mutableStateOf(state.disciplines.firstOrNull()) }
+  androidx.compose.runtime.LaunchedEffect(selectedDiscipline) {
+    if (selectedDiscipline != null) retainedDiscipline = selectedDiscipline
+  }
   androidx.compose.runtime.LaunchedEffect(openDisciplineRequest, openDisciplineName,
       state.disciplines, active) {
     if (active && openDisciplineName != null &&
@@ -306,8 +311,10 @@ internal fun BarsNativeDashboard(
             }
           }
 
-          if (selectedSection != "subjects" || reportPickerExpanded) {
-            item(key = "report-choices") {
+          item(key = "report-choices") {
+            SpatialExpansion(
+              expanded = selectedSection != "subjects" || reportPickerExpanded,
+            ) {
               BarsReportChooser(
                 selected = selectedSection,
                 onSelected = {
@@ -354,16 +361,16 @@ internal fun BarsNativeDashboard(
           }
         }
       }
-    if (selectedDiscipline != null) {
-      Box(
-        modifier = Modifier.fillMaxSize()
-          .testTag("bars-discipline-slide-layer"),
-      ) {
+    SpatialScreenOverlay(
+      visible = selectedDiscipline != null,
+      modifier = Modifier.testTag("bars-discipline-slide-layer"),
+    ) {
+      val expandedDiscipline = selectedDiscipline ?: retainedDiscipline
+      if (expandedDiscipline != null) {
         Surface(
           modifier = Modifier.fillMaxSize(),
           color = MaterialTheme.colorScheme.background,
         ) {
-          val expandedDiscipline = selectedDiscipline
           val planKey = autoScenarioKey(
             expandedDiscipline,
             account = state.profileName + "|" + state.profileGroup,
@@ -383,7 +390,6 @@ internal fun BarsNativeDashboard(
             onCollapse = ::closeDetail,
           )
         }
-
       }
     }
   }
