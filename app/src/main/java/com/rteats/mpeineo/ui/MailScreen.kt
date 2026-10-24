@@ -411,22 +411,27 @@ internal fun MailScreen(
                     ) {
                         val detailState = if (state.selected != null) state else lastDetailState
                         if (detailState != null) {
-                            Surface(
-                                modifier = Modifier.fillMaxSize(),
-                                color = MaterialTheme.colorScheme.background,
+                            SwipeBackDetail(
+                                onBack = viewModel::closeMessage,
+                                modifier = Modifier.testTag("mail-detail-swipe-back"),
                             ) {
-                                MailMessage(
-                                    state = detailState,
-                                    isSent = detailState.mailbox == OwaMailFolder.SENT,
-                                    onDownload = viewModel::download,
-                                    onOpenLocal = { attachment, uri ->
-                                        if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
-                                            viewModel.localOpenFailed()
-                                        }
-                                    },
-                                    onBack = { viewModel.closeMessage() },
+                                Surface(
                                     modifier = Modifier.fillMaxSize(),
-                                )
+                                    color = MaterialTheme.colorScheme.background,
+                                ) {
+                                    MailMessage(
+                                        state = detailState,
+                                        isSent = detailState.mailbox == OwaMailFolder.SENT,
+                                        onDownload = viewModel::download,
+                                        onOpenLocal = { attachment, uri ->
+                                            if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
+                                                viewModel.localOpenFailed()
+                                            }
+                                        },
+                                        onBack = { viewModel.closeMessage() },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                         }
                     }

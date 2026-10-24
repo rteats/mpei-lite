@@ -43,10 +43,11 @@ class PrimaryServicePagerPolicyTest {
         assertFalse(shouldComposePrimaryPage(barsIndex, 0, 1, isBarsPage = false))
     }
 
-    @Test fun titleTravelMatchesServiceDirection() {
-        assertEquals(1, titleTravelDirection(SearchScope.SCHEDULE, SearchScope.MAPS))
-        assertEquals(-1, titleTravelDirection(SearchScope.MAPS, SearchScope.MAIL))
-        assertEquals(-1, titleTravelDirection(SearchScope.BARS, SearchScope.SCHEDULE))
+    @Test fun serviceTitlesRemainScopedToTheirDestinations() {
+        assertEquals(SearchScope.SCHEDULE, searchAppBarContext(AppTab.SCHEDULE).scope)
+        assertEquals(SearchScope.BARS, searchAppBarContext(AppTab.BARS).scope)
+        assertEquals(SearchScope.MAIL, searchAppBarContext(AppTab.MAIL).scope)
+        assertEquals(SearchScope.MAPS, searchAppBarContext(AppTab.MAPS).scope)
     }
 
     @Test fun nestedAndImeGesturesDoNotChangeRootTab() {
