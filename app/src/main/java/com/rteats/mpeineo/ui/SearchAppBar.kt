@@ -1,13 +1,16 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
@@ -52,6 +55,17 @@ internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab)
 
 internal enum class SearchAppBarAction { NONE, REFRESH_WEEK, COMPOSE_MAIL }
 
+/** A title always travels in the same direction as its destination page. */
+internal fun titleTravelDirection(from: SearchScope, to: SearchScope): Int {
+    fun index(scope: SearchScope): Int = when (scope) {
+        SearchScope.SCHEDULE -> 0
+        SearchScope.BARS -> 1
+        SearchScope.MAIL -> 2
+        SearchScope.MAPS -> 3
+    }
+    return if (index(to) >= index(from)) 1 else -1
+}
+
 internal fun searchAppBarAction(tab: AppTab?, mailListReady: Boolean): SearchAppBarAction =
     when {
         tab == AppTab.SCHEDULE -> SearchAppBarAction.REFRESH_WEEK
@@ -81,23 +95,29 @@ internal fun ContextSearchAppBar(
         title = {
             AnimatedContent(
                 targetState = context.scope,
+                modifier = Modifier.fillMaxWidth().clipToBounds(),
+                contentAlignment = Alignment.CenterStart,
                 transitionSpec = {
-                    slideInHorizontally(
-                        initialOffsetX = { it / 4 },
+                    val direction = titleTravelDirection(initialState, targetState)
+                    (slideInHorizontally(
+                        initialOffsetX = { width -> direction * width },
                         animationSpec = titleSpring,
                     ) togetherWith slideOutHorizontally(
-                        targetOffsetX = { -it / 4 },
+                        targetOffsetX = { width -> -direction * width },
                         animationSpec = titleSpring,
-                    )
+                    )).using(SizeTransform(clip = true))
                 },
                 label = "service-app-bar-title",
             ) { scope ->
-                Text(when (scope) {
-                    SearchScope.BARS -> "БАРС"
-                    SearchScope.MAIL -> "Почта"
-                    SearchScope.MAPS -> "Корпуса"
-                    SearchScope.SCHEDULE -> "Пары"
-                })
+                Text(
+                    when (scope) {
+                        SearchScope.BARS -> "БАРС"
+                        SearchScope.MAIL -> "Почта"
+                        SearchScope.MAPS -> "Корпуса"
+                        SearchScope.SCHEDULE -> "Пары"
+                    },
+                    maxLines = 1,
+                )
             }
         },
         actions = {
