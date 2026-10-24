@@ -4,6 +4,7 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,10 +25,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +54,7 @@ internal fun SettingsBadge(iconRes: Int) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SettingsExpansion(
     title: String,
@@ -60,6 +64,11 @@ internal fun SettingsExpansion(
     onExpand: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>(),
+        label = "settings-expansion-chevron",
+    )
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -81,12 +90,13 @@ internal fun SettingsExpansion(
                 }
                 SettingsBadge(iconRes)
                 AppIcon(
-                    if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                    AppIcons.ExpandMore,
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
                     contentDescription = if (expanded) "Свернуть" else "Развернуть",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            if (expanded) {
+            SpatialExpansion(expanded = expanded) {
                 Column(
                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),

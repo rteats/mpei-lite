@@ -1,5 +1,12 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -8,6 +15,10 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -64,14 +75,30 @@ internal fun ContextSearchAppBar(
         onMailCompose != null -> SearchAppBarAction.COMPOSE_MAIL
         else -> SearchAppBarAction.NONE
     }
+    val titleSpring = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+    val actionSpring = MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()
     TopAppBar(
         title = {
-            Text(when (context.scope) {
-                SearchScope.BARS -> "БАРС"
-                SearchScope.MAIL -> "Почта"
-                SearchScope.MAPS -> "Корпуса"
-                SearchScope.SCHEDULE -> "Пары"
-            })
+            AnimatedContent(
+                targetState = context.scope,
+                transitionSpec = {
+                    slideInHorizontally(
+                        initialOffsetX = { it / 4 },
+                        animationSpec = titleSpring,
+                    ) togetherWith slideOutHorizontally(
+                        targetOffsetX = { -it / 4 },
+                        animationSpec = titleSpring,
+                    )
+                },
+                label = "service-app-bar-title",
+            ) { scope ->
+                Text(when (scope) {
+                    SearchScope.BARS -> "БАРС"
+                    SearchScope.MAIL -> "Почта"
+                    SearchScope.MAPS -> "Корпуса"
+                    SearchScope.SCHEDULE -> "Пары"
+                })
+            }
         },
         actions = {
             IconButton(
@@ -80,8 +107,18 @@ internal fun ContextSearchAppBar(
             ) {
                 AppIcon(AppIcons.Search, contentDescription = "Поиск")
             }
-            when (action) {
-                SearchAppBarAction.REFRESH_WEEK -> IconButton(
+            AnimatedVisibility(
+                visible = action == SearchAppBarAction.REFRESH_WEEK,
+                enter = expandHorizontally(
+                    expandFrom = Alignment.End,
+                    animationSpec = actionSpring,
+                ),
+                exit = shrinkHorizontally(
+                    shrinkTowards = Alignment.End,
+                    animationSpec = actionSpring,
+                ),
+            ) {
+                IconButton(
                     onClick = { onScheduleRefresh?.invoke() },
                     enabled = !scheduleRefreshing,
                     modifier = Modifier.testTag("schedule-week-refresh"),
@@ -89,13 +126,24 @@ internal fun ContextSearchAppBar(
                     if (scheduleRefreshing) LoadingIndicator(modifier = Modifier.size(24.dp))
                     else AppIcon(AppIcons.Refresh, contentDescription = "Обновить неделю")
                 }
-                SearchAppBarAction.COMPOSE_MAIL -> IconButton(
+            }
+            AnimatedVisibility(
+                visible = action == SearchAppBarAction.COMPOSE_MAIL,
+                enter = expandHorizontally(
+                    expandFrom = Alignment.End,
+                    animationSpec = actionSpring,
+                ),
+                exit = shrinkHorizontally(
+                    shrinkTowards = Alignment.End,
+                    animationSpec = actionSpring,
+                ),
+            ) {
+                IconButton(
                     onClick = { onMailCompose?.invoke() },
                     modifier = Modifier.testTag("mail-compose-fab"),
                 ) {
                     AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
                 }
-                SearchAppBarAction.NONE -> Unit
             }
             IconButton(
                 onClick = onSettings,

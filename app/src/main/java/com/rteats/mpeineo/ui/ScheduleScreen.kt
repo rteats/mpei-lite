@@ -4,6 +4,8 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
@@ -166,13 +168,22 @@ internal fun LessonCard(
     // Keep the linked-destination pulse, but don't independently animate shape,
     // padding, colour and text measurement for every lesson card.
     val cornerRadius = 28.dp
-    val container = lerp(
+    val targetContainer = lerp(
         lessonContainerColor(lesson.kind),
         MaterialTheme.colorScheme.primaryContainer,
         if (focusPulse > 0f) 0.12f + focusPulse * 0.35f
         else if (expanded) 0.12f else 0f,
     )
-    val verticalPadding = if (expanded) 13.dp else 10.dp
+    val container by animateColorAsState(
+        targetValue = targetContainer,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "lesson-card-color",
+    )
+    val verticalPadding by animateDpAsState(
+        targetValue = if (expanded) 13.dp else 10.dp,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "lesson-card-padding",
+    )
 
     Surface(
         onClick = {

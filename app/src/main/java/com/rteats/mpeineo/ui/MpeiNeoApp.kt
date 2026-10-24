@@ -388,7 +388,7 @@ fun MpeiNeoApp(
                                 onSearch = { openGlobalSearch(SearchScope.MAIL) },
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            if (mailWebVisible && active) {
+                            SpatialScreenOverlay(visible = mailWebVisible && active) {
                                 WebPortalScreen(
                                     url = "https://mail.mpei.ru/owa",
                                     testTag = "portal-mail",
@@ -452,7 +452,7 @@ fun MpeiNeoApp(
                 currentService == AppTab.SETTINGS) &&
                 !searchUi.isOpen && !browser && !barsDetail &&
                 !mailDetail && !imeVisible
-            if (showTabs) {
+            SpatialExpansion(expanded = showTabs) {
                 FourTabNavigationBar(
                     selected = if (currentService == AppTab.SETTINGS)
                         beneathService ?: AppTab.SCHEDULE
@@ -553,11 +553,13 @@ fun MpeiNeoApp(
             }
         }
     }
-    // Settings covers the app shell without moving it.
-    if (currentService == AppTab.SETTINGS) {
+    // Keep the app shell mounted. Settings enters and exits as a spatial page.
+    SpatialScreenOverlay(
+        visible = currentService == AppTab.SETTINGS,
+        modifier = Modifier.testTag("settings-fullscreen-layer"),
+    ) {
         Surface(
-            modifier = Modifier.fillMaxSize()
-                .testTag("settings-fullscreen-layer"),
+            modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
             Column(Modifier.fillMaxSize()) {
@@ -579,11 +581,13 @@ fun MpeiNeoApp(
             }
         }
     }
-    // Search is a static screen scoped to the active service.
-    if (searchUi.isOpen) {
+    // Search moves as a complete spatial overlay without cloning its input state.
+    SpatialScreenOverlay(
+        visible = searchUi.isOpen,
+        modifier = Modifier.imePadding().testTag("search-elements-overlay"),
+    ) {
         Box(
-            modifier = Modifier.fillMaxSize().imePadding()
-                .testTag("search-elements-overlay"),
+            modifier = Modifier.fillMaxSize(),
         ) {
             GlobalSearchScreen(
                 query = searchUi.query,
