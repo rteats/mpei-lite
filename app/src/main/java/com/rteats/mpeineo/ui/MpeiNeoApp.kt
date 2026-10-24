@@ -6,22 +6,6 @@ import android.view.WindowInsets as AndroidWindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -46,11 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -58,8 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,10 +59,7 @@ import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -158,29 +135,14 @@ fun MpeiNeoApp(
     val currentService = navigation.current
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
-    var reveal by remember { mutableFloatStateOf(1f) }
-    var isTransitioning by remember { mutableStateOf(false) }
-    var transitionJob by remember { mutableStateOf<Job?>(null) }
-    var motionGeneration by remember { mutableIntStateOf(0) }
-    val pendingExit = remember { NavigationExitTransaction() }
-    val scope = rememberCoroutineScope()
-    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var widthPx by remember { mutableFloatStateOf(1f) }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
     // The bar switches context when navigation begins, not when its slide ends.
-    var appBarService by remember { mutableStateOf(currentService) }
-    val searchReveal by animateFloatAsState(
-        targetValue = if (searchUi.isOpen) 1f else 0f,
-        animationSpec = tween(AppMotionTiming.SEARCH_EXPAND_MS, easing = FastOutSlowInEasing),
-        finishedListener = searchUi::onRevealSettled,
-        label = "search-elements-expansion",
-    )
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
     // Keep the original tab bar in place while Settings slides above it.
-    var settingsCoversTabs by remember { mutableStateOf(false) }
     var viewedScheduleWeek by remember { mutableIntStateOf(0) }
 
     var agendaScrolling by remember { mutableStateOf(false) }
@@ -213,44 +175,11 @@ fun MpeiNeoApp(
         }
     }
 
-    fun animateReveal(target: Float, onComplete: () -> Unit = {}) {
-        // A cancelled animation must never keep navigation locked, and a stale
-        // job must not clear the "transitioning" flag of its replacement.
-        val generation = ++motionGeneration
-        transitionJob?.cancel()
-        isTransitioning = true
-        transitionJob = scope.launch {
-            try {
-                animate(
-                    initialValue = reveal.coerceIn(0f, 1f),
-                    targetValue = target,
-                    animationSpec = tween(
-                        durationMillis = if (target == 0f) BACK_SLIDE_OUT_MS
-                            else BACK_SLIDE_IN_MS,
-                        easing = FastOutSlowInEasing,
-                    ),
-                ) { value, _ ->
-                    if (motionGeneration == generation) reveal = value
-                }
-                if (motionGeneration == generation) {
-                    reveal = target
-                    onComplete()
-                }
-            } finally {
-                if (motionGeneration == generation) isTransitioning = false
-            }
-        }
-    }
-
     fun openService(target: AppTab, viaClassroom: Boolean = false) {
         if (target == currentService && target != AppTab.SETTINGS && !viaClassroom) return
         if (target != AppTab.SCHEDULE) navigationTargets.clearScheduleFocus()
         application.container.uiFrameProfiler.markInteraction("NAV_" +
             if (target == AppTab.SETTINGS || viaClassroom) "PUSH" else "TAB_SWITCH")
-        transitionJob?.cancel()
-        motionGeneration++
-        pendingExit.settle()
-        isTransitioning = false
         if (navigationHaptics && !viaClassroom) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
@@ -262,46 +191,20 @@ fun MpeiNeoApp(
             dismissIme("bars-leave-service")
         }
         barsBrowserJustClosed = false
-        val nested = target == AppTab.SETTINGS || viaClassroom
-        if (target == AppTab.SETTINGS) {
-            settingsCoversTabs = navigation.routes.size == 1 &&
-                !(currentService == AppTab.BARS && (barsState.browserVisible ||
-                    barsState.authStage == BarsAuthStage.WEB_AUTH)) &&
-                !(currentService == AppTab.MAIL && (mailWebVisible ||
-                    mailState.selected != null || mailState.composing)) &&
-                !(currentService == AppTab.BARS && barsDetailOpen) && !imeVisible
-        }
-        // The original app bar stays behind the full-screen Settings layer.
-        appBarService = if (target == AppTab.SETTINGS) currentService else target
         navigation.open(target, viaClassroom)
-        reveal = if (nested) 0f else 1f
-        logNavigation("tab select " + target.name + " nested=" + nested)
-        if (nested) animateReveal(1f)
+        logNavigation("tab select " + target.name +
+            " nested=" + (target == AppTab.SETTINGS || viaClassroom))
     }
 
     fun goBackOneService() {
-        if (isTransitioning || !navigation.canPop) return
+        if (!navigation.canPop) return
         application.container.uiFrameProfiler.markInteraction("NAV_POP")
-        if (navigationHaptics) {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-        logNavigation("tab back " + currentService?.name +
-            " depth=" + navigation.routes.size)
+        if (navigationHaptics) hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         if (mailWebVisible || barsState.browserVisible) dismissIme("tab-pop")
         mailWebVisible = false
         barsBrowserJustClosed = false
-        appBarService = navigation.peekBack()
-        if (navigation.routes.size <= 1) {
-            navigation.pop()
-            reveal = 1f
-        } else {
-            pendingExit.begin {
-                navigation.pop()
-                reveal = 1f
-                barsDetailOpen = false
-            }
-            animateReveal(0f, pendingExit::settle)
-        }
+        navigation.pop()
+        barsDetailOpen = false
     }
 
     fun closeMailBrowser() {
@@ -397,24 +300,6 @@ fun MpeiNeoApp(
         closeMailBrowser()
     }
 
-    // Android predictive Back uses the same normalized nested page movement
-    // as the app's explicit Back button and custom swipe. Root Schedule leaves
-    // Back-to-home to the operating system.
-    PredictiveBackHandler(
-        enabled = navigation.routes.size > 1 && !isTransitioning &&
-            !mailWebVisible && !searchUi.isOpen &&
-            (currentService == AppTab.SETTINGS || currentService == AppTab.MAPS),
-    ) { events ->
-        try {
-            events.collect { event ->
-                reveal = (1f - event.progress).coerceIn(0f, 1f)
-            }
-            goBackOneService()
-        } catch (cancelled: CancellationException) {
-            animateReveal(1f)
-        }
-    }
-
     // Share the existing screen instances and saveable state between push,
     // background, and return. No second copy of the current page is ever drawn.
     val serviceContent: @Composable (AppTab, Boolean) -> Unit = { destination, active ->
@@ -503,51 +388,6 @@ fun MpeiNeoApp(
     }
 
 
-    // Custom rightward swipe is reserved for genuine nested routes.
-    fun Modifier.serviceBackGesture(
-        eligible: Boolean,
-        interactive: Boolean,
-        mapEdgeZone: Boolean = false,
-    ): Modifier =
-        pointerInput(currentService, eligible, interactive, mapEdgeZone) {
-            if (!eligible) return@pointerInput
-            var acceptedGesture = false
-            var gestureDistance = 0f
-            val systemBackEdge = 24.dp.toPx()
-            detectHorizontalDragGestures(
-                onDragStart = { start ->
-                    acceptedGesture = acceptsServiceBackStart(
-                        start.x, size.width.toFloat(), systemBackEdge, mapEdgeZone,
-                    )
-                    gestureDistance = 0f
-                },
-                onHorizontalDrag = { change, amount ->
-                    if (acceptedGesture) {
-                        gestureDistance = (gestureDistance + amount).coerceAtLeast(0f)
-                        if (interactive) {
-                            reveal = (1f - gestureDistance /
-                                widthPx).coerceIn(0f, 1f)
-                        }
-                        if (amount > 0f) change.consume()
-                    }
-                },
-                onDragCancel = {
-                    if (acceptedGesture && interactive) animateReveal(1f)
-                    acceptedGesture = false
-                },
-                onDragEnd = {
-                    if (acceptedGesture && shouldCommitServiceBackSwipe(
-                            gestureDistance, widthPx,
-                        )
-                    ) {
-                        if (interactive) goBackOneService()
-                        else backDispatcher?.onBackPressed()
-                    } else if (interactive) animateReveal(1f)
-                    acceptedGesture = false
-                },
-            )
-        }
-
     // Keep the underlying app bar mounted while Search expands. Removing it
     // during activation would remeasure the entire scaffold and visibly jump.
     Box(modifier = Modifier.fillMaxSize()) {
@@ -563,14 +403,10 @@ fun MpeiNeoApp(
                 (mailState.selected != null || mailState.composing)
             val barsDetail = currentService == AppTab.BARS && barsDetailOpen
             val showTabs = (navigation.routes.size == 1 ||
-                (currentService == AppTab.SETTINGS && settingsCoversTabs)) &&
-                !searchUi.overlayMounted && !browser && !barsDetail &&
+                currentService == AppTab.SETTINGS) &&
+                !searchUi.isOpen && !browser && !barsDetail &&
                 !mailDetail && !imeVisible
-            AnimatedVisibility(
-                visible = showTabs,
-                enter = expandVertically(),
-                exit = shrinkVertically(),
-            ) {
+            if (showTabs) {
                 FourTabNavigationBar(
                     selected = if (currentService == AppTab.SETTINGS)
                         beneathService ?: AppTab.SCHEDULE
@@ -596,42 +432,26 @@ fun MpeiNeoApp(
                     (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH))
             if (embeddedBrowserForeground) {
                 // The active portal renders EmbeddedBrowserAppBar instead.
-            } else if (appBarMode(appBarService) == AppBarMode.TITLE) {
-                TopAppBar(
-                    title = { Text("Настройки") },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = { if (!isTransitioning) goBackOneService() },
-                            modifier = Modifier.testTag("settings-app-bar-back"),
-                        ) {
-                            AppIcon(AppIcons.Back, contentDescription = "Назад")
-                        }
-                    },
-                    modifier = Modifier.testTag("settings-app-bar"),
-                )
-            } else {
+            } else if (currentService != AppTab.SETTINGS) {
             ContextSearchAppBar(
-                    context = searchAppBarContext(appBarService),
+                    context = searchAppBarContext(currentService),
                     onSearch = {
-                        if (!isTransitioning) {
+                        {
                             openGlobalSearch(searchAppBarContext(currentService).scope)
                         }
                     },
-                    onScheduleRefresh = if (!searchUi.isOpen && appBarService == AppTab.SCHEDULE)
+                    onScheduleRefresh = if (!searchUi.isOpen && currentService == AppTab.SCHEDULE)
                         ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
                     scheduleRefreshing =
                         viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
                     onMailCompose = if (!searchUi.isOpen && searchAppBarAction(
-                            appBarService,
+                            currentService,
                             mailListReady = mailState.configured && !mailState.composing &&
                                 mailState.selected == null && !mailWebVisible,
                         ) == SearchAppBarAction.COMPOSE_MAIL
                     ) mailViewModel::startCompose else null,
-                    onSearchBoundsChanged = { bounds ->
-                        if (bounds != searchUi.entryBounds) searchUi.entryBounds = bounds
-                    },
                     onSettings = {
-                        if (!isTransitioning) openService(AppTab.SETTINGS)
+                        openService(AppTab.SETTINGS)
                     },
                     compact = true,
                 )
@@ -642,106 +462,36 @@ fun MpeiNeoApp(
             modifier = Modifier.fillMaxSize().padding(innerPadding).clipToBounds()
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) },
         ) {
-            // Explicit cross-service links keep their real origin below BARS.
-            // Its one retained WebView is drawn on top, never hidden by Schedule.
-            if (navigation.routes.size > 1 && currentService == AppTab.BARS &&
-                beneathService != null && beneathService != AppTab.BARS
-            ) {
-                serviceContent(beneathService, false)
+            // Keep one full-size BARS WebView instance but move it outside
+            // touch and accessibility bounds when another tab is active.
+            val visibleService = if (currentService == AppTab.SETTINGS) {
+                beneathService ?: AppTab.SCHEDULE
+            } else currentService ?: AppTab.SCHEDULE
+            if (visibleService != AppTab.BARS) {
+                serviceContent(visibleService, currentService == visibleService)
             }
-            // Retain the BARS WebView in one composition during tab changes.
-            val barsOnScene = currentService == AppTab.BARS || beneathService == AppTab.BARS
-            val barsAlpha by animateFloatAsState(
-                targetValue = if (barsOnScene) 1f else 0f,
-                animationSpec = tween(AppMotionTiming.TAB_SWITCH_MS),
-                label = "bars-tab-visibility",
-            )
             Box(
-                modifier = Modifier.fillMaxSize()
-                    // Leave BARS in place for the full fade, then move its hidden
-                    // WebView outside hit testing of the currently active tab.
-                    .offset {
-                        IntOffset(barsHiddenOffsetX(barsOnScene, barsAlpha, widthPx)
-                            .roundToInt(), 0)
-                    }
-                    .graphicsLayer {
-                        alpha = barsAlpha
-                        translationX = barsLayerTranslationX(
-                            currentService, navigation.routes.size > 1, reveal, widthPx,
-                        )
-                    },
+                modifier = Modifier.fillMaxSize().offset {
+                    IntOffset(if (visibleService == AppTab.BARS) 0 else widthPx.roundToInt(), 0)
+                },
             ) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    BarsScreen(
-                        viewModel = barsViewModel,
-                        onSearch = { openGlobalSearch(SearchScope.BARS) },
-                        autoRefreshEnabled = barsAutoRefreshEnabled,
-                        active = currentService == AppTab.BARS,
-                        allowBackgroundSync = barsAutoRefreshEnabled,
-                        onDetailOpenChange = { if (currentService == AppTab.BARS) barsDetailOpen = it },
-                        openDisciplineName = navigationTargets.barsRequestedDiscipline,
-                        openDisciplineRequest = navigationTargets.barsSearchRequest,
-                        onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
-                        onBrowserExit = {
-                            barsBrowserJustClosed = true
-                            dismissIme("bars-browser-back")
-                        },
-                        onAuthBrowserExit = { dismissIme("bars-auth-browser-exit") },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-            if (navigation.routes.size > 1) {
-                if (beneathService != null && beneathService != AppTab.BARS &&
-                    currentService != AppTab.BARS
-                ) {
-                    serviceContent(beneathService, false)
-                }
-                if (currentService != null && currentService != AppTab.BARS &&
-                    currentService != AppTab.SETTINGS) {
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                            .graphicsLayer { translationX = widthPx * (1f - reveal) }
-                            .serviceBackGesture(
-                                eligible = !isTransitioning && !imeVisible &&
-                                    !mailWebVisible && currentService == AppTab.SETTINGS,
-                                interactive = true,
-                            ),
-                    ) {
-                        serviceContent(currentService, true)
-                        if (currentService == AppTab.MAPS && !isTransitioning && !imeVisible) {
-                            Box(
-                                modifier = Modifier.align(Alignment.CenterStart)
-                                    .width(72.dp).fillMaxHeight()
-                                    .padding(top = 248.dp, bottom = 120.dp)
-                                    .testTag("campus-link-swipe-back-zone")
-                                    .serviceBackGesture(
-                                        eligible = true,
-                                        interactive = true,
-                                        mapEdgeZone = true,
-                                    ),
-                            )
-                        }
-                    }
-                }
-            } else {
-                AnimatedContent(
-                    // A full-size transparent slot for BARS keeps the crossfade
-                    // dimensions stable. A null slot measured as zero and caused
-                    // the other service to resize while BARS was fading away.
-                    targetState = currentService,
-                    transitionSpec = {
-                        fadeIn(tween(AppMotionTiming.TAB_SWITCH_MS)) togetherWith
-                            fadeOut(tween(AppMotionTiming.TAB_SWITCH_MS))
+                BarsScreen(
+                    viewModel = barsViewModel,
+                    onSearch = { openGlobalSearch(SearchScope.BARS) },
+                    autoRefreshEnabled = barsAutoRefreshEnabled,
+                    active = currentService == AppTab.BARS,
+                    allowBackgroundSync = barsAutoRefreshEnabled,
+                    onDetailOpenChange = { if (currentService == AppTab.BARS) barsDetailOpen = it },
+                    openDisciplineName = navigationTargets.barsRequestedDiscipline,
+                    openDisciplineRequest = navigationTargets.barsSearchRequest,
+                    onOpenDisciplineConsumed = navigationTargets::consumeBarsDiscipline,
+                    onBrowserExit = {
+                        barsBrowserJustClosed = true
+                        dismissIme("bars-browser-back")
                     },
-                    label = "primary-tab-switch",
-                ) { tab ->
-                    if (tab != null && tab != AppTab.BARS) {
-                        serviceContent(tab, tab == currentService)
-                    } else {
-                        Box(Modifier.fillMaxSize())
-                    }
-                }
+                    onAuthBrowserExit = { dismissIme("bars-auth-browser-exit") },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }
@@ -751,11 +501,6 @@ fun MpeiNeoApp(
     if (currentService == AppTab.SETTINGS) {
         Surface(
             modifier = Modifier.fillMaxSize()
-                .graphicsLayer { translationX = widthPx * (1f - reveal) }
-                .serviceBackGesture(
-                    eligible = !isTransitioning && !imeVisible,
-                    interactive = true,
-                )
                 .testTag("settings-fullscreen-layer"),
             color = MaterialTheme.colorScheme.background,
         ) {
@@ -764,7 +509,7 @@ fun MpeiNeoApp(
                     title = { Text("Настройки") },
                     navigationIcon = {
                         IconButton(
-                            onClick = { if (!isTransitioning) goBackOneService() },
+                            onClick = { goBackOneService() },
                             modifier = Modifier.testTag("settings-app-bar-back"),
                         ) {
                             AppIcon(AppIcons.Back, contentDescription = "Назад")
@@ -780,7 +525,7 @@ fun MpeiNeoApp(
     }
     // Global search is composed of independently expanding elements:
     // the field, edge controls, surface, and results. No full-page mask morph.
-    if (searchUi.overlayMounted) {
+    if (searchUi.isOpen) {
         Box(
             modifier = Modifier.fillMaxSize().imePadding()
                 .testTag("search-elements-overlay"),
@@ -801,10 +546,7 @@ fun MpeiNeoApp(
                 onMail = { dispatchNavigation(AppNavigationRequest.OpenMail(it)) },
                 onDiscipline = { dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(it)) },
                 onClose = ::closeGlobalSearch,
-                revealProgress = searchReveal,
-                sourceFieldBounds = searchUi.anchoredBounds(),
-                sourceIsIcon = true,
-                focusWhenReady = searchUi.isOpen && searchReveal >= 0.98f,
+                focusWhenReady = searchUi.isOpen,
             )
         }
     }
