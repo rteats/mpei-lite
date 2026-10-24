@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.MotionScheme
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -14,6 +15,26 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+
+/**
+ * Spatial-only motion experiment. Material components that request effects
+ * specs temporarily receive the corresponding expressive spatial spring.
+ * Keep this at the theme boundary so reverting to standard effects later
+ * does not require rewriting every button, sheet or indicator.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private val spatialOnlyMotionScheme: MotionScheme = MotionScheme.expressive().let { expressive ->
+    object : MotionScheme by expressive {
+        override fun <T> fastEffectsSpec(): FiniteAnimationSpec<T> =
+            expressive.fastSpatialSpec()
+
+        override fun <T> defaultEffectsSpec(): FiniteAnimationSpec<T> =
+            expressive.defaultSpatialSpec()
+
+        override fun <T> slowEffectsSpec(): FiniteAnimationSpec<T> =
+            expressive.slowSpatialSpec()
+    }
+}
 
 /**
  * One type scale across Schedule, BARS, Mail and Settings.
@@ -53,7 +74,7 @@ fun MpeiNeoTheme(
     MaterialTheme(
         colorScheme = colors,
         typography = NeoTypography,
-        motionScheme = MotionScheme.expressive(),
+        motionScheme = spatialOnlyMotionScheme,
         content = content,
     )
 }
