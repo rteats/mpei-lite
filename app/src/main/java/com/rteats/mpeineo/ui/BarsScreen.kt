@@ -62,8 +62,6 @@ internal fun BarsScreen(
   val transport = remember(viewModel) { BarsWebViewTransport(viewModel) }
   val webFlow = transport.webFlow
   val webView = transport.webView
-  val browserSlide = rememberBackSlideState()
-  var viewportPx by remember { mutableFloatStateOf(1f) }
   fun exitEmbeddedBrowser() {
     if (state.browserVisible) {
       transport.exitBrowser(onBrowserExit)
@@ -71,9 +69,6 @@ internal fun BarsScreen(
       onBrowserExit()
       onAuthBrowserExit()
     }
-  }
-  LaunchedEffect(state.browserVisible) {
-    if (state.browserVisible) browserSlide.enter() else browserSlide.reset()
   }
   val browserControlsVisible = active &&
     (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
@@ -114,14 +109,11 @@ internal fun BarsScreen(
     if (state.browserVisible && transport.browserToolbarState.canGoBack &&
         webView?.url != BARS_MARKS_URL) {
       transport.browserBack()
-    } else browserSlide.exit(::exitEmbeddedBrowser)
+    } else exitEmbeddedBrowser()
   }
 
   Box(
-    modifier = modifier
-      .fillMaxSize()
-      .onSizeChanged { viewportPx = it.width.toFloat().coerceAtLeast(1f) }
-      .testTag("bars-screen"),
+    modifier = modifier.fillMaxSize().testTag("bars-screen"),
   ) {
     when (state.authStage) {
       BarsAuthStage.CHECKING -> BarsCheckingState(
@@ -167,31 +159,20 @@ internal fun BarsScreen(
           if (!state.browserVisible &&
             state.authStage != BarsAuthStage.WEB_AUTH
           ) -1f else 1f,
-        ).graphicsLayer {
-          translationX = if (browserControlsVisible) viewportPx * browserSlide.progress else 0f
-        },
+        ),
         factory = transport::create,
         update = {},
         onRelease = transport::release,
       )
       if (browserControlsVisible) {
-        EmbeddedBrowserExitZone(
-          onExit = { browserSlide.exit(::exitEmbeddedBrowser) },
-          onDrag = { delta -> browserSlide.drag(delta, viewportPx) },
-          onRelease = { browserSlide.release(::exitEmbeddedBrowser) },
-          onCancel = browserSlide::cancel,
-          modifier = Modifier.align(Alignment.CenterStart).zIndex(3f)
-            .graphicsLayer { translationX = viewportPx * browserSlide.progress }
-            .testTag("bars-browser-swipe-exit"),
-        )
         EmbeddedBrowserAppBar(
           state = transport.browserToolbarState,
-          onExit = { browserSlide.exit(::exitEmbeddedBrowser) },
+          onExit = ::exitEmbeddedBrowser,
           onBack = transport::browserBack,
           onForward = transport::browserForward,
           onReload = transport::browserReload,
           modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
-            .graphicsLayer { translationX = viewportPx * browserSlide.progress }
+            
             .testTag("bars-browser-controls"),
         )
       }

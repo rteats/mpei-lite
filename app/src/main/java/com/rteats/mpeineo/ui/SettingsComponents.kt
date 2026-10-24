@@ -86,11 +86,7 @@ internal fun SettingsExpansion(
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(animationSpec = tween(140)),
-                exit = shrinkVertically(animationSpec = tween(120)),
-            ) {
+            if (expanded) {
                 Column(
                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),

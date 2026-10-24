@@ -191,31 +191,21 @@ internal fun BarsNativeDashboard(
     onDetailOpenChange(selectedDiscipline != null)
   }
 
-  val detailSlide = rememberBackSlideState()
-  var detailViewportPx by remember {
-    androidx.compose.runtime.mutableFloatStateOf(1f)
-  }
   fun closeDetail() {
     selectedDisciplineName?.let(onAcknowledgeGrades)
     selectedDisciplineName = null
     focusDisciplineName = null
   }
-  androidx.compose.runtime.LaunchedEffect(selectedDiscipline?.disciplineName) {
-    if (selectedDiscipline != null) detailSlide.enter() else detailSlide.reset()
-  }
 
   BackHandler(
     enabled = active && selectedDiscipline != null && !state.browserVisible,
   ) {
-    detailSlide.exit(::closeDetail)
+    closeDetail()
   }
 
   // The overview stays mounted behind its detail so a right swipe exposes
   // the actual previous page. The same BackSlideState drives touch and Back.
-  Box(
-    modifier = Modifier.fillMaxSize()
-      .onSizeChanged { detailViewportPx = it.width.toFloat().coerceAtLeast(1f) },
-  ) {
+  Box(modifier = Modifier.fillMaxSize()) {
       val refreshState = rememberPullToRefreshState()
       PullToRefreshBox(
         isRefreshing = state.isLoading,
@@ -374,7 +364,6 @@ internal fun BarsNativeDashboard(
     if (selectedDiscipline != null) {
       Box(
         modifier = Modifier.fillMaxSize()
-          .graphicsLayer { translationX = detailViewportPx * detailSlide.progress }
           .testTag("bars-discipline-slide-layer"),
       ) {
         Surface(
@@ -398,17 +387,10 @@ internal fun BarsNativeDashboard(
               autoScenarios = (autoScenarios + (planKey to encoded))
                 .toList().takeLast(32).toMap()
             },
-            onCollapse = { detailSlide.exit(::closeDetail) },
+            onCollapse = ::closeDetail,
           )
         }
-        EmbeddedBrowserExitZone(
-          onExit = { detailSlide.exit(::closeDetail) },
-          onDrag = { delta -> detailSlide.drag(delta, detailViewportPx) },
-          onRelease = { detailSlide.release(::closeDetail) },
-          onCancel = detailSlide::cancel,
-          modifier = Modifier.align(Alignment.CenterStart)
-            .testTag("bars-discipline-swipe-back-zone"),
-        )
+
       }
     }
   }

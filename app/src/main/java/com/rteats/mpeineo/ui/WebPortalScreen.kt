@@ -45,9 +45,6 @@ internal fun WebPortalScreen(
     }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var browserState by remember(url) { mutableStateOf(EmbeddedBrowserState()) }
-    val slide = rememberBackSlideState()
-    var viewportPx by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(url) { slide.enter() }
 
     fun syncBrowserState(view: WebView, pageUrl: String? = null) {
         if (webView !== view) return
@@ -62,13 +59,11 @@ internal fun WebPortalScreen(
         if (browserState.canGoBack) {
             debugEvent("browser back within website")
             webView?.takeIf { it.canGoBack() }?.goBack()
-        } else slide.exit(onExit)
+        } else onExit()
     }
 
     Box(
-        modifier = modifier.testTag(testTag)
-            .onSizeChanged { viewportPx = it.width.toFloat().coerceAtLeast(1f) }
-            .graphicsLayer { translationX = viewportPx * slide.progress },
+        modifier = modifier.testTag(testTag),
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize()
@@ -170,17 +165,9 @@ internal fun WebPortalScreen(
                 }
             },
         )
-        EmbeddedBrowserExitZone(
-            onExit = { slide.exit(onExit) },
-            onDrag = { delta -> slide.drag(delta, viewportPx) },
-            onRelease = { slide.release(onExit) },
-            onCancel = slide::cancel,
-            modifier = Modifier.align(Alignment.CenterStart)
-                .testTag("mail-browser-swipe-exit"),
-        )
         EmbeddedBrowserAppBar(
             state = browserState,
-            onExit = { slide.exit(onExit) },
+            onExit = onExit,
             onBack = { webView?.takeIf { it.canGoBack() }?.goBack() },
             onForward = { webView?.takeIf { it.canGoForward() }?.goForward() },
             onReload = { webView?.reload() },
