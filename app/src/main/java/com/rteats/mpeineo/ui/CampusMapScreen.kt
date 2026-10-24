@@ -835,14 +835,14 @@ internal fun CampusMapScreen(
                         expandFrom = Alignment.Top,
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                     ) + androidx.compose.animation.fadeIn(
-                        // Opacity must not overshoot as the panel expands.
-                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                        // Temporary spatial-motion trial: use the same family as panel height.
+                        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                     ),
                     exit = androidx.compose.animation.shrinkVertically(
                         shrinkTowards = Alignment.Top,
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                     ) + androidx.compose.animation.fadeOut(
-                        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                     ),
                 ) {
                     Surface(
