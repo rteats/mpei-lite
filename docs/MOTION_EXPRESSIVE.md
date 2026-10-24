@@ -6,6 +6,33 @@ Sources reviewed on 24 October 2026:
 - [Transition patterns](https://m3.material.io/styles/motion/transitions/transition-patterns)
 - [Compose Material 3 MotionScheme reference](https://developer.android.com/reference/kotlin/androidx/compose/material3/MotionScheme)
 
+## Spatial-only trial (24 October 2026)
+
+**Temporary developer test:** all application-owned custom transitions now use
+Material 3 Expressive **spatial** motion tokens, including week transitions,
+visual focus and the campus keyboard fade. The goal is to compare the feel on a
+real device before deciding which cues should use effects springs.
+
+Additional coverage: full-screen Settings and Search overlays, Mail detail and
+composer, embedded Mail portal, BARS discipline detail, top app-bar title and
+action changes, bottom navigation visibility, Settings section/chevron, BARS
+report chooser and automatic-grade planner, and lesson-card padding/color.
+
+For exit animations, Mail retains a snapshot of the outgoing message or draft
+and BARS retains the outgoing discipline. Navigation and account session state
+still change immediately; the UI does not retain a login or delay a Back action.
+
+Not all animations belong to our code. Stock Material 3 components (toggle,
+sheet, loading indicator, snackbar, navigation indicator) still own internal
+motion. The app uses `MotionScheme.expressive()`, but replacing those
+components or overriding their internals just to force a spring is outside this
+experiment. Direct finger tracking, system gestures, WebView DOM motion, and
+time-based progress are not spring driven.
+
+The sections below record the **original token decisions** from PR #96; this
+temporary trial supersedes its effects-spring selections. A real-device review
+will decide which spatial motions should become effects again.
+
 ## Physics instead of independent duration constants
 
 Google's M3 Expressive motion system specifies **spatial** and **effects**
