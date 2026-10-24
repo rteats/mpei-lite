@@ -369,6 +369,10 @@ internal fun BarsNativeDashboard(
     ) {
       val expandedDiscipline = selectedDiscipline ?: retainedDiscipline
       if (expandedDiscipline != null) {
+        SwipeBackDetail(
+          onBack = ::closeDetail,
+          modifier = Modifier.testTag("bars-detail-swipe-back"),
+        ) {
         Surface(
           modifier = Modifier.fillMaxSize(),
           color = MaterialTheme.colorScheme.background,
@@ -391,6 +395,7 @@ internal fun BarsNativeDashboard(
             },
             onCollapse = ::closeDetail,
           )
+        }
         }
       }
     }
