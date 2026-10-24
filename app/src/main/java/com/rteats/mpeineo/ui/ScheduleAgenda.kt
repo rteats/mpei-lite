@@ -139,6 +139,9 @@ internal fun ScheduleAgenda(
             .getOrDefault(0)
     }
 
+    // transitionSpec is not @Composable: resolve tokens while in composition.
+    val weekEnterEffects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val weekExitEffects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
@@ -147,8 +150,8 @@ internal fun ScheduleAgenda(
         transitionSpec = {
             // Opacity is an effects role: never apply a bouncy spatial spring
             // to fades. Keep incoming content more gradual than outgoing.
-            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) togetherWith
-                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
+            fadeIn(weekEnterEffects) togetherWith
+                fadeOut(weekExitEffects)
         },
     ) { displayedWeek ->
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
