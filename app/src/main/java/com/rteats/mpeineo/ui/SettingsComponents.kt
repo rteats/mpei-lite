@@ -2,10 +2,6 @@ package com.rteats.mpeineo.ui
 
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

@@ -102,11 +102,6 @@ internal fun SettingsScreen(
     val context = LocalContext.current
     val application = context.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
-    val uiProfiler = application.container.uiFrameProfiler
-    val hostActivity = remember(context) {
-        generateSequence<Context>(context) { (it as? ContextWrapper)?.baseContext }
-            .filterIsInstance<Activity>().firstOrNull()
-    }
     val owaAuthScope = rememberCoroutineScope()
     val exportScope = rememberCoroutineScope()
     var owaAuthBusy by remember { mutableStateOf(false) }
@@ -235,7 +230,7 @@ internal fun SettingsScreen(
             notificationsEnabled = true
             notificationError = null
         } else {
-            notificationError = "Разрешите уведомления для MPEI Neo в настройках Android."
+            notificationError = "Разрешите уведомления для MPEI Lite в настройках Android."
         }
     }
 
@@ -282,7 +277,7 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "Интерфейс",
-                "Главная, оформление и отклик",
+                "Оформление и отклик",
                 AppIcons.Appearance,
                 interfaceExpanded, { changeSection("interface", !interfaceExpanded) },
             ) {
@@ -467,26 +462,11 @@ internal fun SettingsScreen(
             ) {
                 SettingsExpansion(
                     "Дополнительные проверки",
-                    "Замеры плавности, ОСЭП и уведомления",
+                    "ОСЭП и уведомления",
                     AppIcons.Diagnostics,
                     advancedDiagnosticsExpanded,
                     { advancedDiagnosticsExpanded = !advancedDiagnosticsExpanded },
                 ) {
-                    SettingsAction(
-                        title = if (uiProfiler.active) "Завершить замер плавности"
-                            else "Замерить плавность интерфейса",
-                        detail = if (uiProfiler.active) {
-                            "Сбор кадров идёт. Перейдите в нужный раздел; автостоп через 60 секунд."
-                        } else {
-                            "60 секунд · задержки кадров по разделам · результат в журнале"
-                        },
-                        iconRes = AppIcons.Analytics,
-                        enabled = uiProfiler.active || hostActivity != null,
-                        onClick = {
-                            if (uiProfiler.active) uiProfiler.stop()
-                            else hostActivity?.let { uiProfiler.start(it.window) }
-                        },
-                    )
                     SettingsAction(
                         title = "Проверить сессию ОСЭП",
                         detail = owaAuthSummary
@@ -536,7 +516,7 @@ internal fun SettingsScreen(
                     title = "Экспортировать ZIP",
                     detail = exportStatus
                         ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                            "Сохранить в Загрузки/MPEI Neo/Diagnostics и открыть отправку"
+                            "Сохранить в Загрузки/MPEI Lite/Diagnostics и открыть отправку"
                         else "Выбрать папку для ZIP и открыть отправку",
                     iconRes = AppIcons.Download,
                     enabled = !exporting,
@@ -560,7 +540,7 @@ internal fun SettingsScreen(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
                             as ClipboardManager
                         clipboard.setPrimaryClip(
-                            ClipData.newPlainText("MPEI Neo diagnostics", content))
+                            ClipData.newPlainText("MPEI Lite diagnostics", content))
                         copied = true
                         diagnostics.log("DIAGNOSTICS", "log copied to clipboard")
                     },
@@ -578,12 +558,12 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "О приложении",
-                "MPEI Neo · " + BuildConfig.VERSION_NAME,
+                "MPEI Lite · " + BuildConfig.VERSION_NAME,
                 AppIcons.About,
                 aboutExpanded, { changeSection("about", !aboutExpanded) },
             ) {
                 Text(
-                    "MPEI Neo " + BuildConfig.VERSION_NAME + " (" +
+                    "MPEI Lite " + BuildConfig.VERSION_NAME + " (" +
                         BuildConfig.VERSION_CODE + ")",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     fontWeight = FontWeight.Bold,
