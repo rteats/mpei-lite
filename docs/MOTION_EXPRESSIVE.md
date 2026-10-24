@@ -31,6 +31,7 @@ selection or loading feedback**.
 | Lesson-card expansion | height | `fastSpatialSpec()` | Local-sized control expands quickly while retaining positional continuity |
 | Map building-keyboard expansion | panel height | `defaultSpatialSpec()` | A secondary sheet partially covers content |
 | Map keyboard fade | opacity | `fastEffectsSpec()` | Fast effects are critically damped and avoid flashing alpha |
+| Linked-destination focus cue | opacity/emphasis | `fastEffectsSpec()` in / `defaultEffectsSpec()` out | The cue must not bounce; its 850 ms readable hold remains a deliberate delay |
 
 ### Navigation and gesture precedence
 

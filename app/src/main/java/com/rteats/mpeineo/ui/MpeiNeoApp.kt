@@ -553,7 +553,7 @@ fun MpeiNeoApp(
             }
         }
     }
-        // Settings covers the app shell without moving it.
+    // Settings covers the app shell without moving it.
     if (currentService == AppTab.SETTINGS) {
         Surface(
             modifier = Modifier.fillMaxSize()
