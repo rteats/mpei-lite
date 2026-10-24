@@ -31,44 +31,6 @@ internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
     serviceRouteAfterBack(routes).lastOrNull()?.let(AppTab::valueOf)
 
-internal fun scheduleDockRevealProgress(
-    currentPage: Int,
-    pageOffsetFraction: Float,
-): Float = (1f - kotlin.math.abs(currentPage + pageOffsetFraction)).coerceIn(0f, 1f)
-
-/** Complete an intentional rightward swipe, otherwise spring the page back. */
-internal fun shouldCommitServiceBackSwipe(distancePx: Float, widthPx: Float): Boolean =
-    widthPx > 0f && distancePx >= widthPx * BACK_SWIPE_COMMIT_FRACTION
-
-/**
- * The BARS detail is a nested destination, just like a Mail message:
- * its rightward swipe should invoke its own BackHandler, never switch
- * primary tabs. Browser, IME and transitions block gestures.
- */
-internal enum class BarsSwipeTarget { DISABLED, DISCIPLINE_OVERVIEW }
-
-internal fun barsSwipeTarget(
-    foreground: Boolean,
-    isTransitioning: Boolean,
-    imeVisible: Boolean,
-    browserVisible: Boolean,
-    authenticated: Boolean,
-    detailOpen: Boolean,
-): BarsSwipeTarget {
-    if (!foreground || isTransitioning || imeVisible || browserVisible || !authenticated) {
-        return BarsSwipeTarget.DISABLED
-    }
-    return if (detailOpen) BarsSwipeTarget.DISCIPLINE_OVERVIEW else BarsSwipeTarget.DISABLED
-}
-
-/** Map-only back target is narrow; regular service pages retain full-width swipes. */
-internal fun acceptsServiceBackStart(
-    x: Float,
-    width: Float,
-    systemEdge: Float,
-    mapEdgeZone: Boolean,
-): Boolean = x >= systemEdge && (mapEdgeZone || x <= width - systemEdge)
-
 /** Derive all visible route destinations from one route snapshot. */
 internal data class ServiceRouteSnapshot(val names: List<String>) {
     val current: AppTab? get() = names.lastOrNull()?.let(AppTab::valueOf)
