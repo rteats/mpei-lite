@@ -57,6 +57,28 @@ Check on device: rapid distant-tab switching, mid-flight reversal, persistent
 BARS 2FA session, text clipping with large font scale, map zoom controls,
 next-lesson focus, navbar in search with IME, and the Mail/BARS Back path.
 
+## Usability corrections after device testing
+
+- Service titles now use the true expressive **effects** spring rather than a
+  horizontal spatial slide. The outgoing title disappears before the incoming
+  title fades in, preventing overlapping letters and the full-width elastic
+  motion.
+- Next-lesson focus owns its agenda scroll; the automatic today scroll is
+  suppressed during focus. When a lesson link changes the visible week, it
+  uses an effects transition, not the regular manual week spatial slide.
+- Mail message and BARS discipline details support rightward swipe-back
+  with direct drag following, a spatial spring on settle, and the existing
+  native Back operation. Vertical scroll remains owned by the content.
+- The persistent navigation bar is painted above Search and moved above
+  the IME. The app scaffold reserves its measured height; only Settings hides it.
+- Search has compact horizontal insets and a rounded text field with no
+  underline/indicator. BARS forecast choices use 2dp spacing and smaller
+  horizontal button padding.
+
+Manual verification: quickly reverse a swipe; open Mail and BARS details,
+swipe from left to right and scroll vertically; open Search with IME and
+switch tabs; click the next lesson in both current and subsequent weeks.
+
 ## Physics instead of independent duration constants
 
 Google's M3 Expressive motion system specifies **spatial** and **effects**
