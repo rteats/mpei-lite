@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -179,7 +180,7 @@ internal fun GlobalSearchScreen(
         ) {}
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onClose) {
@@ -202,7 +203,7 @@ internal fun GlobalSearchScreen(
                             SearchScope.MAPS -> "Корпус или аудитория"
                         }) },
                         leadingIcon = { AppIcon(AppIcons.Search, contentDescription = null) },
-                        shape = SearchBarDefaults.inputFieldShape,
+                        shape = RoundedCornerShape(24.dp),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = {
                             keyboard?.hide()
@@ -210,7 +211,14 @@ internal fun GlobalSearchScreen(
                         // SearchBar input tokens on the existing controlled
                         // field preserve direct query/remote debounce ownership;
                         // no second SearchBarState or nested search popup.
-                        colors = SearchBarDefaults.inputFieldColors(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            errorIndicatorColor = Color.Transparent,
+                        ),
                         trailingIcon = if (query.isNotBlank()) {{
                             IconButton(
                                 onClick = { onQueryChange("") },
