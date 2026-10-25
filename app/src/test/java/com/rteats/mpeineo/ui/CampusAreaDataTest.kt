@@ -55,8 +55,8 @@ class CampusAreaDataTest {
         val viewport = IntSize(1000, 1000)
         val points = listOf(
             CampusPoi("n/1", "Cafe", "food", x = 0, y = 0),
-            CampusPoi("n/2", "Hostel", "lodging", x = 50, y = 0),
-            CampusPoi("n/3", "Shop", "shop", x = 5000, y = 0),
+            CampusPoi("n/2", "Hostel", "lodging", x = 200, y = 0),
+            CampusPoi("n/3", "Shop", "shop", x = 800, y = 0),
             CampusPoi("n/4", "Offscreen", "food", x = 250000, y = 0),
         )
         val initial = visibleCampusPois(
@@ -65,7 +65,7 @@ class CampusAreaDataTest {
         val zoomed = visibleCampusPois(
             points, 10f, Offset.Zero, viewport, world, spacingPx = 30f,
         )
-        assertEquals(2, initial.size)
+        assertEquals(1, initial.size)
         assertTrue(initial.any { it.category == "food" })
         assertEquals(3, zoomed.size)
         assertFalse(zoomed.any { it.name == "Offscreen" })
