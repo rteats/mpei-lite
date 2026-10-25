@@ -1,7 +1,6 @@
 package com.rteats.mpeineo.ui
 
 import android.content.Intent
-import android.app.Application
 import android.os.SystemClock
 import android.graphics.Bitmap
 import java.lang.ref.SoftReference
@@ -75,14 +74,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import com.google.gson.Gson
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.floor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -352,18 +349,21 @@ internal fun visibleCampusPois(
     if (viewport.width <= 0 || viewport.height <= 0) return emptyList()
     val scale = campusBaseScale(world, viewport) * zoom
     if (scale <= 0f) return emptyList()
-    val grid = spacingPx.coerceAtLeast(16f)
-    val occupied = HashSet<Pair<Int, Int>>()
-    val visible = ArrayList<CampusPoi>()
+    val spacing = spacingPx.coerceAtLeast(16f)
+    val accepted = ArrayList<Pair<CampusPoi, Offset>>()
     for (poi in pois.sortedWith(compareBy<CampusPoi> { campusPoiPriority(it.category) }
         .thenBy { it.name })) {
         val position = screenPoint(poi.center, scale, pan, viewport)
         if (position.x < 0f || position.x > viewport.width ||
             position.y < 0f || position.y > viewport.height) continue
-        val cell = floor(position.x / grid).toInt() to floor(position.y / grid).toInt()
-        if (occupied.add(cell)) visible.add(poi)
+        // Checking distance also across cell boundaries prevents overlapping
+        // circles that a single-cell spatial hash would permit.
+        if (accepted.none {
+                abs(it.second.x - position.x) < spacing &&
+                    abs(it.second.y - position.y) < spacing
+            }) accepted.add(poi to position)
     }
-    return visible
+    return accepted.map { it.first }
 }
 
 internal fun applyCampusGesture(
