@@ -510,15 +510,17 @@ internal class SingleEntrySoftCache<K : Any, V : Any> {
 private object CampusRenderCache {
     @Volatile var scene: PreparedCampusScene? = null
         private set
-    private val raster = SingleEntrySoftCache<MapPaintColors, CampusRaster>()
+    private val raster = SingleEntrySoftCache<Pair<PreparedCampus, MapPaintColors>, CampusRaster>()
 
     @Synchronized fun keepScene(value: PreparedCampusScene) {
         if (scene !== value) raster.clear()
         scene = value
     }
-    fun peekRaster(palette: MapPaintColors): CampusRaster? = raster.peek(palette)
-    fun raster(palette: MapPaintColors, create: () -> CampusRaster): Pair<CampusRaster, Boolean> =
-        raster.getOrCreate(palette, create)
+    fun peekRaster(scene: PreparedCampus, palette: MapPaintColors): CampusRaster? =
+        raster.peek(scene to palette)
+    fun raster(
+        scene: PreparedCampus, palette: MapPaintColors, create: () -> CampusRaster,
+    ): Pair<CampusRaster, Boolean> = raster.getOrCreate(scene to palette, create)
     fun clearRaster() = raster.clear()
 }
 
@@ -617,13 +619,13 @@ internal fun CampusMapScreen(
             listOfNotNull(buildingVSouth?.id)
     }
     val raster by produceState<CampusRaster?>(
-        CampusRenderCache.peekRaster(palette), prepared, campusIds, palette,
+        CampusRenderCache.peekRaster(prepared, palette), prepared, campusIds, palette,
     ) {
         val started = SystemClock.elapsedRealtime()
         var cacheHit = value != null
         if (!cacheHit) {
             val obtained = withContext(Dispatchers.Default) {
-                CampusRenderCache.raster(palette) {
+                CampusRenderCache.raster(prepared, palette) {
                     renderCampusRaster(prepared, campusIds, palette)
                 }
             }
