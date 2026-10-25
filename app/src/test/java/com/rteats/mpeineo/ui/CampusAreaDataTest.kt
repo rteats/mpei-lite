@@ -29,7 +29,7 @@ class CampusAreaDataTest {
             {"type":"node","id":204,"lat":55.7460,"lon":37.7052,
              "tags":{"amenity":"restaurant","name":"Outside"}},
             {"type":"node","id":205,"lat":55.7560,"lon":37.7052,
-             "tags":{"building":"yes","name":"Unnamed POI filter"}},
+             "tags":{"building":"yes","name":"Named building"}},
             {"type":"node","id":202,"lat":55.7561,"lon":37.7052,
              "tags":{"amenity":"cafe","name":"Test cafe"}}
           ]
@@ -42,10 +42,11 @@ class CampusAreaDataTest {
         assertEquals("Корпус А", area.buildings.single().name)
         assertEquals(4, area.buildings.single().p.size)
         assertEquals(1, area.roads.size)
-        assertEquals(3, area.pois.size)
-        assertEquals(setOf("lodging", "food", "shop"), area.pois.map { it.category }.toSet())
+        assertEquals(4, area.pois.size)
+        assertEquals(setOf("lodging", "food", "shop", "other"), area.pois.map { it.category }.toSet())
         assertEquals("Лефортовская, 5", area.pois.first { it.name == "Test hostel" }.address)
-        assertFalse(area.pois.any { it.name == "Outside" || it.name == "Unnamed POI filter" })
+        assertFalse(area.pois.any { it.name == "Outside" })
+        assertTrue(area.pois.any { it.name == "Named building" })
         assertEquals(listOf(CampusAreaData.WEST, CampusAreaData.SOUTH,
             CampusAreaData.EAST, CampusAreaData.NORTH), area.bbox)
     }
