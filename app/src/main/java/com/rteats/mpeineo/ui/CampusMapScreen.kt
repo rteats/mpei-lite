@@ -1,7 +1,6 @@
 package com.rteats.mpeineo.ui
 
 import android.content.Intent
-import android.app.Application
 import android.os.SystemClock
 import android.graphics.Bitmap
 import java.lang.ref.SoftReference
@@ -67,6 +66,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -74,7 +74,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import com.google.gson.Gson
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import kotlin.math.abs
@@ -87,17 +86,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Offline OpenStreetMap geometry, extracted once into assets/campus_osm.json.
+ * Cached OpenStreetMap geometry, with the bundled campus as offline fallback.
+ * The geometry and POIs share a local decimetre coordinate system.
  * Copyright OpenStreetMap contributors, ODbL 1.0.
- * The app never contacts an OSM/map endpoint or uses a mapping SDK.
  */
-private data class CampusGeometry(
+internal data class CampusGeometry(
+    val bbox: List<Double> = emptyList(),
     val buildings: List<CampusFeature> = emptyList(),
     val roads: List<CampusFeature> = emptyList(),
     val land: List<CampusFeature> = emptyList(),
+    val pois: List<CampusPoi> = emptyList(),
 )
 
-private data class CampusFeature(
+internal data class CampusPoi(
+    val id: String = "",
+    val name: String = "",
+    val category: String = "other",
+    val kind: String = "",
+    val x: Int = 0,
+    val y: Int = 0,
+    val address: String = "",
+) {
+    val center: Offset get() = Offset(x / 10f, y / 10f)
+}
+
+internal data class CampusFeature(
     val id: Long = 0L,
     val name: String = "",
     val ref: String = "",
@@ -250,12 +263,21 @@ private fun prepareCampus(data: CampusGeometry): PreparedCampus {
     val roads = data.roads.mapNotNull { prepareFeature(it, false) }
     val land = data.land.mapNotNull { prepareFeature(it, true) }
     val features = buildings + roads + land
-    val bounds = Rect(
+    val geometryBounds = Rect(
         features.minOfOrNull { it.bounds.left } ?: -250f,
         features.minOfOrNull { it.bounds.top } ?: -350f,
         features.maxOfOrNull { it.bounds.right } ?: 250f,
         features.maxOfOrNull { it.bounds.bottom } ?: 350f,
     )
+    // Fit the exact requested rectangle, even if the OSM features do not
+    // reach its edges. Avoid including geometry outside the requested area.
+    val bounds = if (data.bbox.size == 4) {
+        val west = ((data.bbox[0] - 37.70605) * 62600).toFloat()
+        val north = ((55.7559 - data.bbox[3]) * 111200).toFloat()
+        val east = ((data.bbox[2] - 37.70605) * 62600).toFloat()
+        val south = ((55.7559 - data.bbox[1]) * 111200).toFloat()
+        Rect(west, north, east, south)
+    } else geometryBounds
     return PreparedCampus(buildings, roads, land, bounds)
 }
 
@@ -298,6 +320,52 @@ internal fun clampCampusPan(
  */
 internal data class CampusViewportGesture(val zoom: Float, val pan: Offset)
 
+/** Fit the full OSM rectangle to the display; zoom is a multiplier of this fit. */
+internal fun campusBaseScale(world: Rect, viewport: IntSize): Float {
+    if (viewport.width <= 0 || viewport.height <= 0) return 0f
+    return min(
+        viewport.width / (world.width.coerceAtLeast(1f) * 1.04f),
+        viewport.height / (world.height.coerceAtLeast(1f) * 1.04f),
+    )
+}
+
+private fun campusPoiPriority(category: String): Int = when (category) {
+    "lodging", "food" -> 0
+    "education", "health" -> 1
+    "shop", "transport" -> 2
+    "work", "leisure" -> 3
+    else -> 4
+}
+
+/** Screen-space de-overlap keeps the dense city map usable without dropping POI data. */
+internal fun visibleCampusPois(
+    pois: List<CampusPoi>,
+    zoom: Float,
+    pan: Offset,
+    viewport: IntSize,
+    world: Rect,
+    spacingPx: Float,
+): List<CampusPoi> {
+    if (viewport.width <= 0 || viewport.height <= 0) return emptyList()
+    val scale = campusBaseScale(world, viewport) * zoom
+    if (scale <= 0f) return emptyList()
+    val spacing = spacingPx.coerceAtLeast(16f)
+    val accepted = ArrayList<Pair<CampusPoi, Offset>>()
+    for (poi in pois.sortedWith(compareBy<CampusPoi> { campusPoiPriority(it.category) }
+        .thenBy { it.name })) {
+        val position = screenPoint(poi.center, scale, pan, viewport)
+        if (position.x < 0f || position.x > viewport.width ||
+            position.y < 0f || position.y > viewport.height) continue
+        // Checking distance also across cell boundaries prevents overlapping
+        // circles that a single-cell spatial hash would permit.
+        if (accepted.none {
+                abs(it.second.x - position.x) < spacing &&
+                    abs(it.second.y - position.y) < spacing
+            }) accepted.add(poi to position)
+    }
+    return accepted.map { it.first }
+}
+
 internal fun applyCampusGesture(
     zoom: Float,
     pan: Offset,
@@ -310,11 +378,11 @@ internal fun applyCampusGesture(
     if (viewport.width <= 0 || viewport.height <= 0 || zoom <= 0f) {
         return CampusViewportGesture(zoom, pan)
     }
-    val nextZoom = (zoom * zoomChange).coerceIn(.65f, 5f)
+    val nextZoom = (zoom * zoomChange).coerceIn(.65f, 18f)
     val factor = nextZoom / zoom
     val screenCenter = Offset(viewport.width / 2f, viewport.height / 2f)
     val nextPan = pan + panChange + (centroid - screenCenter - pan) * (1f - factor)
-    val scale = max(viewport.width / 600f, viewport.height / 850f) * nextZoom
+    val scale = campusBaseScale(world, viewport) * nextZoom
     return CampusViewportGesture(nextZoom, clampCampusPan(nextPan, scale, viewport, world))
 }
 
@@ -442,14 +510,17 @@ internal class SingleEntrySoftCache<K : Any, V : Any> {
 private object CampusRenderCache {
     @Volatile var scene: PreparedCampusScene? = null
         private set
-    private val raster = SingleEntrySoftCache<MapPaintColors, CampusRaster>()
+    private val raster = SingleEntrySoftCache<Pair<PreparedCampus, MapPaintColors>, CampusRaster>()
 
     @Synchronized fun keepScene(value: PreparedCampusScene) {
+        if (scene !== value) raster.clear()
         scene = value
     }
-    fun peekRaster(palette: MapPaintColors): CampusRaster? = raster.peek(palette)
-    fun raster(palette: MapPaintColors, create: () -> CampusRaster): Pair<CampusRaster, Boolean> =
-        raster.getOrCreate(palette, create)
+    fun peekRaster(scene: PreparedCampus, palette: MapPaintColors): CampusRaster? =
+        raster.peek(scene to palette)
+    fun raster(
+        scene: PreparedCampus, palette: MapPaintColors, create: () -> CampusRaster,
+    ): Pair<CampusRaster, Boolean> = raster.getOrCreate(scene to palette, create)
     fun clearRaster() = raster.clear()
 }
 
@@ -467,35 +538,47 @@ internal fun CampusMapScreen(
 ) {
     val context = LocalContext.current
     var mapLoadFailed by remember(context) { mutableStateOf(false) }
-    val scene by produceState<PreparedCampusScene?>(CampusRenderCache.scene, context) {
+    val scene by produceState<PreparedCampusScene?>(CampusRenderCache.scene, context, active) {
         val started = SystemClock.elapsedRealtime()
-        if (value != null) {
-            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
-                ?.container?.diagnostics?.log("PERF", "campus_prepare cache=hit durationMs=0")
-            return@produceState
-        }
-        val geometry = withContext(Dispatchers.IO) {
-            runCatching {
-                context.assets.open("campus_osm.json").bufferedReader().use { reader ->
-                    Gson().fromJson(reader, CampusGeometry::class.java)
+        if (value == null) {
+            val geometry = CampusAreaData.loadLocal(context)
+            val result = withContext(Dispatchers.Default) {
+                geometry?.takeIf { it.buildings.isNotEmpty() }?.let {
+                    PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
                 }
-            }.getOrNull()
-        }
-        val result = withContext(Dispatchers.Default) {
-            geometry?.takeIf { it.buildings.isNotEmpty() }?.let {
-                PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
             }
+            mapLoadFailed = result == null
+            if (result != null) {
+                CampusRenderCache.keepScene(result)
+                value = result
+            }
+            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+                ?.container?.diagnostics?.log(
+                    "PERF", "campus_prepare local durationMs=" +
+                        (SystemClock.elapsedRealtime() - started) +
+                        " buildings=" + (geometry?.buildings?.size ?: 0),
+                )
         }
-        val durationMs = SystemClock.elapsedRealtime() - started
-        (context.applicationContext as? Application)?.let {
-            com.rteats.mpeineo.data.DiagnosticLog(it).log(
-                "PERF", "campus_prepare durationMs=$durationMs" +
-                    " buildings=${geometry?.buildings?.size ?: 0}" +
-                    " places=${result?.places?.size ?: 0}")
+        // Only request the fixed area while the tab is visible. Once fetched,
+        // the compact extract stays usable offline for 30 days and beyond.
+        if (active && CampusAreaData.needsRefresh(context)) {
+            val refreshed = CampusAreaData.refresh(context)
+            val newScene = withContext(Dispatchers.Default) {
+                refreshed?.let {
+                    PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
+                }
+            }
+            if (newScene != null) {
+                CampusRenderCache.keepScene(newScene)
+                value = newScene
+            }
+            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+                ?.container?.diagnostics?.log(
+                    "MAP_UI", "area_refresh result=" +
+                        (if (newScene != null) "success" else "offline_fallback") +
+                        " poiCount=" + (refreshed?.pois?.size ?: 0),
+                )
         }
-        mapLoadFailed = result == null
-        if (result != null) CampusRenderCache.keepScene(result)
-        value = result
     }
 
     val ready = scene
@@ -518,6 +601,7 @@ internal fun CampusMapScreen(
         data.buildings.firstOrNull { it.name == "Главный учебный корпус" }
     }
     val colors = MaterialTheme.colorScheme
+    val density = LocalDensity.current
     val palette = MapPaintColors(
         background = colors.surface.toArgb(),
         grass = colors.secondaryContainer.copy(alpha = .43f).compositeOver(colors.surface).toArgb(),
@@ -535,13 +619,13 @@ internal fun CampusMapScreen(
             listOfNotNull(buildingVSouth?.id)
     }
     val raster by produceState<CampusRaster?>(
-        CampusRenderCache.peekRaster(palette), prepared, campusIds, palette,
+        CampusRenderCache.peekRaster(prepared, palette), prepared, campusIds, palette,
     ) {
         val started = SystemClock.elapsedRealtime()
         var cacheHit = value != null
         if (!cacheHit) {
             val obtained = withContext(Dispatchers.Default) {
-                CampusRenderCache.raster(palette) {
+                CampusRenderCache.raster(prepared, palette) {
                     renderCampusRaster(prepared, campusIds, palette)
                 }
             }
@@ -562,7 +646,7 @@ internal fun CampusMapScreen(
         flingJob?.cancel()
         flingJob = null
     }
-    var zoom by rememberSaveable { mutableFloatStateOf(1.45f) }
+    var zoom by rememberSaveable { mutableFloatStateOf(1f) }
     var pan by rememberSaveable(
         stateSaver = Saver<Offset, ArrayList<Float>>(
             save = { arrayListOf(it.x, it.y) },
@@ -571,19 +655,22 @@ internal fun CampusMapScreen(
     ) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var selected by remember { mutableStateOf<CampusPlace?>(null) }
+    var selectedPoi by remember { mutableStateOf<CampusPoi?>(null) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
     var keyboardExpanded by rememberSaveable { mutableStateOf(false) }
 
-    // The fixed 600m wide / 850m tall viewport gives a portrait-friendly
-    // default overview without enormous empty margins above and below.
-    fun mapScale(): Float = max(viewport.width / 600f, viewport.height / 850f) * zoom
+    fun mapScale(): Float = campusBaseScale(prepared.bounds, viewport) * zoom
     fun fitPan(nextPan: Offset, nextZoom: Float): Offset {
-        val scale = max(viewport.width / 600f, viewport.height / 850f) * nextZoom
+        val scale = campusBaseScale(prepared.bounds, viewport) * nextZoom
         return clampCampusPan(nextPan, scale, viewport, prepared.bounds)
+    }
+    fun centeredPan(nextZoom: Float): Offset {
+        val scale = campusBaseScale(prepared.bounds, viewport) * nextZoom
+        return Offset(-prepared.bounds.center.x * scale, -prepared.bounds.center.y * scale)
     }
     fun changeZoom(factor: Float) {
         stopFling()
-        zoom = (zoom * factor).coerceIn(.65f, 5f)
+        zoom = (zoom * factor).coerceIn(.65f, 18f)
         pan = fitPan(pan, zoom)
     }
     fun project(p: Offset) = screenPoint(p, mapScale(), pan, viewport)
@@ -596,11 +683,12 @@ internal fun CampusMapScreen(
         // Change the selected vector overlay immediately; no modal-dismiss or
         // bitmap regeneration is involved.
         selected = place
+        selectedPoi = null
         selectedRoom = room
         keyboardExpanded = false
         if (viewport.width > 0 && viewport.height > 0) {
-            val targetZoom = 2.2f
-            val scale = max(viewport.width / 600f, viewport.height / 850f) * targetZoom
+            val targetZoom = 11f
+            val scale = campusBaseScale(prepared.bounds, viewport) * targetZoom
             zoom = targetZoom
             pan = fitPan(Offset(-place.center.x * scale, -place.center.y * scale), zoom)
         }
@@ -609,6 +697,26 @@ internal fun CampusMapScreen(
                 " viewportReady=${viewport.width > 0 && viewport.height > 0}" +
                 " zoom=$zoom",
         )
+    }
+
+    LaunchedEffect(prepared) {
+        // A fresh city extract replaces the smaller bundled campus. Fit the
+        // new rectangle once; never leave the user looking at its old crop.
+        if (viewport.width > 0 && viewport.height > 0) {
+            zoom = 1f
+            pan = fitPan(centeredPan(zoom), zoom)
+        }
+    }
+
+    val visibleMarkers = remember(data.pois, zoom, pan, viewport, density.density) {
+        visibleCampusPois(data.pois, zoom, pan, viewport, prepared.bounds,
+            spacingPx = if (zoom < 2f) 44f * density.density else 30f * density.density)
+    }
+    val poiLabelPaint = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        }
     }
 
     // This tab stays composed when hidden. It must not keep moving offscreen.
@@ -651,18 +759,36 @@ internal fun CampusMapScreen(
             modifier = Modifier.fillMaxSize()
                 .onSizeChanged {
                     stopFling()
+                    val initialSize = viewport == IntSize.Zero
                     viewport = it
-                    pan = fitPan(pan, zoom)
+                    pan = fitPan(if (initialSize) centeredPan(zoom) else pan, zoom)
                 }
                 // Handle single taps as soon as the finger is released.
                 // A double-tap recognizer previously held every tap for the
                 // second-tap timeout before updating the building highlight.
                 // Pinch and the dedicated zoom controls remain available.
-                .pointerInput(prepared, places) {
+                .pointerInput(prepared, places, visibleMarkers) {
                     detectTapGestures(
                         onTap = mapTap@{ tap ->
                             val started = SystemClock.elapsedRealtime()
                             val scale = mapScale().takeIf { it > 0 } ?: return@mapTap
+                            // Visible POIs receive taps before building footprints.
+                            val poiHit = visibleMarkers.minByOrNull {
+                                val p = project(it.center)
+                                hypot((tap.x - p.x).toDouble(), (tap.y - p.y).toDouble())
+                            }?.takeIf {
+                                val p = project(it.center)
+                                hypot((tap.x - p.x).toDouble(), (tap.y - p.y).toDouble()) <=
+                                    20.dp.toPx()
+                            }
+                            if (poiHit != null) {
+                                selectedPoi = poiHit
+                                selected = null
+                                selectedRoom = null
+                                keyboardExpanded = false
+                                return@mapTap
+                            }
+                            selectedPoi = null
                             val point = Offset(
                                 (tap.x - viewport.width / 2f - pan.x) / scale,
                                 (tap.y - viewport.height / 2f - pan.y) / scale,
@@ -763,6 +889,53 @@ internal fun CampusMapScreen(
                     }
                 }
             }
+
+            // Compact Monet pins remain a fixed screen size at any map zoom.
+            // Markers are filtered in screen space, but no POI is deleted from
+            // the underlying cached dataset.
+            poiLabelPaint.textSize = 10.sp.toPx()
+            val poiCanvas = drawContext.canvas.nativeCanvas
+            val poiSave = poiCanvas.save()
+            poiCanvas.clipRect(0f, 0f, size.width, size.height)
+            visibleMarkers.forEach { poi ->
+                val center = project(poi.center)
+                val marker = when (poi.category) {
+                    "lodging" -> colors.tertiaryContainer
+                    "food" -> colors.primaryContainer
+                    "shop" -> colors.secondaryContainer
+                    "education" -> colors.primaryContainer
+                    "health" -> colors.tertiaryContainer
+                    "transport" -> colors.secondaryContainer
+                    "work" -> colors.surfaceContainerHighest
+                    "leisure" -> colors.secondaryContainer
+                    else -> colors.surfaceContainerHigh
+                }
+                val foreground = when (poi.category) {
+                    "lodging", "health" -> colors.onTertiaryContainer
+                    "food", "education" -> colors.onPrimaryContainer
+                    "shop", "transport", "leisure" -> colors.onSecondaryContainer
+                    else -> colors.onSurface
+                }
+                drawCircle(marker, radius = 12.dp.toPx(), center = center)
+                drawCircle(colors.outlineVariant, radius = 12.dp.toPx(), center = center,
+                    style = Stroke(width = 1.dp.toPx()))
+                poiLabelPaint.color = foreground.toArgb()
+                val glyph = when (poi.category) {
+                    "lodging" -> "Н"
+                    "food" -> "Е"
+                    "shop" -> "М"
+                    "education" -> "У"
+                    "health" -> "+"
+                    "transport" -> "Т"
+                    "work" -> "О"
+                    "leisure" -> "П"
+                    else -> "•"
+                }
+                val font = poiLabelPaint.fontMetrics
+                poiCanvas.drawText(glyph, center.x,
+                    center.y - (font.ascent + font.descent) / 2f, poiLabelPaint)
+            }
+            poiCanvas.restoreToCount(poiSave)
 
             // Readable, individually selectable building labels, derived from
             // named OSM footprints instead of approximate external pins.
@@ -923,8 +1096,8 @@ internal fun CampusMapScreen(
             IconButton(
                 onClick = {
                     stopFling()
-                    zoom = 1.45f
-                    pan = fitPan(Offset.Zero, zoom)
+                    zoom = 1f
+                    pan = fitPan(centeredPan(zoom), zoom)
                 },
                 modifier = Modifier.testTag("campus-zoom-reset"),
             ) {
@@ -932,7 +1105,8 @@ internal fun CampusMapScreen(
             }
         }
 
-        selected?.let { place ->
+        val selectedTitle = selectedPoi?.name ?: selected?.name
+        selectedTitle?.let { title ->
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
@@ -947,16 +1121,34 @@ internal fun CampusMapScreen(
                 ) {
                     Column(Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(place.name, style = MaterialTheme.typography.titleMedium)
+                        Text(title, style = MaterialTheme.typography.titleMedium)
                         selectedRoom?.let { room ->
                             Text(room, style = MaterialTheme.typography.labelLarge,
                                 color = colors.primary)
                         }
-                        Text(place.address, style = MaterialTheme.typography.bodyMedium,
-                            color = colors.onSurfaceVariant)
+                        selectedPoi?.let { poi ->
+                            Text(when (poi.category) {
+                                "lodging" -> "Гостиница / хостел"
+                                "food" -> "Кафе / питание"
+                                "shop" -> "Магазин"
+                                "education" -> "Образование"
+                                "health" -> "Медицина"
+                                "transport" -> "Транспорт"
+                                "work" -> "Организация / услуги"
+                                "leisure" -> "Досуг / достопримечательность"
+                                else -> "Объект на карте"
+                            }, style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant)
+                        }
+                        val address = selectedPoi?.address ?: selected?.address.orEmpty()
+                        if (address.isNotBlank()) {
+                            Text(address, style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant)
+                        }
                     }
                     TextButton(onClick = {
                         selected = null
+                        selectedPoi = null
                         selectedRoom = null
                     }) { Text("Скрыть") }
                 }
