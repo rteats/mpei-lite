@@ -5,6 +5,7 @@ import com.rteats.mpeineo.AppIcons
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.SizeTransform
@@ -160,7 +161,7 @@ internal fun ScheduleAgenda(
         transitionSpec = {
             if (focusJumpPending) {
                 (fadeIn(animationSpec = focusWeekEffects) togetherWith
-                    fadeOut(animationSpec = focusWeekEffects))
+                    fadeOut(animationSpec = snap()))
                     .using(SizeTransform(clip = true))
             } else {
                 val direction = weekTravelDirection(initialState, targetState)
