@@ -167,7 +167,7 @@ internal fun LessonCard(
         ?.container?.uiFrameProfiler
     // Keep the linked-destination pulse, but don't independently animate shape,
     // padding, colour and text measurement for every lesson card.
-    val cornerRadius = 28.dp
+    val cornerRadius = 16.dp
     val targetContainer = lerp(
         lessonContainerColor(lesson.kind),
         MaterialTheme.colorScheme.primaryContainer,
@@ -180,7 +180,7 @@ internal fun LessonCard(
         label = "lesson-card-color",
     )
     val verticalPadding by animateDpAsState(
-        targetValue = if (expanded) 13.dp else 10.dp,
+        targetValue = if (expanded) 13.dp else 11.dp,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "lesson-card-padding",
     )
@@ -217,38 +217,35 @@ internal fun LessonCard(
                             (elapsedFraction * 100).roundToInt() +
                             "% времени пары"
                     } else Modifier)
-                    .padding(horizontal = 14.dp, vertical = verticalPadding),
+                    .padding(horizontal = 12.dp, vertical = verticalPadding),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                LessonNumber(lesson.startTime)
+                // Event-first hierarchy mirrors the Calendar schedule list.
                 Text(
                     lesson.name,
-                    modifier = Modifier.weight(1f),
-                    maxLines = if (expanded) Int.MAX_VALUE else 1,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                // Do not animate the room's *width* here. A shrinking
-                // trailing slot continuously remeasures the title, making
-                // a long name wrap into three lines mid-transition and
-                // settle into two. Release the full width on the first
-                // expansion frame; animate the vertical reveal below.
-                if (!expanded && lesson.place.isNotBlank()) {
+                Text(
+                    lesson.startTime + "–" + lesson.endTime,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                val eventDetails = listOf(lesson.kind, lesson.place)
+                    .filter(String::isNotBlank).joinToString(" · ")
+                if (eventDetails.isNotBlank()) {
                     Text(
-                        lesson.place,
-                        modifier = Modifier.widthIn(max = 100.dp),
-                        maxLines = 1,
+                        eventDetails,
+                        maxLines = if (expanded) 3 else 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(
@@ -270,14 +267,13 @@ internal fun LessonCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            lesson.startTime + "–" + lesson.endTime,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (lesson.kind.isNotBlank()) LessonTypeChip(lesson.kind)
+                        lessonPeriodNumber(lesson.startTime)?.let { period ->
+                            Text(
+                                "$period-я пара",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     if (lesson.place.isNotBlank()) {
                         val building = campusBuildingForRoom(lesson.place)
@@ -418,6 +414,6 @@ internal fun lessonContainerColor(kind: String): Color {
     return lerp(
         scheme.surfaceContainer,
         monetAdjusted,
-        if (monetAdjusted == scheme.onSurfaceVariant) 0.08f else 0.13f,
+        if (monetAdjusted == scheme.onSurfaceVariant) 0.12f else 0.25f,
     )
 }

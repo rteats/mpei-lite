@@ -79,6 +79,29 @@ Manual verification: quickly reverse a swipe; open Mail and BARS details,
 swipe from left to right and scroll vertically; open Search with IME and
 switch tabs; click the next lesson in both current and subsequent weeks.
 
+## Calendar-style Schedule agenda (25 October 2026)
+
+Use Google Calendar's Android Schedule view as the base visual model:
+dates in a narrow left rail, a continuous vertical flow of compact colored
+events, event title as the headline, and start/end times and location visible
+without opening the card. The month/week strip sits above the agenda list.
+Preserve university-specific controls: MPEI class types, lesson number and
+teacher/group detail on expansion, elapsed-lesson background, next-class link
+highlight, manual refresh, and week pull.
+
+A user-visible bug in the prior implementation was caused by
+`slideInHorizontally` / `slideOutHorizontally` applied to whole weeks with
+one-fifth-width offsets. Week movement is now **vertical**, uses the **full
+viewport height**, and clips at the container boundary. Both week screens
+have opaque Material surfaces, so they do not visually overlap. Linked
+lesson jumps use a quieter effects fade, removing the outgoing week
+immediately instead of rendering two sets of text over one another.
+
+Do not add a separate horizontal week pager. The existing vertical
+over-scroll-at-the-boundary gesture still owns week changes, and the
+load/refresh/focus APIs are unchanged. A future seamless multiweek infinite
+list would be a distinct change to data preloading and scroll anchoring.
+
 ## Physics instead of independent duration constants
 
 Google's M3 Expressive motion system specifies **spatial** and **effects**
