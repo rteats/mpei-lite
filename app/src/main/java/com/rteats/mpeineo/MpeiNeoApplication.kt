@@ -136,12 +136,16 @@ class AppContainer(application: Application) {
     val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
     internal val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)
-    val updater = GithubUpdateRepository(
-        application = application,
-        httpClient = httpClient,
-        gson = gson,
-        diagnostics = diagnostics,
-    )
+    // The updater is only needed by Settings and post-launch housekeeping.
+    // Avoid reading its preferences or creating its download directory at launch.
+    val updater by lazy {
+        GithubUpdateRepository(
+            application = application,
+            httpClient = httpClient,
+            gson = gson,
+            diagnostics = diagnostics,
+        )
+    }
     val repository = ScheduleRepository(
         remote = MpeiScheduleRemote(httpClient, gson),
         cache = FileScheduleCache(application, gson),
