@@ -7,8 +7,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -24,9 +25,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
@@ -53,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -142,36 +146,43 @@ internal fun ScheduleAgenda(
             .getOrDefault(0)
     }
 
-    // transitionSpec is not @Composable: resolve tokens while in composition.
-    val weekSpatialSpring = MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
-    // A linked lesson jump must not look like a root pager tab switch.
-    // Use an unobtrusive opacity change, and keep manual week pulls spatial.
+    // Each week is a full-height, opaque vertical page. There is no sideways
+    // movement and no transparent overlap of two different week contents.
+    val weekSpatialSpring =
+        MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
     val focusWeekEffects = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
     val focusJumpPending = focusLesson != null
     key(selectedId, selectedType) {
     AnimatedContent(
         targetState = visibleWeek,
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().clipToBounds(),
         label = "schedule-week",
         transitionSpec = {
-            // For the spatial-motion trial, week changes travel in the
-            // direction of the selected week instead of fading in place.
             if (focusJumpPending) {
-                fadeIn(animationSpec = focusWeekEffects) togetherWith
-                    fadeOut(animationSpec = focusWeekEffects)
+                (fadeIn(animationSpec = focusWeekEffects) togetherWith
+                    fadeOut(animationSpec = focusWeekEffects))
+                    .using(SizeTransform(clip = true))
             } else {
-                val forward = targetState >= initialState
-                slideInHorizontally(
-                    initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
+                val direction = weekTravelDirection(initialState, targetState)
+                (slideInVertically(
+                    initialOffsetY = { height -> direction * height },
                     animationSpec = weekSpatialSpring,
-                ) togetherWith slideOutHorizontally(
-                    targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
+                ) togetherWith slideOutVertically(
+                    targetOffsetY = { height -> -direction * height },
                     animationSpec = weekSpatialSpring,
-                )
+                )).using(SizeTransform(clip = true))
             }
         },
     ) { displayedWeek ->
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
         val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
+        val monthLabel = remember(weekStart, locale) {
+            weekStart.format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
+                .replaceFirstChar { it.titlecase(locale) }
+        }
         // These strings are static for this week. Avoid date formatting on
         // every pointer-driven overscroll animation frame.
         val previousWeekLabel = remember(monday, displayedWeek, weekDateFormat) {
@@ -283,6 +294,31 @@ internal fun ScheduleAgenda(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(monthLabel,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(
+                        weekStart.format(weekDateFormat) + " – " +
+                            weekEnd.format(weekDateFormat) +
+                            "  ·  " + studyWeekNumber(weekStart) + "-я учебная неделя",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (displayedWeek != 0) {
+                    TextButton(onClick = {
+                        visibleWeek = 0
+                        entryDay = currentDayIndex
+                    }) { Text("Сегодня") }
+                }
+            }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth()
                     .nestedScroll(pullConnection)
@@ -329,12 +365,12 @@ internal fun ScheduleAgenda(
                         .graphicsLayer { translationY = visualPull * 0.22f },
                     state = listState,
                     // The global top app bar and persistent root navigation own insets.
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     for (dayIndex in 0..6) {
                         val date = weekStart.plusDays(dayIndex.toLong())
-                        item(key = "day-$date", contentType = "day-card") {
+                        item(key = "day-$date", contentType = "agenda-day") {
                             val dayData: ScheduleDay? =
                                 state.agendaWeeks[displayedWeek]?.days
                                     ?.firstOrNull { it.date == date.toString() }
@@ -377,6 +413,7 @@ internal fun ScheduleAgenda(
                 )
             }
         }
+    }
     }
     }
 }
@@ -473,7 +510,7 @@ private fun AgendaDaySection(
                 }
                 day.lessons.forEachIndexed { index, lesson ->
                     if (index in oneHourBreaks) {
-                        Spacer(Modifier.height(18.dp))
+                        Spacer(Modifier.height(8.dp))
                     }
                     LessonCard(
                         lesson = lesson,
@@ -516,8 +553,10 @@ private fun AgendaDaySection(
 }
 
 /**
- * Muted Monet-derived tonality for today, without an accent outline.
- * Keep lesson type backgrounds unchanged and all text onSurface for contrast.
+ * Google Calendar-style agenda rows: a fixed date rail and a continuous event
+ * column. Each day is one list item (stable by date); no enclosing "card inside
+ * a card" and no duplicate date headers. The full row participates in vertical
+ * scrolling and is clipped at the week viewport boundary.
  */
 @Composable
 private fun AgendaDayCard(
@@ -532,63 +571,61 @@ private fun AgendaDayCard(
     focusLesson: ScheduleLessonFocus?,
     onFocusConsumed: (Int) -> Unit,
 ) {
+    val locale = remember { Locale.forLanguageTag("ru") }
+    val weekday = remember(date) {
+        date.format(DateTimeFormatter.ofPattern("EEE", locale))
+            .replace(".", "")
+            .lowercase(locale)
+    }
     val isToday = date == today
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = if (isToday) lerp(
-            MaterialTheme.colorScheme.surfaceContainerLow,
-            MaterialTheme.colorScheme.primaryContainer,
-            0.18f,
-        ) else MaterialTheme.colorScheme.surfaceContainerLow,
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .padding(start = 8.dp, end = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.width(52.dp).padding(top = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            AgendaDayHeader(date, today)
-            Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
-                AgendaDaySection(
-                    date = date,
-                    clock = clock,
-                    day = day,
-                    loading = loading,
-                    failed = failed,
-                    onRetry = onRetry,
-                    onLocateRoom = onLocateRoom,
-                    focusLesson = focusLesson,
-                    onFocusConsumed = onFocusConsumed,
-                )
+            Text(
+                weekday,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isToday) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                shape = CircleShape,
+                color = if (isToday) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = if (isToday) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+            ) {
+                Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        date.dayOfMonth.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun AgendaDayHeader(
-    date: LocalDate,
-    today: LocalDate,
-    modifier: Modifier = Modifier,
-) {
-    val language = remember { Locale.forLanguageTag("ru") }
-    val dateFormat = remember { DateTimeFormatter.ofPattern("EEEE, d MMMM", language) }
-    val isToday = date == today
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = if (isToday) lerp(
-            MaterialTheme.colorScheme.surfaceContainer,
-            MaterialTheme.colorScheme.primaryContainer,
-            0.27f,
-        ) else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        Text(
-            date.format(dateFormat).replaceFirstChar { it.titlecase(language) } +
-                if (isToday) " • Сегодня" else "",
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            AgendaDaySection(
+                date = date,
+                clock = clock,
+                day = day,
+                loading = loading,
+                failed = failed,
+                onRetry = onRetry,
+                onLocateRoom = onLocateRoom,
+                focusLesson = focusLesson,
+                onFocusConsumed = onFocusConsumed,
+            )
+        }
     }
 }
