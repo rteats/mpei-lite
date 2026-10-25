@@ -1,61 +1,70 @@
-# MPEI Neo offline OpenStreetMap campus
+# MPEI Lite: Lefortovo map and nearby places
 
-The Maps destination now renders **real OSM building footprints, streets,
-footpaths and green spaces** from a locally bundled 33 KB GeoJSON-like
-asset. No SDK, WebView, map server, tiles, API keys, permissions or runtime
-network requests.
+The campus map uses a Monet-colored, offline-capable OpenStreetMap vector
+renderer. It has no mapping SDK, tile service, API keys, or device-location
+permission. It covers the rectangle from:
 
-## Data generation
+- North-west: **55.767230, 37.696083**
+- South-east: **55.746344, 37.720361**
+
+The **first map visit with a network connection** fetches this fixed area once
+from the public Overpass API. The response includes buildings, streets,
+walkways, green areas, and mapped places. It is converted to a compact,
+persistent `filesDir/lefortovo_osm_v1.json` cache and then drawn offline.
+The cache is refreshed after 30 days when the map is opened online. A failed
+request retains the previous complete cached extract. On a clean, offline
+installation, the smaller campus outline bundled in `assets/campus_osm.json`
+is used until the first successful download; this fallback does **not** cover
+the full Lefortovo rectangle.
+
+The request is for the same fixed rectangle for every user. The app does not
+send device location or student information. The public Overpass server may
+be unavailable, rate-limit requests, or return incomplete/old map data. Data
+coverage depends on OpenStreetMap volunteers. The app validates the response
+before replacing its local cache, and does not retry continuously.
+
+## Places and markers
+
+The offline database retains POIs mapped as nodes, ways, or relations with
+OpenStreetMap tags including `amenity`, `shop`, `tourism`, `office`,
+`craft`, `healthcare`, `historic`, `public_transport`, selected
+`railway`, `leisure`, and `man_made` features. Named buildings and
+buildings marked as dormitories are also included. Cafés, restaurants,
+hostels, hotels, shops, healthcare services, education, transport, offices,
+parks, and other mapped objects receive category markers. Records with no
+official name use a type label where possible.
+
+Each marker uses roles from `MaterialTheme.colorScheme` (Monet). The map
+uses a compact screen-space de-overlap: close markers are separated by
+zooming in, not deleted from the cached dataset. Tap a visible mark to see
+its name, category, and mapped street address when available. Empty tap
+space clears the current selection. Category labels do not imply current
+opening hours or availability.
+
+MPEI building letters still come from named OSM footprints, with the
+existing building keyboard and cross-tab classroom focus. At the overview
+zoom the full requested rectangle fits on screen. Pinch or use the vertical
+Material 3 floating toolbar to zoom in, and use the reset control to fit the
+whole area again. Campus selection zooms in to the requested footprint.
+
+The base geometry and colors are rasterized once per palette and prepared
+scene. Markers and selected building outlines stay separate so pan, zoom,
+and selection do not trigger another full base-map rasterization.
+
+## Source and licenses
 
 OpenStreetMap data © OpenStreetMap contributors, licensed under
-[ODbL 1.0](https://www.openstreetmap.org/copyright).
+[ODbL 1.0](https://www.openstreetmap.org/copyright). The map has an on-screen
+OpenStreetMap attribution link.
 
-Source: OpenStreetMap API 0.6, geographic bbox
-\`37.70125,55.75285,37.71085,55.7587\`, extracted via
-\`scripts/build_campus_geometry.py\`.
-The generator preserves true way vertices (simplified to 0.3–1 m tolerance
-depending on the feature class) and stores them as decimetres relative to
-55.7559 N, 37.70605 E. The map shows an on-screen © OpenStreetMap
-attribution linked to the copyright/license page.
+`CampusAreaData.kt` defines the new fixed-area Overpass query and conversion.
+The legacy `scripts/build_campus_geometry.py` produces the smaller bundled
+fallback asset only; it does not supply the enlarged online extract.
 
-The manual GitHub Actions workflow \`Refresh campus geometry\` can regenerate
-the dataset when OSM changes. Update \`app/src/main/assets/campus_osm.json\`
-with the regenerated output, review changed features, and rebuild.
-
-## Selection
-
-Campus buildings are identified from names on OSM polygons (Корпус А,
-Корпус Б etc.), **not** from MpeiX's approximate marker coordinates. Taps
-hit actual building outlines, with a small nearby-label tolerance. Each
-building opens a compact address card. The previous «Корпуса» button and
-bottom sheet were replaced by an always-available **letter keyboard** at the
-top of the map. It uses the locally bundled building names, adapts to screen
-width, highlights the selected key, and zooms straight to its footprint.
-
-Single taps are resolved at finger-up instead of waiting for a second
-double-tap; double-tap zoom was removed to eliminate that delay. Use pinch
-or the existing +/- controls to zoom. Prepared selected-building paths are
-reused on redraw instead of filtering features every frame. The map's
-left-edge swipe-back zone starts below the keyboard and remains available.
-
-Diagnostics: `MAP_UI` records only building letter, selection source,
-polygon/label hit and callback processing time; `PERF` continues to record
-asset/bitmap preparation time. Neither records private schedule text or
-student data. Buildings without a recognized MPEI name are drawn in a
-neutral surface color.
-
-Pan and pinch-zoom work entirely in Compose, using Material 3 dynamic color
-roles. No schematic roads/rectangles remain.
-
-OSM data can still be inaccurate, incomplete or outdated. Building outlines
-are not navigation-grade surveying data.
-
-## Addresses
-
-Address labeling was informed by MpeiX
-([repository](https://github.com/tonykolomeytsev/mpeiapp),
-Copyright © 2021 Anton Kolomeytsev, MIT License).
-Full MIT license notice for adapted address data:
+Original building address labeling was informed by
+[MpeiX](https://github.com/tonykolomeytsev/mpeiapp)
+(Copyright © 2021 Anton Kolomeytsev, MIT License).
+Full notice for adapted address data:
 
 Copyright (c) 2021 Anton Kolomeytsev
 
