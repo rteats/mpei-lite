@@ -2,6 +2,11 @@ package com.rteats.mpeineo
 
 import android.app.Application
 import android.content.ComponentCallbacks2
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import com.rteats.mpeineo.ui.clearCampusRasterOnLowMemory
 import com.google.gson.GsonBuilder
 import com.rteats.mpeineo.data.BarsNetworkDiagnostics
@@ -26,24 +31,45 @@ class MpeiNeoApplication : Application() {
     lateinit var container: AppContainer
         private set
 
+    private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val maintenanceStarted = AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
         installCrashLogging()
-
-        val cleanup = container.updater.cleanupAfterLaunch(BuildConfig.VERSION_CODE)
         container.diagnostics.log(
             "APP",
             "started version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE} channel=${BuildConfig.UPDATE_CHANNEL}",
         )
-        container.diagnostics.log(
-            "UPDATE",
-            "startup cleanup deleted=${cleanup.deletedFiles} completedUpdate=${cleanup.completedInstalledUpdate}",
-        )
-        // Preserve existing WorkManager cadence, but restore a missing registration.
-        MailNotificationScheduler.reconcileOnStartup(this)
-        // Cancel any legacy automatic APK update work from previous versions.
-        androidx.work.WorkManager.getInstance(this).cancelUniqueWork("automatic_apk_updates")
+    }
+
+    /**
+     * Nonessential disk and WorkManager operations must not block the first UI frame.
+     * Called once after initial composition has had a chance to render. A restart
+     * creates a fresh Application and repeats the maintenance normally.
+     */
+    fun startPostLaunchMaintenance() {
+        if (!maintenanceStarted.compareAndSet(false, true)) return
+        maintenanceScope.launch {
+            runCatching {
+                val cleanup = container.updater.cleanupAfterLaunch(BuildConfig.VERSION_CODE)
+                container.diagnostics.log(
+                    "UPDATE",
+                    "post-launch cleanup deleted=${cleanup.deletedFiles} completedUpdate=${cleanup.completedInstalledUpdate}",
+                )
+            }.onFailure {
+                container.diagnostics.log("UPDATE", "post-launch cleanup failed type=${it.javaClass.simpleName}")
+            }
+            runCatching {
+                // KEEP retains a healthy periodic mail notification registration.
+                MailNotificationScheduler.reconcileOnStartup(this@MpeiNeoApplication)
+                androidx.work.WorkManager.getInstance(this@MpeiNeoApplication)
+                    .cancelUniqueWork("automatic_apk_updates")
+            }.onFailure {
+                container.diagnostics.log("APP", "post-launch work recovery failed type=${it.javaClass.simpleName}")
+            }
+        }
     }
 
     override fun onTrimMemory(level: Int) {
