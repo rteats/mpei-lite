@@ -190,7 +190,7 @@ internal object CampusAreaData {
                         kind = tags.tag("highway"), p = path,
                     )
                     val landKind = listOf("landuse", "leisure", "natural")
-                        .map(tags::tag).firstOrNull { it.isNotBlank() }.orEmpty()
+                        .map { tags.tag(it) }.firstOrNull { it.isNotBlank() }.orEmpty()
                     when {
                         closed && path.size >= 3 && tags.tag("building").let {
                             it.isNotEmpty() && it != "no"
@@ -220,7 +220,7 @@ internal object CampusAreaData {
             if (lat !in SOUTH..NORTH || lon !in WEST..EAST) continue
             val centerPoint = point(lat, lon)
             val name = listOf("name:ru", "name", "brand", "operator")
-                .asSequence().map(tags::tag).firstOrNull { it.isNotBlank() }
+                .asSequence().map { tags.tag(it) }.firstOrNull { it.isNotBlank() }
                 ?: fallbackLabels[kind] ?: kind.replace('_', ' ')
             val key = "$type/$id"
             // The existing alphabet labels already identify MPEI buildings.
