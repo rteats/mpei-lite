@@ -42,14 +42,14 @@ class CampusMapGesturesTest {
 
     @Test fun zoomIsClampedToSupportedRange() {
         val enlarged = applyCampusGesture(
-            4.8f, Offset.Zero, 3f, Offset.Zero, Offset(500f, 500f),
+            17f, Offset.Zero, 3f, Offset.Zero, Offset(500f, 500f),
             viewport, roomyWorld,
         )
         val shrunk = applyCampusGesture(
             .8f, Offset.Zero, .1f, Offset.Zero, Offset(500f, 500f),
             viewport, roomyWorld,
         )
-        assertEquals(5f, enlarged.zoom, .001f)
+        assertEquals(18f, enlarged.zoom, .001f)
         assertEquals(.65f, shrunk.zoom, .001f)
     }
 
