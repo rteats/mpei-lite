@@ -78,6 +78,15 @@ class WeekPullGestureTest {
         assertEquals(2, studyWeekNumber(java.time.LocalDate.of(2027, 2, 8)))
     }
 
+    @Test fun weekAnimationDirectionMatchesVerticalScroll() {
+        // Scroll forward: new week arrives below the viewport and the old
+        // one exits above. Reverse the direction for the previous week.
+        assertEquals(1, weekTravelDirection(0, 1))
+        assertEquals(-1, weekTravelDirection(1, 0))
+        assertEquals(1, weekTravelDirection(-2, 0))
+        assertEquals(-1, weekTravelDirection(3, -1))
+    }
+
     @Test fun adjacentWeekPreviewUsesRealMondaySundayBounds() {
         val monday = java.time.LocalDate.of(2026, 12, 28)
         assertEquals(
