@@ -37,6 +37,14 @@ internal fun advanceWeekPull(
     }
 }
 
+/**
+ * Full-height agenda page motion follows the physical scroll direction.
+ * Higher weeks enter from below; older weeks enter from above.
+ * Unlike a small fractional offset, this keeps consecutive weeks disjoint.
+ */
+internal fun weekTravelDirection(from: Int, to: Int): Int =
+    if (to >= from) 1 else -1
+
 /** Returns -1 for previous week, +1 for next week, or 0 to cancel. */
 internal fun weekDeltaForPull(distance: Float, threshold: Float): Int {
     require(threshold > 0f)
