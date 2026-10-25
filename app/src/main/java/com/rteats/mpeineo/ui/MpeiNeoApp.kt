@@ -80,6 +80,15 @@ fun MpeiNeoApp(
 ) {
     val application = LocalContext.current.applicationContext as MpeiNeoApplication
     val diagnostics = application.container.diagnostics
+    // The first Schedule frame must not compete with a hidden Chromium WebView.
+    var backgroundStartupReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        // This delay gates background work only; it never holds the splash screen.
+        delay(250)
+        application.startPostLaunchMaintenance()
+        backgroundStartupReady = true
+    }
     val hostView = LocalView.current
     val hapticFeedback = LocalHapticFeedback.current
     val interfacePrefs = remember(application) { InterfacePreferences(application) }
@@ -539,7 +548,7 @@ fun MpeiNeoApp(
                             onSearch = { openGlobalSearch(SearchScope.BARS) },
                             autoRefreshEnabled = barsAutoRefreshEnabled,
                             active = currentService == AppTab.BARS,
-                            allowBackgroundSync = barsAutoRefreshEnabled,
+                            allowBackgroundSync = barsAutoRefreshEnabled && backgroundStartupReady,
                             onDetailOpenChange = {
                                 if (currentService == AppTab.BARS) barsDetailOpen = it
                             },
