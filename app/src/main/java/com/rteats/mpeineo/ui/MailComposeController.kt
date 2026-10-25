@@ -55,10 +55,21 @@ internal class MailComposeController(
     private var recipientJob: Job? = null
     private var draftWriteJob: Job? = null
     private var draftAccountKey: String? = owaMailRepository.cachedAccountKey()
+    private var draftRevision = 0L
 
     fun restoreCachedDraft() {
-        owaMailRepository.cachedDraft()?.let { saved ->
-            _state.update { it.copy(draft = saved.mail, outgoingFiles = saved.files) }
+        val account = draftAccountKey
+        val revision = draftRevision
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) { owaMailRepository.cachedDraft() }
+            if (account != draftAccountKey || revision != draftRevision) return@launch
+            saved?.let { snapshot ->
+                _state.update { current ->
+                    if (current.composing || current.draft != OutgoingMail() ||
+                        current.outgoingFiles.isNotEmpty()) current
+                    else current.copy(draft = snapshot.mail, outgoingFiles = snapshot.files)
+                }
+            }
         }
     }
 
@@ -75,12 +86,16 @@ internal class MailComposeController(
         }
     }
 
-    fun restoreDraftForActiveAccount() {
+    suspend fun restoreDraftForActiveAccount() {
         val currentAccount = owaMailRepository.cachedAccountKey()
         if (currentAccount == draftAccountKey) return
         draftWriteJob?.cancel()
         draftAccountKey = currentAccount
-        val restored = owaMailRepository.cachedDraft() ?: MailDraftSnapshot()
+        val revision = ++draftRevision
+        val restored = withContext(Dispatchers.IO) {
+            owaMailRepository.cachedDraft() ?: MailDraftSnapshot()
+        }
+        if (currentAccount != draftAccountKey || revision != draftRevision) return
         _state.update { it.copy(draft = restored.mail, outgoingFiles = restored.files) }
     }
 
@@ -92,6 +107,7 @@ internal class MailComposeController(
     }
 
     fun startCompose() {
+        draftRevision++
         _state.update { it.copy(composing = true, sendError = null, notice = null,
             activeRecipientField = null, recipientSuggestions = emptyList()) }
     }
@@ -108,6 +124,7 @@ internal class MailComposeController(
 
     fun editDraft(change: (OutgoingMail) -> OutgoingMail) {
         if (_state.value.sending) return
+        draftRevision++
         _state.update { it.copy(draft = change(it.draft), sendError = null) }
         scheduleDraftSave()
     }
@@ -162,6 +179,7 @@ internal class MailComposeController(
 
     fun addOutgoingFiles(uris: List<Uri>) {
         if (_state.value.sending) return
+        draftRevision++
         val resolver = repository.contextForNotifications.contentResolver
         val files = uris.distinct().mapNotNull { uri ->
             try {
@@ -216,6 +234,7 @@ internal class MailComposeController(
 
     fun removeOutgoingFile(uri: Uri) {
         if (_state.value.sending) return
+        draftRevision++
         _state.update { old -> old.copy(
             outgoingFiles = old.outgoingFiles.filterNot { it.uri == uri },
             sendError = null,
@@ -226,6 +245,7 @@ internal class MailComposeController(
 
     fun discardDraft() {
         if (_state.value.sending) return
+        draftRevision++
         draftWriteJob?.cancel()
         val previous = _state.value.outgoingFiles
         _state.update { it.copy(
@@ -262,6 +282,7 @@ internal class MailComposeController(
                 // so the sent message can open it without another download.
                 current.outgoingFiles.filterNot { it.uri in linkedSourceUris }
                     .forEach { releaseFilePermission(it.uri) }
+                draftRevision++
                 _state.update {
                     it.copy(
                         composing = false, draft = OutgoingMail(), outgoingFiles = emptyList(),
@@ -301,6 +322,7 @@ internal class MailComposeController(
 
     /** Called before logout invalidates the session and clears shared state. */
     fun cancelAndRelease() {
+        draftRevision++
         recipientJob?.cancel()
         draftWriteJob?.cancel()
         _state.value.outgoingFiles.forEach { releaseFilePermission(it.uri) }
