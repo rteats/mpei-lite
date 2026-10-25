@@ -46,6 +46,32 @@ No frame-by-frame logs or page contents are collected. The capture stays
 disabled until explicitly started; the worker thread and listener are removed
 when it ends. UI measurements should be collected on a physical device.
 
+## Startup timing
+
+Use the same physical device, display refresh rate, installed app data and
+network conditions for before/after comparisons. The in-app frame profiler
+does **not** capture startup. A shell measurement for the Dev package:
+
+```bash
+adb shell am start -S -W -n com.rteats.mpeineo.dev/com.rteats.mpeineo.MainActivity
+```
+
+`TotalTime` is an approximate Activity launch / first-display measure, **not**
+time until all cached lessons are visible. Repeat the same command at least
+10 times (discard the first run after installing) and compare medians and p90.
+For a quick repeatable report use
+`bash scripts/benchmark_startup.sh com.rteats.mpeineo.dev 10`.
+Switch package to `com.rteats.mpeineo` for stable. Do not compare a Dev build
+to a Debug build; Dev CI already enables R8. For true cold, warm and hot startup
+classification and time-to-fully-drawn use Macrobenchmark / Android Studio.
+
+Startup budget: first render requires the app shell and the Schedule UI.
+BARS grade snapshots, encrypted mail caches, mail server sync, Chromium BARS
+session, expired update APK cleanup and WorkManager reconciliation are not
+prerequisites. The BARS WebView still remains mounted once created, and the
+mail cache still restores when requested. Verify first BARS visit, 2FA
+persistence across tab swipes, cached mail and offline schedule after each change.
+
 ## If a regression is measured
 
 - **Cold launch**: use Android Studio Startup Profiler or the Macrobenchmark
