@@ -234,8 +234,12 @@ internal class BarsViewModel(
                 if (current.disciplines.isNotEmpty() ||
                     current.lastUpdatedAtMillis >= cached.updatedAtMillis
                 ) current else current.copy(
-                    authStage = if (current.authStage == BarsAuthStage.CHECKING)
-                        BarsAuthStage.AUTHENTICATED else current.authStage,
+                    // Match webAuth(): an expired background session must not
+                    // hide saved grades behind the login WebView.
+                    authStage = if (current.authStage == BarsAuthStage.CHECKING ||
+                        (current.authStage == BarsAuthStage.WEB_AUTH &&
+                            !current.browserVisible)
+                    ) BarsAuthStage.AUTHENTICATED else current.authStage,
                     profileName = cached.payload.name,
                     profileGroup = cached.payload.group,
                     semester = cached.payload.semester,
