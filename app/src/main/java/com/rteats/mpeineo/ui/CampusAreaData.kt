@@ -102,9 +102,14 @@ internal object CampusAreaData {
                 "man_made" -> value in MAN_MADE_POIS
                 else -> true
             }
-        } ?: return null
+        } ?: if (tags.tag("building") in setOf("dormitory", "hotel", "hostel") ||
+            (tags.tag("name").isNotBlank() && tags.tag("building").let {
+                it.isNotBlank() && it != "no"
+            })
+        ) "building" else return null
         val kind = tags.tag(tag)
         val group = when {
+            tag == "building" && kind in setOf("dormitory", "hotel", "hostel") -> "lodging"
             tag == "tourism" && kind in setOf(
                 "hostel", "hotel", "guest_house", "motel", "apartment", "camp_site",
             ) -> "lodging"
@@ -132,6 +137,7 @@ internal object CampusAreaData {
 
     private val fallbackLabels = mapOf(
         "hostel" to "Хостел", "hotel" to "Гостиница",
+        "dormitory" to "Общежитие",
         "guest_house" to "Гостевой дом", "cafe" to "Кафе",
         "restaurant" to "Ресторан", "fast_food" to "Быстрое питание",
         "pharmacy" to "Аптека", "school" to "Школа",
@@ -141,6 +147,9 @@ internal object CampusAreaData {
         "atm" to "Банкомат", "bank" to "Банк", "post_office" to "Почта",
         "bench" to "Скамейка", "playground" to "Детская площадка",
     )
+
+    private fun tagIsCampusBuilding(name: String, category: String): Boolean =
+        category == "other" && Regex("^Корпус [А-Я]$").matches(name)
 
     private fun address(tags: JsonObject): String {
         val street = tags.tag("addr:street")
@@ -198,14 +207,24 @@ internal object CampusAreaData {
 
             val (group, kind) = category(tags) ?: continue
             val center = objectValue.getAsJsonObject("center")
-            val lat = (center ?: objectValue).get("lat")?.asDouble ?: continue
-            val lon = (center ?: objectValue).get("lon")?.asDouble ?: continue
+            // The geometry output has no "center" field. Use the centroid
+            // of its coordinates for named buildings without a POI tag.
+            val lat = (center ?: objectValue).get("lat")?.asDouble
+                ?: coords?.takeIf { it.size() > 0 }?.map {
+                    it.asJsonObject.get("lat").asDouble
+                }?.average() ?: continue
+            val lon = (center ?: objectValue).get("lon")?.asDouble
+                ?: coords?.takeIf { it.size() > 0 }?.map {
+                    it.asJsonObject.get("lon").asDouble
+                }?.average() ?: continue
             if (lat !in SOUTH..NORTH || lon !in WEST..EAST) continue
             val centerPoint = point(lat, lon)
             val name = listOf("name:ru", "name", "brand", "operator")
                 .asSequence().map(tags::tag).firstOrNull { it.isNotBlank() }
                 ?: fallbackLabels[kind] ?: kind.replace('_', ' ')
             val key = "$type/$id"
+            // The existing alphabet labels already identify MPEI buildings.
+            if (tagIsCampusBuilding(name, group)) continue
             pois[key] = CampusPoi(
                 id = key,
                 name = name,
