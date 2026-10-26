@@ -62,10 +62,10 @@ jobs:
 
       - name: Build signed dev APK
         run: |
-          # Test the same Release variant that we publish. This avoids
-          # compiling a separate Debug app on every push to main.
+          # Keep JVM tests on Dev Debug: AGP exposes no Dev Release test task
+          # in the current configuration. Publish the optimized Dev Release APK.
           start=$SECONDS
-          gradle --no-daemon testDevReleaseUnitTest assembleDevRelease \
+          gradle --no-daemon testDevDebugUnitTest assembleDevRelease \
             -POPTIMIZE_RELEASE=true \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
