@@ -191,20 +191,33 @@ internal class MailViewModel(
         }
     }
 
+    private var initialRefreshStarted = false
+
     init {
         compose.restoreCachedDraft()
-        val cached = owaMailRepository.cachedInbox()
-        if (cached.isNotEmpty()) {
-            _state.update {
-                it.copy(configured = true, items = cached,
-                    hasMore = cached.size >= MAIL_PAGE_SIZE, nextPageOffset = cached.size)
+        // Android Keystore access, decryption and JSON parsing can be expensive.
+        // Restore cached pages without blocking construction of the first screen.
+        val accountAtStart = owaMailRepository.cachedAccountKey()
+        val versionAtStart = sessionVersion
+        viewModelScope.launch {
+            val (cachedInbox, cachedSent) = withContext(Dispatchers.IO) {
+                owaMailRepository.cachedInbox() to owaMailRepository.cachedSent()
             }
-        }
-        val savedSent = owaMailRepository.cachedSent()
-        if (savedSent.isNotEmpty()) {
-            _state.update {
-                it.copy(sentItems = savedSent, sentHasMore = savedSent.size >= MAIL_PAGE_SIZE,
-                    sentNextPageOffset = savedSent.size)
+            if (versionAtStart != sessionVersion ||
+                accountAtStart != owaMailRepository.cachedAccountKey()) return@launch
+            _state.update { current ->
+                // Do not overwrite a page delivered by a concurrent refresh/worker.
+                val inbox = if (current.items.isEmpty()) cachedInbox else current.items
+                val sent = if (current.sentItems.isEmpty()) cachedSent else current.sentItems
+                current.copy(
+                    configured = current.configured || inbox.isNotEmpty(),
+                    items = inbox,
+                    hasMore = current.hasMore || inbox.size >= MAIL_PAGE_SIZE,
+                    nextPageOffset = maxOf(current.nextPageOffset, inbox.size),
+                    sentItems = sent,
+                    sentHasMore = current.sentHasMore || sent.size >= MAIL_PAGE_SIZE,
+                    sentNextPageOffset = maxOf(current.sentNextPageOffset, sent.size),
+                )
             }
         }
         // WorkManager uses a separate repository instance. Its successful OWA
@@ -235,6 +248,15 @@ internal class MailViewModel(
                 repository.logState("OWA worker cache observed count=${update.firstPage.size}")
             }
         }
+    }
+
+    /**
+     * Mail is a lazy tab. Its first network synchronization starts on entry,
+     * not while Schedule is racing to display its first frame.
+     */
+    fun onMailScreenVisible() {
+        if (initialRefreshStarted) return
+        initialRefreshStarted = true
         refresh()
     }
 

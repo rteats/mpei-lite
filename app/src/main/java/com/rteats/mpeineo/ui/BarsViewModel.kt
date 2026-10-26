@@ -12,6 +12,7 @@ import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.BarsCachedSnapshot
 import com.rteats.mpeineo.data.barsSnapshotAccountKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -213,37 +214,47 @@ internal class BarsViewModel(
     private val snapshots: BarsSnapshotStore,
 ) : ViewModel() {
 
-    private val cachedGrades = snapshots.read()
-    private val cachedRaw = cachedGrades?.payload?.let { payload ->
-        barsSnapshotAccountKey(payload.name, payload.group)
-            ?.let(snapshots::readRaw)
-    }
-    private val _state = MutableStateFlow(
-        cachedGrades?.let { cached ->
-            BarsUiState(
-                authStage = BarsAuthStage.AUTHENTICATED,
-                profileName = cached.payload.name,
-                profileGroup = cached.payload.group,
-                semester = cached.payload.semester,
-                studentDetails = cached.payload.studentDetails.orEmpty(),
-                disciplines = cached.payload.disciplines,
-                lastUpdatedAtMillis = cached.updatedAtMillis,
-                rawMain = cachedRaw?.main.orEmpty(),
-                rawSummary = cachedRaw?.summary.orEmpty(),
-                rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
-                lastMainCapturedAtMillis = cachedRaw?.mainUpdatedAtMillis ?: 0L,
-                lastSummaryCapturedAtMillis = cachedRaw?.summaryUpdatedAtMillis ?: 0L,
-                isLoading = true,
-            )
-        } ?: BarsUiState(
-            rawMain = cachedRaw?.main.orEmpty(),
-            rawSummary = cachedRaw?.summary.orEmpty(),
-            rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
-            lastMainCapturedAtMillis = cachedRaw?.mainUpdatedAtMillis ?: 0L,
-            lastSummaryCapturedAtMillis = cachedRaw?.summaryUpdatedAtMillis ?: 0L,
-        )
-    )
+    private val _state = MutableStateFlow(BarsUiState())
     val state: StateFlow<BarsUiState> = _state.asStateFlow()
+
+    init {
+        // Snapshot parsing and disk reads must not run in Compose ViewModel creation.
+        viewModelScope.launch {
+            val (cachedGrades, cachedRaw) = withContext(Dispatchers.IO) {
+                val grades = snapshots.read()
+                val raw = grades?.payload?.let { payload ->
+                    barsSnapshotAccountKey(payload.name, payload.group)
+                        ?.let(snapshots::readRaw)
+                }
+                grades to raw
+            }
+            val cached = cachedGrades ?: return@launch
+            _state.update { current ->
+                // A live extraction may have finished while disk loading was in flight.
+                if (current.disciplines.isNotEmpty() ||
+                    current.lastUpdatedAtMillis >= cached.updatedAtMillis
+                ) current else current.copy(
+                    // Match webAuth(): an expired background session must not
+                    // hide saved grades behind the login WebView.
+                    authStage = if (current.authStage == BarsAuthStage.CHECKING ||
+                        (current.authStage == BarsAuthStage.WEB_AUTH &&
+                            !current.browserVisible)
+                    ) BarsAuthStage.AUTHENTICATED else current.authStage,
+                    profileName = cached.payload.name,
+                    profileGroup = cached.payload.group,
+                    semester = cached.payload.semester,
+                    studentDetails = cached.payload.studentDetails.orEmpty(),
+                    disciplines = cached.payload.disciplines,
+                    lastUpdatedAtMillis = cached.updatedAtMillis,
+                    rawMain = cachedRaw?.main.orEmpty(),
+                    rawSummary = cachedRaw?.summary.orEmpty(),
+                    rawCapturedAtMillis = cachedRaw?.updatedAtMillis ?: 0L,
+                    lastMainCapturedAtMillis = cachedRaw?.mainUpdatedAtMillis ?: 0L,
+                    lastSummaryCapturedAtMillis = cachedRaw?.summaryUpdatedAtMillis ?: 0L,
+                )
+            }
+        }
+    }
 
     private var lastWebEvent: String? = null
     private var lastProbeAtMillis = -10_000L

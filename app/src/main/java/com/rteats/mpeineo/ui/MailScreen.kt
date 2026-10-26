@@ -116,6 +116,9 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(active) {
+        if (active) viewModel.onMailScreenVisible()
+    }
     // Retain the outgoing snapshot while its spatial exit spring settles.
     // The ViewModel clears selected/composing on Back, not after the animation.
     var lastDetailState by remember { mutableStateOf<MailUiState?>(null) }
