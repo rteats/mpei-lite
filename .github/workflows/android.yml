@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: dev-apk
@@ -25,14 +24,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Prune obsolete Actions caches
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/maintain_actions.py --apply
 
       - name: Verify architecture ownership boundaries
         run: python3 scripts/check_architecture.py
@@ -55,8 +46,9 @@ jobs:
           gradle-version: "9.6.0"
           cache-read-only: false
           cache-cleanup: on-success
+          # Do not exclude caches/build-cache-1: Gradle task output reuse
+          # is more valuable than pruning that directory on every run.
           gradle-home-cache-excludes: |
-            caches/build-cache-1
             caches/keyrings
 
       - name: Materialize public dev keystore
@@ -70,11 +62,14 @@ jobs:
 
       - name: Build signed dev APK
         run: |
-          # R8 trial on rolling Dev only. Stable release is unaffected.
+          # Keep JVM tests on Dev Debug: AGP exposes no Dev Release test task
+          # in the current configuration. Publish the optimized Dev Release APK.
+          start=$SECONDS
           gradle --no-daemon testDevDebugUnitTest assembleDevRelease \
             -POPTIMIZE_RELEASE=true \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=${DEV_BASE_VERSION}-dev.${{ github.run_number }}
+          echo "Dev Gradle tasks: $((SECONDS - start)) seconds" >> "$GITHUB_STEP_SUMMARY"
           cp app/build/outputs/apk/dev/release/app-dev-release.apk MPEI-Neo-Dev.apk
 
       - name: Prepare API-free Dev update manifest
@@ -124,10 +119,3 @@ jobs:
             MPEI-Neo-Dev.apk
             update.json
 
-      # One small, bounded cleanup piggybacks on a successful Dev build.
-      # Do not delete Stable release runs or recent PR verification history.
-      - name: Prune retired Actions runs
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/maintain_actions.py --runs-only --apply

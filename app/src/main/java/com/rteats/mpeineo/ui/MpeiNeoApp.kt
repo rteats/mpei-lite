@@ -62,6 +62,7 @@ import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.data.InterfaceTheme
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 
 /**

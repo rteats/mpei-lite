@@ -58,11 +58,13 @@ jobs:
       # Test a real optimized release build, but publish APKs only from main.
       - name: Run unit tests, UI test compilation, lint, and compile release
         run: |
+          start=$SECONDS
           gradle --no-daemon testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
             -POPTIMIZE_RELEASE=true \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
             -PVERSION_NAME=0.5.0-pr.${{ github.event.pull_request.number }}.${{ github.run_number }}
+          echo "PR Gradle tasks: $((SECONDS - start)) seconds" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload verification reports on failure
         if: failure()
