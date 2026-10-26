@@ -59,7 +59,7 @@ jobs:
       - name: Run unit tests, UI test compilation, lint, and compile release
         run: |
           start=$SECONDS
-          gradle --no-daemon testDevReleaseUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
+          gradle --no-daemon testDevDebugUnitTest compileDevDebugAndroidTestKotlin lintDevDebug assembleDevRelease \
             -POPTIMIZE_RELEASE=true \
             -PPR_NUMBER=${{ github.event.pull_request.number }} \
             -PVERSION_CODE=${{ github.run_number }} \
