@@ -50,7 +50,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.AppIcon
@@ -149,7 +148,6 @@ fun MpeiNeoApp(
     val pageSpring = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
     var programmaticPaging by remember { mutableStateOf(false) }
     var pagerGesturePending by remember { mutableStateOf(false) }
-    var visualPages by remember { mutableStateOf(PRIMARY_TABS) }
     var navigationBarHeightPx by remember { mutableIntStateOf(0) }
     val pagerDragging by pagerState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(pagerDragging) {
@@ -306,35 +304,24 @@ fun MpeiNeoApp(
         }
     }
 
-    // For distant taps, put the target next to the source in a temporary
-    // keyed page order. Animate one viewport, then restore the real order.
+    // Route and pager have one stable page order. Reordering live pager keys
+    // can remount nested WebViews or display a different tab than the navbar.
+    // Adjacent pages use the Material spring; distant tab taps snap to the
+    // destination rather than moving authenticated pages through other slots.
     LaunchedEffect(foregroundTab) {
         val requested = primaryPageFor(foregroundTab)
-        val source = visualPages.getOrNull(pagerState.currentPage) ?: foregroundTab
-        if (source != foregroundTab || pagerState.isScrollInProgress ||
-            visualPages != PRIMARY_TABS) {
-            programmaticPaging = true
-            pagerGesturePending = false
-            try {
-                val order = adjacentProgrammaticPages(source, foregroundTab)
-                if (order != PRIMARY_TABS) {
-                    visualPages = order
-                    withFrameNanos { } // Allow keyed slots to relocate first.
-                    pagerState.animateScrollToPage(
-                        order.indexOf(foregroundTab), animationSpec = pageSpring,
-                    )
-                    visualPages = PRIMARY_TABS
-                    pagerState.requestScrollToPage(requested)
-                } else {
-                    pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
-                }
-            } finally {
-                if (visualPages != PRIMARY_TABS) {
-                    visualPages = PRIMARY_TABS
-                    pagerState.requestScrollToPage(requested)
-                }
-                programmaticPaging = false
+        if (pagerState.currentPage == requested &&
+            pagerState.currentPageOffsetFraction == 0f) return@LaunchedEffect
+        programmaticPaging = true
+        pagerGesturePending = false
+        try {
+            if (kotlin.math.abs(pagerState.currentPage - requested) > 1) {
+                pagerState.scrollToPage(requested)
+            } else {
+                pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
             }
+        } finally {
+            programmaticPaging = false
         }
     }
 
@@ -352,18 +339,53 @@ fun MpeiNeoApp(
         barsDetail = currentService == AppTab.BARS && barsDetailOpen,
     )
 
-    // Only a settled *finger swipe* commits a new tab. Normal tab selection
-    // remains route-first, and explicit links retain their back origin.
+    // A cancelled swipe must never leave the visual pager on another route.
+    // Opening a WebView, a message detail, Search, Settings, or the keyboard
+    // immediately gives the nested screen exclusive gesture ownership.
     LaunchedEffect(
         pagerState.settledPage, pagerState.isScrollInProgress,
-        rootPagingEnabled, programmaticPaging, pagerGesturePending,
+        rootPagingEnabled, programmaticPaging, pagerGesturePending, foregroundTab,
     ) {
-        if (!rootPagingEnabled || programmaticPaging ||
-            !pagerGesturePending || pagerState.isScrollInProgress
-        ) return@LaunchedEffect
-        pagerGesturePending = false
-        val settled = visualPages[pagerState.settledPage]
-        if (settled != currentService) openService(settled)
+        if (programmaticPaging) return@LaunchedEffect
+
+        if (!rootPagingEnabled) {
+            pagerGesturePending = false
+            val correction = pageToRestoreForRoute(
+                route = foregroundTab,
+                visiblePage = pagerState.currentPage,
+                offsetFraction = pagerState.currentPageOffsetFraction,
+                pendingUserSwipe = false,
+                swipeEnabled = false,
+                programmatic = false,
+            )
+            if (correction != null) {
+                pagerState.requestScrollToPage(correction)
+                logNavigation("pager restored to " + foregroundTab.name + " for nested UI")
+            }
+            return@LaunchedEffect
+        }
+        if (pagerState.isScrollInProgress) return@LaunchedEffect
+
+        if (pagerGesturePending) {
+            pagerGesturePending = false
+            // Only a completed user gesture, not a programmatic or interrupted
+            // movement, may commit a new service route.
+            val settled = PRIMARY_TABS.getOrNull(pagerState.settledPage)
+            if (settled != null && settled != currentService) openService(settled)
+        } else {
+            val correction = pageToRestoreForRoute(
+                route = foregroundTab,
+                visiblePage = pagerState.currentPage,
+                offsetFraction = pagerState.currentPageOffsetFraction,
+                pendingUserSwipe = false,
+                swipeEnabled = rootPagingEnabled,
+                programmatic = false,
+            )
+            if (correction != null) {
+                pagerState.requestScrollToPage(correction)
+                logNavigation("pager drift restored to " + foregroundTab.name)
+            }
+        }
     }
 
     LaunchedEffect(mailNotificationTarget?.requestId) {
@@ -517,15 +539,15 @@ fun MpeiNeoApp(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize().testTag("primary-service-pager"),
-                userScrollEnabled = rootPagingEnabled,
+                userScrollEnabled = rootPagingEnabled && !programmaticPaging,
                 beyondViewportPageCount = PRIMARY_TABS.lastIndex,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
                     snapAnimationSpec = pageSpring,
                 ),
-                key = { visualPages[it].name },
+                key = { PRIMARY_TABS[it].name },
             ) { page ->
-                val destination = visualPages[page]
+                val destination = PRIMARY_TABS[page]
                 if (shouldComposePrimaryPage(
                         page, pagerState.currentPage, pagerState.targetPage,
                         isBarsPage = destination == AppTab.BARS,

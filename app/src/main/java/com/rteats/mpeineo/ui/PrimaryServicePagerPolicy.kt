@@ -22,22 +22,21 @@ internal fun shouldComposePrimaryPage(
     isBarsPage || abs(page - current) <= 1 || abs(page - target) <= 1
 
 /**
- * A distant tab tap uses a temporary visual order. The chosen destination is
- * placed next to the source, so one full-width spring carries the content even
- * for Schedule -> Campus. The canonical order returns after settling.
- *
- * This is display order only: real routes, the swipe order, and service keys
- * never change. The same BARS key keeps its authenticated WebView alive.
+ * A disabled or interrupted pager cannot display a route other than the one
+ * selected in the navigation bar. A pending real user swipe is allowed to
+ * settle only while the root pager owns touch input.
  */
-internal fun adjacentProgrammaticPages(from: AppTab, to: AppTab): List<AppTab> {
-    val start = PRIMARY_TABS.indexOf(from)
-    val end = PRIMARY_TABS.indexOf(to)
-    if (start < 0 || end < 0 || abs(end - start) <= 1) return PRIMARY_TABS
-    val adjacent = start + if (end > start) 1 else -1
-    return PRIMARY_TABS.toMutableList().apply {
-        this[end] = this[adjacent]
-        this[adjacent] = to
-    }
+internal fun pageToRestoreForRoute(
+    route: AppTab,
+    visiblePage: Int,
+    offsetFraction: Float,
+    pendingUserSwipe: Boolean,
+    swipeEnabled: Boolean,
+    programmatic: Boolean,
+): Int? {
+    if (programmatic || (pendingUserSwipe && swipeEnabled)) return null
+    val expected = primaryPageFor(route)
+    return expected.takeIf { visiblePage != it || offsetFraction != 0f }
 }
 
 /** Embedded browsers, nested details, Settings and IME own touch gestures. */

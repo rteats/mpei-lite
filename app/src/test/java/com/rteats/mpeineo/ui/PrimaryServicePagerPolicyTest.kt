@@ -23,24 +23,51 @@ class PrimaryServicePagerPolicyTest {
         assertTrue(shouldComposePrimaryPage(2, 1, 1))
     }
 
-    @Test fun distantTabTapsTravelOneVirtualPageInEitherDirection() {
-        val forward = adjacentProgrammaticPages(AppTab.SCHEDULE, AppTab.MAPS)
-        assertEquals(AppTab.SCHEDULE, forward[0])
-        assertEquals(AppTab.MAPS, forward[1])
-        assertEquals(PRIMARY_TABS.toSet(), forward.toSet())
-        val backward = adjacentProgrammaticPages(AppTab.MAPS, AppTab.SCHEDULE)
-        assertEquals(AppTab.MAPS, backward[3])
-        assertEquals(AppTab.SCHEDULE, backward[2])
-        assertEquals(PRIMARY_TABS.toSet(), backward.toSet())
-        assertEquals(PRIMARY_TABS, adjacentProgrammaticPages(AppTab.BARS, AppTab.MAIL))
-        assertEquals(PRIMARY_TABS, adjacentProgrammaticPages(AppTab.MAIL, AppTab.MAIL))
+    @Test fun disabledPagerRestoresMailInsteadOfShowingMaps() {
+        assertEquals(
+            2,
+            pageToRestoreForRoute(
+                route = AppTab.MAIL,
+                visiblePage = 3,
+                offsetFraction = 0f,
+                pendingUserSwipe = false,
+                swipeEnabled = false,
+                programmatic = false,
+            ),
+        )
+        assertEquals(
+            2,
+            pageToRestoreForRoute(
+                route = AppTab.MAIL,
+                visiblePage = 2,
+                offsetFraction = 0.3f,
+                pendingUserSwipe = true,
+                swipeEnabled = false,
+                programmatic = false,
+            ),
+        )
     }
 
-    @Test fun barsCompositionUsesItsKeyAfterVirtualReordering() {
-        val order = adjacentProgrammaticPages(AppTab.SCHEDULE, AppTab.MAPS)
-        val barsIndex = order.indexOf(AppTab.BARS)
-        assertTrue(shouldComposePrimaryPage(barsIndex, 0, 1, isBarsPage = true))
-        assertFalse(shouldComposePrimaryPage(barsIndex, 0, 1, isBarsPage = false))
+    @Test fun committedRouteIsStableWithoutAPendingGesture() {
+        assertEquals(
+            2,
+            pageToRestoreForRoute(AppTab.MAIL, 1, 0f, false, true, false),
+        )
+        assertEquals(
+            null,
+            pageToRestoreForRoute(AppTab.MAIL, 2, 0f, false, true, false),
+        )
+    }
+
+    @Test fun realSwipeMaySettleButProgrammaticMovementMustNotBeRepaired() {
+        assertEquals(
+            null,
+            pageToRestoreForRoute(AppTab.MAIL, 3, 0f, true, true, false),
+        )
+        assertEquals(
+            null,
+            pageToRestoreForRoute(AppTab.MAIL, 3, 0f, false, false, true),
+        )
     }
 
     @Test fun serviceTitlesRemainScopedToTheirDestinations() {

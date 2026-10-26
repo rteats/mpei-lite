@@ -1,6 +1,9 @@
 package com.rteats.mpeineo
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -33,6 +36,20 @@ class UiSmokeTest {
         composeRule.onNodeWithTag("browser-reload").performClick()
         composeRule.onNodeWithTag("browser-exit").performClick()
         composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
+    }
+
+    @Test
+    fun portalGestureCannotShowMapsWhileMailTabIsSelected() {
+        composeRule.onNodeWithTag("tab-mail").performClick()
+        composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
+        composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
+
+        // OWA owns horizontal input even after loading or opening an email.
+        composeRule.onNodeWithTag("mail-webview").performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
+        composeRule.onNodeWithTag("tab-mail").assertIsSelected()
+        composeRule.onNodeWithTag("campus-map-screen").assertDoesNotExist()
     }
 
     @Test
