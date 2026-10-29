@@ -7,7 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rteats.mpeineo.ui.AppTab
-import com.rteats.mpeineo.ui.FourTabNavigationBar
+import com.rteats.mpeineo.ui.PrimaryIconServiceTabs
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -15,27 +15,29 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class FourTabNavigationUiTest {
+class PrimaryIconTabsUiTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun fourDestinationsSwitchDirectlyWithoutHome() {
-        val selected = mutableStateOf(AppTab.SCHEDULE)
+    @Test fun fiveDestinationsSwitchDirectly() {
+        val selected = mutableStateOf(AppTab.HOME)
         rule.setContent {
             MpeiNeoTheme {
-                FourTabNavigationBar(selected.value, unreadMail = false) {
+                PrimaryIconServiceTabs(selected.value, unreadMail = false) {
                     selected.value = it
                 }
             }
         }
-        rule.onNodeWithTag("four-tab-navigation").assertIsDisplayed()
-        rule.onNodeWithTag("tab-schedule").assertIsDisplayed()
+        rule.onNodeWithTag("primary-icon-tabs").assertIsDisplayed()
+        rule.onNodeWithTag("tab-home").assertIsDisplayed()
+        rule.onNodeWithTag("tab-schedule").performClick()
+        rule.runOnIdle { assertEquals(AppTab.SCHEDULE, selected.value) }
         rule.onNodeWithTag("tab-bars").performClick()
         rule.runOnIdle { assertEquals(AppTab.BARS, selected.value) }
         rule.onNodeWithTag("tab-mail").performClick()
         rule.runOnIdle { assertEquals(AppTab.MAIL, selected.value) }
         rule.onNodeWithTag("tab-maps").performClick()
         rule.runOnIdle { assertEquals(AppTab.MAPS, selected.value) }
-        rule.onNodeWithTag("tab-schedule").performClick()
-        rule.runOnIdle { assertEquals(AppTab.SCHEDULE, selected.value) }
+        rule.onNodeWithTag("tab-home").performClick()
+        rule.runOnIdle { assertEquals(AppTab.HOME, selected.value) }
     }
 }

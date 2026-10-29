@@ -154,8 +154,8 @@ fun MpeiNeoApp(
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
     val foregroundTab = if (currentService == AppTab.SETTINGS) {
-        beneathService ?: AppTab.SCHEDULE
-    } else currentService ?: AppTab.SCHEDULE
+        beneathService ?: AppTab.HOME
+    } else currentService ?: AppTab.HOME
     val pagerState = rememberPagerState(
         initialPage = primaryPageFor(foregroundTab),
         pageCount = { PRIMARY_TABS.size },
@@ -204,7 +204,7 @@ fun MpeiNeoApp(
 
     // Route names are intentionally coarse; never record student or message data.
     val performanceScreen = if (searchUi.isOpen) "SEARCH"
-        else currentService?.name ?: "SCHEDULE"
+        else currentService?.name ?: "HOME"
     LaunchedEffect(performanceScreen) {
         application.container.uiFrameProfiler.markScreen(performanceScreen)
     }
@@ -616,9 +616,9 @@ fun MpeiNeoApp(
             },
         ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            // Four lightweight slots let Pager drag continuously. Only the
+            // Five lightweight slots let Pager drag continuously. Only the
             // current/target neighborhood mounts costly non-BARS UI.
-            // BARS is ALWAYS mounted, even when three pages offscreen.
+            // BARS remains mounted across every page.
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize().testTag("primary-service-pager"),

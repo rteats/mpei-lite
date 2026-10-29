@@ -51,11 +51,11 @@ class PrimaryServicePagerPolicyTest {
     @Test fun committedRouteIsStableWithoutAPendingGesture() {
         assertEquals(
             3,
-            pageToRestoreForRoute(AppTab.MAIL, 3, 0f, false, true, false),
+            pageToRestoreForRoute(AppTab.MAIL, 2, 0f, false, true, false),
         )
         assertEquals(
             null,
-            pageToRestoreForRoute(AppTab.MAIL, 2, 0f, false, true, false),
+            pageToRestoreForRoute(AppTab.MAIL, 3, 0f, false, true, false),
         )
     }
 
