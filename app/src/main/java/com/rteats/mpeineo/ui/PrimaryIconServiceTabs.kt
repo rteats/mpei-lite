@@ -23,8 +23,8 @@ import com.rteats.mpeineo.AppIcons
 internal fun PrimaryIconServiceTabs(
     selected: AppTab,
     unreadMail: Boolean,
-    onSelect: (AppTab) -> Unit,
     pagerPosition: Float = primaryPageFor(selected).toFloat(),
+    onSelect: (AppTab) -> Unit,
 ) {
     PrimaryTabRow(
         selectedTabIndex = primaryPageFor(selected),
