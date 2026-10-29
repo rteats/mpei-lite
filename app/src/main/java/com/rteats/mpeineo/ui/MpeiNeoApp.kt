@@ -31,6 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.rememberContainedSearchBarState
+import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -154,8 +156,8 @@ fun MpeiNeoApp(
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
     val foregroundTab = if (currentService == AppTab.SETTINGS) {
-        beneathService ?: AppTab.HOME
-    } else currentService ?: AppTab.HOME
+        beneathService ?: AppTab.SCHEDULE
+    } else currentService ?: AppTab.SCHEDULE
     val pagerState = rememberPagerState(
         initialPage = primaryPageFor(foregroundTab),
         pageCount = { PRIMARY_TABS.size },
@@ -170,6 +172,7 @@ fun MpeiNeoApp(
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
     val searchBarState = rememberContainedSearchBarState()
+    val searchScrollBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
     val searchText = rememberTextFieldState()
     val searchScope = rememberCoroutineScope()
     LaunchedEffect(searchBarState.currentValue) {
@@ -190,7 +193,7 @@ fun MpeiNeoApp(
             viewModel.updateSearchQuery(if (searchUi.scope.includesSchedule) query else "")
         }
     }
-    // The bar shows the committed tab while the pager follows the gesture.
+    // The tab indicator reads the pager offset each frame, not only the settled route.
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     var barsDetailOpen by remember { mutableStateOf(false) }
@@ -204,7 +207,7 @@ fun MpeiNeoApp(
 
     // Route names are intentionally coarse; never record student or message data.
     val performanceScreen = if (searchUi.isOpen) "SEARCH"
-        else currentService?.name ?: "HOME"
+        else currentService?.name ?: "SCHEDULE"
     LaunchedEffect(performanceScreen) {
         application.container.uiFrameProfiler.markScreen(performanceScreen)
     }
@@ -446,21 +449,6 @@ fun MpeiNeoApp(
             ) {
                 Box(Modifier.fillMaxSize()) {
                     when (destination) {
-                        AppTab.HOME -> HomeDashboardScreen(
-                            schedule = scheduleState,
-                            bars = barsState,
-                            mail = mailState,
-                            onSchedule = { openService(AppTab.SCHEDULE) },
-                            onNextLesson = { highlight ->
-                                navigationTargets.focusUpcomingLesson(
-                                    highlight, scheduleState.agendaWeeks,
-                                )
-                                openService(AppTab.SCHEDULE)
-                            },
-                            onBars = { openService(AppTab.BARS) },
-                            onMail = { openService(AppTab.MAIL) },
-                            onMap = { openService(AppTab.MAPS) },
-                        )
                         AppTab.SCHEDULE -> {
                             ScheduleScreen(
                                 state = scheduleState,
@@ -484,7 +472,7 @@ fun MpeiNeoApp(
 
                         }
                         // BARS lives in a permanent sibling composition below.
-                        // Its WebView must not be destroyed by Home/service routing.
+                        // Its WebView must not be destroyed by service routing.
                         AppTab.BARS -> Unit
                         AppTab.MAIL -> {
                             MailScreen(
@@ -543,7 +531,7 @@ fun MpeiNeoApp(
     // Material owns search expansion; the tab row lives below the search app bar.
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-            modifier = Modifier.imePadding(),
+            modifier = Modifier.imePadding().nestedScroll(searchScrollBehavior.nestedScrollConnection),
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 val embeddedBrowserForeground =
@@ -554,6 +542,7 @@ fun MpeiNeoApp(
                     Column {
                         MaterialSearchAppBar(
                             context = searchAppBarContext(foregroundTab),
+                            scrollBehavior = searchScrollBehavior,
                             state = searchBarState,
                             textFieldState = searchText,
                             onCloseSearch = ::closeGlobalSearch,
@@ -600,7 +589,8 @@ fun MpeiNeoApp(
                             },
                         )
                         PrimaryIconServiceTabs(
-                            selected = foregroundTab,
+                            selected = PRIMARY_TABS[pagerState.currentPage],
+                            pagerPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                             unreadMail = mailState.configured && !mailState.loginRequired &&
                                 mailState.items.any { it.unread },
                             onSelect = { tab ->
@@ -616,7 +606,7 @@ fun MpeiNeoApp(
             },
         ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            // Five lightweight slots let Pager drag continuously. Only the
+            // Four lightweight slots let Pager drag continuously. Only the
             // current/target neighborhood mounts costly non-BARS UI.
             // BARS remains mounted across every page.
             HorizontalPager(

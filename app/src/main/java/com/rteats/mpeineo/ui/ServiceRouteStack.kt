@@ -7,10 +7,10 @@ internal fun serviceRouteAfterOpen(
     viaClassroom: Boolean,
 ): ArrayList<String> {
     val active = current.lastOrNull()?.let { runCatching { AppTab.valueOf(it) }.getOrNull() }
-        ?: AppTab.HOME
+        ?: AppTab.SCHEDULE
     val previousTab = if (active == AppTab.SETTINGS) {
         current.dropLast(1).lastOrNull()?.let { runCatching { AppTab.valueOf(it) }.getOrNull() }
-            ?: AppTab.HOME
+            ?: AppTab.SCHEDULE
     } else active
     return when {
         target == AppTab.SETTINGS -> arrayListOf(previousTab.name, AppTab.SETTINGS.name)
@@ -22,10 +22,10 @@ internal fun serviceRouteAfterOpen(
 
 internal fun serviceRouteAfterBack(current: List<String>): ArrayList<String> {
     if (current.size > 1) return ArrayList(current.dropLast(1))
-    return arrayListOf(AppTab.HOME.name)
+    return arrayListOf(AppTab.SCHEDULE.name)
 }
 
-internal enum class AppTab { HOME, SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
+internal enum class AppTab { SCHEDULE, BARS, MAIL, MAPS, SETTINGS }
 
 /** Destination used by AppBar actions at the beginning of a back transition. */
 internal fun searchAppBarDestinationAfterBack(routes: List<String>): AppTab? =
