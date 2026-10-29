@@ -15,7 +15,7 @@ class ServiceNavigationStateTest {
         assertEquals(null, nav.beneath)
         assertEquals(AppTab.HOME, nav.peekBack())
         assertTrue(nav.pop())
-        assertEquals(AppTab.SCHEDULE, nav.current)
+        assertEquals(AppTab.HOME, nav.current)
         assertFalse(nav.pop())
     }
 

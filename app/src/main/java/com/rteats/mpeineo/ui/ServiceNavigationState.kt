@@ -32,7 +32,7 @@ internal class ServiceNavigationState(initialRoutes: List<String> = listOf(AppTa
         get() = ServiceRouteSnapshot(routes).current
     val beneath: AppTab?
         get() = ServiceRouteSnapshot(routes).beneath
-    val canPop: Boolean get() = current != AppTab.SCHEDULE || routes.size > 1
+    val canPop: Boolean get() = current != AppTab.HOME || routes.size > 1
 
     fun open(tab: AppTab, viaClassroom: Boolean = false) {
         routes = serviceRouteAfterOpen(routes, tab, viaClassroom)
