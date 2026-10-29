@@ -69,6 +69,6 @@ class UiSmokeTest {
         composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Настройки").performClick()
         composeRule.onNodeWithTag("settings-fullscreen-layer").assertIsDisplayed()
-        composeRule.onNodeWithTag("primary-icon-tabs").assertDoesNotExist()
+        composeRule.onNodeWithTag("primary-icon-tabs").assertExists()
     }
 }
