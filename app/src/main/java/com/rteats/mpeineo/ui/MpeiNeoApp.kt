@@ -544,7 +544,6 @@ fun MpeiNeoApp(
                 if (!embeddedBrowserForeground && currentService != AppTab.SETTINGS) {
                     Column {
                         MaterialSearchAppBar(
-                            context = searchAppBarContext(foregroundTab),
                             scrollBehavior = searchScrollBehavior,
                             state = searchBarState,
                             textFieldState = searchText,

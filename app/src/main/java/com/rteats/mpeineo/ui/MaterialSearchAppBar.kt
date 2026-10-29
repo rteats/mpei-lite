@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideIn
 import androidx.compose.animation.slideOut
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
@@ -21,7 +22,6 @@ import androidx.compose.material3.SearchBarState
 import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -30,13 +30,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
-import kotlinx.coroutines.launch
 
 /** Same contained search transition and external icon motion as AndroidX sample. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MaterialSearchAppBar(
-    context: SearchAppBarContext,
     state: SearchBarState,
     textFieldState: TextFieldState,
     scrollBehavior: SearchBarScrollBehavior,
@@ -47,7 +45,6 @@ internal fun MaterialSearchAppBar(
     onCompose: (() -> Unit)? = null,
     results: @Composable () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
     val colors = SearchBarDefaults.appBarWithSearchColors(
         searchBarColors = SearchBarDefaults.containedColors(state = state),
     )
@@ -136,6 +133,11 @@ internal fun MaterialSearchAppBar(
                         ) {
                             AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
                         }
+                    }
+                    // Reserve one action slot so the search field never
+                    // changes width when switching between services.
+                    if (onRefresh == null && onCompose == null) {
+                        Spacer(Modifier.size(48.dp))
                     }
                 }
             }
