@@ -18,8 +18,8 @@ import org.junit.runner.RunWith
 class PrimaryIconTabsUiTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun fiveDestinationsSwitchDirectly() {
-        val selected = mutableStateOf(AppTab.HOME)
+    @Test fun fourDestinationsSwitchDirectly() {
+        val selected = mutableStateOf(AppTab.SCHEDULE)
         rule.setContent {
             MpeiNeoTheme {
                 PrimaryIconServiceTabs(selected.value, unreadMail = false) {
@@ -28,7 +28,6 @@ class PrimaryIconTabsUiTest {
             }
         }
         rule.onNodeWithTag("primary-icon-tabs").assertIsDisplayed()
-        rule.onNodeWithTag("tab-home").assertIsDisplayed()
         rule.onNodeWithTag("tab-schedule").performClick()
         rule.runOnIdle { assertEquals(AppTab.SCHEDULE, selected.value) }
         rule.onNodeWithTag("tab-bars").performClick()
@@ -37,7 +36,5 @@ class PrimaryIconTabsUiTest {
         rule.runOnIdle { assertEquals(AppTab.MAIL, selected.value) }
         rule.onNodeWithTag("tab-maps").performClick()
         rule.runOnIdle { assertEquals(AppTab.MAPS, selected.value) }
-        rule.onNodeWithTag("tab-home").performClick()
-        rule.runOnIdle { assertEquals(AppTab.HOME, selected.value) }
     }
 }

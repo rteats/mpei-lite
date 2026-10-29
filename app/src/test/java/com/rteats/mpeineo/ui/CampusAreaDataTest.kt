@@ -51,6 +51,14 @@ class CampusAreaDataTest {
             CampusAreaData.EAST, CampusAreaData.NORTH), area.bbox)
     }
 
+    @Test fun bundledCampusBoundsCannotBeMistakenForTheRequestedLefortovoMap() {
+        val full = CampusAreaData.parseOverpass(osm)
+        assertTrue(CampusAreaData.coversLefortovo(full))
+        assertFalse(CampusAreaData.coversLefortovo(
+            full.copy(bbox = listOf(37.70125, 55.75285, 37.71085, 55.75870)),
+        ))
+    }
+
     @Test fun denseMarkersRemainAvailableAsZoomIncreases() {
         val world = Rect(-1000f, -1500f, 1000f, 1500f)
         val viewport = IntSize(1000, 1000)
