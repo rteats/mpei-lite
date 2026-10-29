@@ -43,6 +43,7 @@ internal fun appBarMode(tab: AppTab?): AppBarMode = when (tab) {
 
 internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab) {
     null -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
+    AppTab.HOME -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск MPEI Lite")
     AppTab.SCHEDULE -> SearchAppBarContext(
         SearchScope.SCHEDULE, "Группа, преподаватель, аудитория",
     )
