@@ -172,7 +172,9 @@ fun MpeiNeoApp(
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
     val searchBarState = rememberContainedSearchBarState()
-    val searchScrollBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
+    val searchScrollBehavior = androidx.compose.runtime.key(foregroundTab) {
+        SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
+    }
     val searchText = rememberTextFieldState()
     val searchScope = rememberCoroutineScope()
     LaunchedEffect(searchBarState.currentValue) {
@@ -347,9 +349,6 @@ fun MpeiNeoApp(
     // Adjacent pages use the Material spring; distant tab taps snap to the
     // destination rather than moving authenticated pages through other slots.
     LaunchedEffect(foregroundTab) {
-        // The scroll offset belongs to each destination, not the global app bar.
-        searchScrollBehavior.scrollOffset = 0f
-        searchScrollBehavior.contentOffset = 0f
         val requested = primaryPageFor(foregroundTab)
         if (pagerState.currentPage == requested &&
             pagerState.currentPageOffsetFraction == 0f) return@LaunchedEffect
