@@ -134,7 +134,6 @@ internal fun GlobalSearchScreen(
     onMail: (SearchMailHit) -> Unit,
     onDiscipline: (String) -> Unit,
     onClose: () -> Unit,
-    focusWhenReady: Boolean = true,
 ) {
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -185,7 +184,6 @@ internal fun GlobalSearchScreen(
                     }
                 }
             }
-            HorizontalDivider()
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 24.dp),
@@ -199,7 +197,10 @@ internal fun GlobalSearchScreen(
                     }
                     items(targets, key = { "schedule-" + it.favoriteKey() }) { target ->
                         ListItem(
-                            modifier = Modifier.fillMaxWidth().clickable { onSchedule(target) },
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clickable { onSchedule(target) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             leadingContent = {
                                 AppIcon(AppIcons.Schedule, null,
                                     tint = MaterialTheme.colorScheme.primary)
@@ -359,7 +360,10 @@ private fun SearchSection(title: String, action: String? = null, onAction: () ->
 @Composable
 private fun SearchEntry(icon: Int, title: String, subtitle: String, onClick: () -> Unit) {
     ListItem(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = { AppIcon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         headlineContent = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         supportingContent = { Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },

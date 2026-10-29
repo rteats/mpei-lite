@@ -14,11 +14,11 @@ internal fun appBarMode(tab: AppTab?): AppBarMode = when (tab) {
 }
 
 internal fun searchAppBarContext(tab: AppTab?): SearchAppBarContext = when (tab) {
-    null -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск расписания")
+    null -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск")
     AppTab.SCHEDULE -> SearchAppBarContext(SearchScope.SCHEDULE, "Поиск")
-    AppTab.BARS -> SearchAppBarContext(SearchScope.BARS, "Поиск дисциплины в БАРС")
-    AppTab.MAIL -> SearchAppBarContext(SearchScope.MAIL, "Поиск по почте")
-    AppTab.MAPS -> SearchAppBarContext(SearchScope.MAPS, "Корпус или аудитория")
+    AppTab.BARS -> SearchAppBarContext(SearchScope.BARS, "Поиск")
+    AppTab.MAIL -> SearchAppBarContext(SearchScope.MAIL, "Поиск")
+    AppTab.MAPS -> SearchAppBarContext(SearchScope.MAPS, "Поиск")
     AppTab.SETTINGS -> error("Settings has a title bar")
 }
 
