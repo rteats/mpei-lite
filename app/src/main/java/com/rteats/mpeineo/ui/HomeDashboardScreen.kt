@@ -68,7 +68,7 @@ internal fun HomeDashboardScreen(
                 subtitle = when {
                     bars.loginRequired -> "Требуется вход"
                     bars.disciplines.isEmpty() -> "Откройте оценки"
-                    else -> "Дисциплин: ${bars.disciplines.size}",
+                    else -> "Дисциплин: ${bars.disciplines.size}"
                 },
                 icon = AppIcons.Bars,
                 onClick = onBars,
