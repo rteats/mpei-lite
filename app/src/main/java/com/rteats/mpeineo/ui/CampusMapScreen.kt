@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -538,7 +539,11 @@ internal fun CampusMapScreen(
 ) {
     val context = LocalContext.current
     var mapLoadFailed by remember(context) { mutableStateOf(false) }
-    val scene by produceState<PreparedCampusScene?>(CampusRenderCache.scene, context, active) {
+    var mapRefreshing by remember(context) { mutableStateOf(false) }
+    var mapRetryRequest by remember { mutableIntStateOf(0) }
+    val scene by produceState<PreparedCampusScene?>(
+        CampusRenderCache.scene, context, active, mapRetryRequest,
+    ) {
         val started = SystemClock.elapsedRealtime()
         if (value == null) {
             val geometry = CampusAreaData.loadLocal(context)
@@ -561,8 +566,15 @@ internal fun CampusMapScreen(
         }
         // Only request the fixed area while the tab is visible. Once fetched,
         // the compact extract stays usable offline for 30 days and beyond.
-        if (active && CampusAreaData.needsRefresh(context)) {
-            val refreshed = CampusAreaData.refresh(context)
+        if (active && (mapRetryRequest > 0 || withContext(Dispatchers.IO) {
+                CampusAreaData.needsRefresh(context)
+            })) {
+            mapRefreshing = true
+            val refreshed = try {
+                CampusAreaData.refresh(context)
+            } finally {
+                mapRefreshing = false
+            }
             val newScene = withContext(Dispatchers.Default) {
                 refreshed?.let {
                     PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
@@ -576,7 +588,8 @@ internal fun CampusMapScreen(
                 ?.container?.diagnostics?.log(
                     "MAP_UI", "area_refresh result=" +
                         (if (newScene != null) "success" else "offline_fallback") +
-                        " poiCount=" + (refreshed?.pois?.size ?: 0),
+                        " poiCount=" + (refreshed?.pois?.size ?: 0) +
+                        " error=" + (CampusAreaData.lastRefreshError ?: "none"),
                 )
         }
     }
@@ -960,6 +973,34 @@ internal fun CampusMapScreen(
                 )
             }
             labelsCanvas.restoreToCount(labelsSave)
+        }
+
+        // Tell users when only the bundled campus fallback is available.
+        if (active && !CampusAreaData.coversLefortovo(data)) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).fillMaxWidth()
+                    .padding(start = 12.dp, end = 96.dp, top = 12.dp)
+                    .testTag("lefortovo-map-status"),
+                shape = MaterialTheme.shapes.medium,
+                color = colors.surfaceContainerHigh,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (mapRefreshing) "Загрузка карты Лефортово…"
+                        else "Доступна только карта кампуса",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    if (!mapRefreshing) {
+                        TextButton(onClick = { mapRetryRequest++ }) {
+                            Text("Повторить")
+                        }
+                    }
+                }
+            }
         }
 
         // The bottom dock is the only search. Keep direct alphabet building

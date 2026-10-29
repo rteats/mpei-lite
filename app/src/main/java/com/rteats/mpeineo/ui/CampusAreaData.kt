@@ -28,10 +28,27 @@ internal object CampusAreaData {
 
     private const val ORIGIN_LAT = 55.7559
     private const val ORIGIN_LON = 37.70605
-    private const val FILE_NAME = "lefortovo_osm_v1.json"
+    private const val FILE_NAME = "lefortovo_osm_v2.json"
     private const val MAX_RESPONSE_BYTES = 32_000_000
     private const val REFRESH_INTERVAL_MS = 30L * 24 * 60 * 60 * 1000
-    private const val ENDPOINT = "https://overpass-api.de/api/interpreter"
+    // A live internet connection is not proof that a single Overpass instance works.
+    // Prefer the regional instance for Moscow, then use independent global mirrors.
+    private val ENDPOINTS = listOf(
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+    )
+
+    @Volatile internal var lastRefreshError: String? = null
+        private set
+
+    internal fun coversLefortovo(geometry: CampusGeometry): Boolean =
+        geometry.bbox.size == 4 &&
+            geometry.bbox[0] <= WEST + 0.00001 &&
+            geometry.bbox[1] <= SOUTH + 0.00001 &&
+            geometry.bbox[2] >= EAST - 0.00001 &&
+            geometry.bbox[3] >= NORTH - 0.00001
+
 
     // Filter ordinary residential addresses out of the POI index, but preserve
     // amenity, shop, tourism, office and other mapped public/organizational tags.
@@ -249,12 +266,14 @@ internal object CampusAreaData {
     internal suspend fun loadLocal(context: Context): CampusGeometry? =
         withContext(Dispatchers.IO) {
             val cached = file(context).takeIf { it.isFile }
-                ?.let { runCatching {
-                    it.bufferedReader().use { reader ->
-                        Gson().fromJson(reader, CampusGeometry::class.java)
-                    }
-                }.getOrNull() }
-            cached?.takeIf { it.buildings.isNotEmpty() }
+                ?.let {
+                    runCatching {
+                        it.bufferedReader().use { reader ->
+                            Gson().fromJson(reader, CampusGeometry::class.java)
+                        }
+                    }.getOrNull()
+                }
+            cached?.takeIf { it.buildings.isNotEmpty() && coversLefortovo(it) }
                 ?: runCatching {
                     context.assets.open("campus_osm.json").bufferedReader().use { reader ->
                         Gson().fromJson(reader, CampusGeometry::class.java)
@@ -264,60 +283,79 @@ internal object CampusAreaData {
 
     internal fun needsRefresh(context: Context): Boolean {
         val cached = file(context)
-        return !cached.exists() ||
-            System.currentTimeMillis() - cached.lastModified() >= REFRESH_INTERVAL_MS
+        if (!cached.isFile) return true
+        if (System.currentTimeMillis() - cached.lastModified() >= REFRESH_INTERVAL_MS) return true
+        // Do not trust an older campus-only extract as a full Lefortovo map.
+        return runCatching {
+            cached.bufferedReader().use { reader ->
+                val data = Gson().fromJson(reader, CampusGeometry::class.java)
+                !coversLefortovo(data) || data.buildings.isEmpty()
+            }
+        }.getOrDefault(true)
     }
 
     internal suspend fun refresh(context: Context): CampusGeometry? =
         withContext(Dispatchers.IO) {
-            runCatching {
-                val connection = URL(ENDPOINT).openConnection() as HttpURLConnection
-                try {
-                    connection.requestMethod = "POST"
-                    connection.setRequestProperty("User-Agent", "MPEILiteAndroid/0.5 (OSM area cache)")
-                    connection.setRequestProperty("Accept-Encoding", "gzip")
-                    connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                    connection.connectTimeout = 15_000
-                    connection.readTimeout = 95_000
-                    connection.doOutput = true
-                    connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
-                        it.write("data=" + URLEncoder.encode(query, "UTF-8"))
-                    }
-                    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                        throw IOException("Overpass HTTP " + connection.responseCode)
-                    }
-                    val stream = connection.inputStream.let {
-                        if (connection.contentEncoding.equals("gzip", ignoreCase = true))
-                            GZIPInputStream(it) else it
-                    }
-                    val payload = stream.use {
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) {
-                            val count = it.read(buffer)
-                            if (count < 0) break
-                            if (output.size() + count > MAX_RESPONSE_BYTES) {
-                                throw IOException("Map response too large")
-                            }
-                            output.write(buffer, 0, count)
+            val request = "data=" + URLEncoder.encode(query, "UTF-8")
+            var failure: String? = null
+            for (endpoint in ENDPOINTS) {
+                val attempt = runCatching {
+                    val connection = URL(endpoint).openConnection() as HttpURLConnection
+                    try {
+                        connection.requestMethod = "POST"
+                        connection.setRequestProperty("User-Agent", "MPEILiteAndroid/0.5 (OSM area cache)")
+                        connection.setRequestProperty("Accept-Encoding", "gzip")
+                        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+                        connection.connectTimeout = 12_000
+                        connection.readTimeout = 95_000
+                        connection.doOutput = true
+                        connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
+                            it.write(request)
                         }
-                        output.toString("UTF-8")
+                        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                            throw IOException("Overpass HTTP " + connection.responseCode)
+                        }
+                        val stream = connection.inputStream.let {
+                            if (connection.contentEncoding.equals("gzip", ignoreCase = true))
+                                GZIPInputStream(it) else it
+                        }
+                        val payload = stream.use {
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val count = it.read(buffer)
+                                if (count < 0) break
+                                if (output.size() + count > MAX_RESPONSE_BYTES)
+                                    throw IOException("Map response too large")
+                                output.write(buffer, 0, count)
+                            }
+                            output.toString("UTF-8")
+                        }
+                        val result = parseOverpass(payload)
+                        if (!coversLefortovo(result) || result.buildings.size < 100 ||
+                            result.roads.size < 30 || result.pois.size < 30
+                        ) throw IOException("Incomplete Lefortovo map extract")
+                        val cached = file(context)
+                        val tmp = File(cached.parentFile, cached.name + ".tmp")
+                        tmp.writeText(Gson().toJson(result))
+                        if (!tmp.renameTo(cached)) {
+                            tmp.copyTo(cached, overwrite = true)
+                            tmp.delete()
+                        }
+                        result
+                    } finally {
+                        connection.disconnect()
                     }
-                    val result = parseOverpass(payload)
-                    if (result.buildings.size < 100 || result.roads.size < 30 ||
-                        result.pois.size < 30
-                    ) throw IOException("Incomplete map extract")
-                    val cached = file(context)
-                    val tmp = File(cached.parentFile, cached.name + ".tmp")
-                    tmp.writeText(Gson().toJson(result))
-                    if (!tmp.renameTo(cached)) {
-                        tmp.copyTo(cached, overwrite = true)
-                        tmp.delete()
-                    }
-                    result
-                } finally {
-                    connection.disconnect()
                 }
-            }.getOrNull()
+                if (attempt.isSuccess) {
+                    lastRefreshError = null
+                    return@withContext attempt.getOrThrow()
+                }
+                failure = endpoint.substringAfter("https://").substringBefore("/") + ": " +
+                    (attempt.exceptionOrNull()?.message ?: "unknown error")
+            }
+            lastRefreshError = failure
+            null
         }
+
 }

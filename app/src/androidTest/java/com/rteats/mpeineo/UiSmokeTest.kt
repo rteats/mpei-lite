@@ -56,7 +56,6 @@ class UiSmokeTest {
     fun primaryDestinationsRender() {
         composeRule.onNodeWithTag("primary-service-pager").assertExists()
         composeRule.onNodeWithTag("primary-icon-tabs").assertIsDisplayed()
-        composeRule.onNodeWithTag("home-dashboard").assertIsDisplayed()
         composeRule.onNodeWithTag("global-search-input").performClick()
         composeRule.onNodeWithText("Все расписания").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Закрыть поиск").performClick()

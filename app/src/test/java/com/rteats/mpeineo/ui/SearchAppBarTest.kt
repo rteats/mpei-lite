@@ -7,26 +7,26 @@ import org.junit.Test
 
 class SearchAppBarTest {
     @Test fun barActionsStartChangingBeforeTheOutgoingPageHasClosed() {
-        assertEquals(AppTab.HOME, searchAppBarDestinationAfterBack(listOf(AppTab.BARS.name)))
+        assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(listOf(AppTab.BARS.name)))
         assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(
             listOf(AppTab.SCHEDULE.name, AppTab.MAPS.name),
         ))
-        assertEquals(AppTab.HOME, searchAppBarDestinationAfterBack(emptyList()))
+        assertEquals(AppTab.SCHEDULE, searchAppBarDestinationAfterBack(emptyList()))
     }
 
     @Test fun searchHintFollowsActualNavigationDestination() {
         assertEquals(SearchScope.SCHEDULE, searchAppBarContext(null).scope)
-        assertEquals("Поиск расписания", searchAppBarContext(null).placeholder)
+        assertEquals("Поиск", searchAppBarContext(null).placeholder)
         assertEquals(SearchScope.SCHEDULE, searchAppBarContext(AppTab.SCHEDULE).scope)
-        assertEquals("Группа, преподаватель, аудитория",
+        assertEquals("Поиск",
             searchAppBarContext(AppTab.SCHEDULE).placeholder)
         assertEquals(SearchScope.BARS, searchAppBarContext(AppTab.BARS).scope)
-        assertEquals("Поиск дисциплины в БАРС",
+        assertEquals("Поиск",
             searchAppBarContext(AppTab.BARS).placeholder)
         assertEquals(SearchScope.MAIL, searchAppBarContext(AppTab.MAIL).scope)
-        assertEquals("Поиск по почте", searchAppBarContext(AppTab.MAIL).placeholder)
+        assertEquals("Поиск", searchAppBarContext(AppTab.MAIL).placeholder)
         assertEquals(SearchScope.MAPS, searchAppBarContext(AppTab.MAPS).scope)
-        assertEquals("Корпус или аудитория",
+        assertEquals("Поиск",
             searchAppBarContext(AppTab.MAPS).placeholder)
         assertEquals(AppBarMode.TITLE, appBarMode(AppTab.SETTINGS))
         assertEquals(AppBarMode.SEARCH, appBarMode(null))
@@ -36,7 +36,7 @@ class SearchAppBarTest {
         assertEquals(AppBarMode.SEARCH, appBarMode(AppTab.MAPS))
     }
 
-    @Test fun contextualAppBarUsesHomeAndServiceActions() {
+    @Test fun contextualAppBarUsesServiceActions() {
         assertEquals(SearchAppBarAction.REFRESH_WEEK,
             searchAppBarAction(AppTab.SCHEDULE, mailListReady = true))
         assertEquals(SearchAppBarAction.COMPOSE_MAIL,

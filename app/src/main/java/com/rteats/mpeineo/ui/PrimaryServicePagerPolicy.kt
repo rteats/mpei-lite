@@ -2,9 +2,9 @@ package com.rteats.mpeineo.ui
 
 import kotlin.math.abs
 
-/** Fixed physical order of five root pages. Settings is not a page. */
+/** Fixed physical order of four root pages. Settings is not a page. */
 internal val PRIMARY_TABS =
-    listOf(AppTab.HOME, AppTab.SCHEDULE, AppTab.BARS, AppTab.MAIL, AppTab.MAPS)
+    listOf(AppTab.SCHEDULE, AppTab.BARS, AppTab.MAIL, AppTab.MAPS)
 
 internal fun primaryPageFor(tab: AppTab?): Int =
     PRIMARY_TABS.indexOf(tab).takeIf { it >= 0 } ?: 0
