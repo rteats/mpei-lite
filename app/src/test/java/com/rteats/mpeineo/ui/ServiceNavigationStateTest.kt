@@ -6,16 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServiceNavigationStateTest {
-    @Test fun rootBackReturnsScheduleAndThenYieldsToSystem() {
+    @Test fun rootBackReturnsHomeAndThenYieldsToSystem() {
         val nav = ServiceNavigationState()
-        assertEquals(AppTab.SCHEDULE, nav.current)
+        assertEquals(AppTab.HOME, nav.current)
         assertFalse(nav.canPop)
         nav.open(AppTab.BARS)
         assertEquals(AppTab.BARS, nav.current)
         assertEquals(null, nav.beneath)
-        assertEquals(AppTab.SCHEDULE, nav.peekBack())
+        assertEquals(AppTab.HOME, nav.peekBack())
         assertTrue(nav.pop())
-        assertEquals(AppTab.SCHEDULE, nav.current)
+        assertEquals(AppTab.HOME, nav.current)
         assertFalse(nav.pop())
     }
 

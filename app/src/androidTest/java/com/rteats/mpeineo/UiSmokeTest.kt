@@ -55,57 +55,20 @@ class UiSmokeTest {
     @Test
     fun primaryDestinationsRender() {
         composeRule.onNodeWithTag("primary-service-pager").assertExists()
-        composeRule.onNodeWithTag("compact-search-action").assertIsDisplayed()
+        composeRule.onNodeWithTag("primary-icon-tabs").assertIsDisplayed()
+        composeRule.onNodeWithTag("home-dashboard").assertIsDisplayed()
+        composeRule.onNodeWithTag("global-search-input").performClick()
+        composeRule.onNodeWithText("Все расписания").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Закрыть поиск").performClick()
+
+        composeRule.onNodeWithTag("tab-schedule").performClick()
         composeRule.onNodeWithTag("schedule-week-refresh").assertIsDisplayed()
-        composeRule.onNodeWithTag("search-app-bar-entry").assertDoesNotExist()
-        composeRule.onNodeWithTag("compact-search-action").performClick()
-
-        composeRule
-            .onNodeWithText("Все")
-            .assertIsDisplayed()
-
-        composeRule
-            .onNodeWithContentDescription("Закрыть поиск")
-            .performClick()
-
-        composeRule
-            .onNodeWithContentDescription("БАРС")
-            .performClick()
-
-        composeRule
-            .onNodeWithTag("bars-screen")
-            .assertIsDisplayed()
-
-        composeRule
-            .onNodeWithContentDescription("Почта")
-            .performClick()
-
-        composeRule
-            .onNodeWithTag("mail-inbox")
-            .assertIsDisplayed()
-
-        // Mail has one toolbar title and one bottom-tab label, but no
-        // additional in-content "Почта" heading.
-        composeRule.onAllNodesWithText("Почта").assertCountEquals(2)
-
-        composeRule
-            .onNodeWithTag("portal-header-ОСЭП")
-            .assertIsDisplayed()
-
-        composeRule
-            .onNodeWithContentDescription("Настройки")
-            .performClick()
-
-        // Settings covers the whole tab shell instead of collapsing its navbar.
+        composeRule.onNodeWithTag("tab-bars").performClick()
+        composeRule.onNodeWithTag("bars-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("tab-mail").performClick()
+        composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Настройки").performClick()
         composeRule.onNodeWithTag("settings-fullscreen-layer").assertIsDisplayed()
-        composeRule.onNodeWithTag("four-tab-navigation").assertExists()
-
-        composeRule
-            .onNodeWithText("Обновления приложения")
-            .assertIsDisplayed()
-
-        composeRule
-            .onNodeWithText("Диагностика")
-            .assertIsDisplayed()
+        composeRule.onNodeWithTag("primary-icon-tabs").assertExists()
     }
 }

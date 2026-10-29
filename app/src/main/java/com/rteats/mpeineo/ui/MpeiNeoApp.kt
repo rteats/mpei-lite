@@ -10,6 +10,8 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,6 +29,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBarValue
+import androidx.compose.material3.rememberContainedSearchBarState
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -38,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -64,6 +69,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Four horizontally scrolling service pages. The navigation state owns committed
@@ -148,23 +154,42 @@ fun MpeiNeoApp(
     val beneathService = navigation.beneath
     val savedServiceState = rememberSaveableStateHolder()
     val foregroundTab = if (currentService == AppTab.SETTINGS) {
-        beneathService ?: AppTab.SCHEDULE
-    } else currentService ?: AppTab.SCHEDULE
+        beneathService ?: AppTab.HOME
+    } else currentService ?: AppTab.HOME
     val pagerState = rememberPagerState(
         initialPage = primaryPageFor(foregroundTab),
         pageCount = { PRIMARY_TABS.size },
     )
-    // Full-page movement uses the theme's slow spatial spring, not a tween.
-    val pageSpring = MaterialTheme.motionScheme.slowSpatialSpec<Float>()
+    // Compose Foundation owns the page physics.
     var programmaticPaging by remember { mutableStateOf(false) }
     var pagerGesturePending by remember { mutableStateOf(false) }
-    var navigationBarHeightPx by remember { mutableIntStateOf(0) }
     val pagerDragging by pagerState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(pagerDragging) {
         if (pagerDragging && !programmaticPaging) pagerGesturePending = true
     }
     var todayJumpRequest by rememberSaveable { mutableIntStateOf(0) }
     val searchUi = rememberSearchOverlayState()
+    val searchBarState = rememberContainedSearchBarState()
+    val searchText = rememberTextFieldState()
+    val searchScope = rememberCoroutineScope()
+    LaunchedEffect(searchBarState.currentValue) {
+        if (searchBarState.currentValue == SearchBarValue.Expanded) {
+            if (!searchUi.isOpen) {
+                searchUi.activate(searchAppBarContext(currentService).scope)
+            }
+        } else if (searchUi.isOpen) {
+            searchUi.close()
+            searchText.setTextAndPlaceCursorAtEnd("")
+            viewModel.updateSearchQuery("")
+        }
+    }
+    LaunchedEffect(searchText.text.toString()) {
+        if (searchUi.isOpen) {
+            val query = searchText.text.toString()
+            searchUi.updateQuery(query)
+            viewModel.updateSearchQuery(if (searchUi.scope.includesSchedule) query else "")
+        }
+    }
     // The bar shows the committed tab while the pager follows the gesture.
     val navigationTargets = remember { AppNavigationTargets() }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
@@ -179,7 +204,7 @@ fun MpeiNeoApp(
 
     // Route names are intentionally coarse; never record student or message data.
     val performanceScreen = if (searchUi.isOpen) "SEARCH"
-        else currentService?.name ?: "SCHEDULE"
+        else currentService?.name ?: "HOME"
     LaunchedEffect(performanceScreen) {
         application.container.uiFrameProfiler.markScreen(performanceScreen)
     }
@@ -241,22 +266,22 @@ fun MpeiNeoApp(
         mailViewModel.refresh()
     }
 
-    fun updateGlobalQuery(value: String) {
-        searchUi.updateQuery(value)
-        // Only schedule-scoped search performs remote target lookup.
-        viewModel.updateSearchQuery(if (searchUi.scope.includesSchedule) value else "")
-    }
-
     fun closeGlobalSearch() {
-        searchUi.close()
-        focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        viewModel.updateSearchQuery("")
+        focusManager.clearFocus(force = true)
+        searchScope.launch {
+            searchBarState.animateToCollapsed()
+            searchUi.close()
+            searchText.setTextAndPlaceCursorAtEnd("")
+            viewModel.updateSearchQuery("")
+        }
     }
 
     fun openGlobalSearch(scope: SearchScope = SearchScope.SCHEDULE) {
         if (!searchUi.activate(scope)) return
+        searchText.setTextAndPlaceCursorAtEnd("")
         viewModel.updateSearchQuery("")
+        searchScope.launch { searchBarState.animateToExpanded() }
     }
 
     fun dispatchNavigation(request: AppNavigationRequest) {
@@ -328,7 +353,7 @@ fun MpeiNeoApp(
             if (kotlin.math.abs(pagerState.currentPage - requested) > 1) {
                 pagerState.scrollToPage(requested)
             } else {
-                pagerState.animateScrollToPage(requested, animationSpec = pageSpring)
+                pagerState.animateScrollToPage(requested)
             }
         } finally {
             programmaticPaging = false
@@ -341,7 +366,7 @@ fun MpeiNeoApp(
         (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH)
     val rootPagingEnabled = canSwipePrimaryPages(
         atRoot = navigation.routes.size == 1 && currentService != AppTab.SETTINGS,
-        searchOpen = searchUi.isOpen,
+        searchOpen = searchUi.isOpen || searchBarState.currentValue == SearchBarValue.Expanded,
         imeVisible = imeVisible,
         mailBrowser = mailWebVisible,
         barsBrowser = barsBrowserForeground,
@@ -421,6 +446,21 @@ fun MpeiNeoApp(
             ) {
                 Box(Modifier.fillMaxSize()) {
                     when (destination) {
+                        AppTab.HOME -> HomeDashboardScreen(
+                            schedule = scheduleState,
+                            bars = barsState,
+                            mail = mailState,
+                            onSchedule = { openService(AppTab.SCHEDULE) },
+                            onNextLesson = { highlight ->
+                                navigationTargets.focusUpcomingLesson(
+                                    highlight, scheduleState.agendaWeeks,
+                                )
+                                openService(AppTab.SCHEDULE)
+                            },
+                            onBars = { openService(AppTab.BARS) },
+                            onMail = { openService(AppTab.MAIL) },
+                            onMap = { openService(AppTab.MAPS) },
+                        )
                         AppTab.SCHEDULE -> {
                             ScheduleScreen(
                                 state = scheduleState,
@@ -500,61 +540,91 @@ fun MpeiNeoApp(
     }
 
 
-    // Keep the underlying app bar mounted while Search expands. Removing it
-    // during activation would remeasure the entire scaffold and visibly jump.
+    // Material owns search expansion; the tab row lives below the search app bar.
     Box(modifier = Modifier.fillMaxSize()) {
-    Scaffold(
-        modifier = Modifier.imePadding(),
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            // Reserve the measured navigation row. The row itself is drawn
-            // after Search so neither Search nor IME can cover it.
-            Spacer(Modifier.height(with(LocalDensity.current) {
-                navigationBarHeightPx.toDp()
-            }))
-        },
-        topBar = {
-            // Embedded browsers own a dedicated Material app bar. Never stack
-            // the contextual search app bar above their own overflow controls.
-            val embeddedBrowserForeground = (currentService == AppTab.MAIL && mailWebVisible) ||
-                (currentService == AppTab.BARS &&
-                    (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH))
-            if (embeddedBrowserForeground) {
-                // The active portal renders EmbeddedBrowserAppBar instead.
-            } else if (currentService != AppTab.SETTINGS) {
-            ContextSearchAppBar(
-                    context = searchAppBarContext(currentService),
-                    onSearch = { openGlobalSearch(searchAppBarContext(currentService).scope) },
-                    onScheduleRefresh = if (!searchUi.isOpen && currentService == AppTab.SCHEDULE)
-                        ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) }) else null,
-                    scheduleRefreshing =
-                        viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
-                    onMailCompose = if (!searchUi.isOpen && searchAppBarAction(
-                            currentService,
-                            mailListReady = mailState.configured && !mailState.composing &&
-                                mailState.selected == null && !mailWebVisible,
-                        ) == SearchAppBarAction.COMPOSE_MAIL
-                    ) mailViewModel::startCompose else null,
-                    onSettings = {
-                        openService(AppTab.SETTINGS)
-                    },
-                )
-            }
-        },
-    ) { innerPadding ->
+        Scaffold(
+            modifier = Modifier.imePadding(),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                val embeddedBrowserForeground =
+                    (currentService == AppTab.MAIL && mailWebVisible) ||
+                    (currentService == AppTab.BARS &&
+                        (barsState.browserVisible || barsState.authStage == BarsAuthStage.WEB_AUTH))
+                if (!embeddedBrowserForeground && currentService != AppTab.SETTINGS) {
+                    Column {
+                        MaterialSearchAppBar(
+                            context = searchAppBarContext(foregroundTab),
+                            state = searchBarState,
+                            textFieldState = searchText,
+                            onCloseSearch = ::closeGlobalSearch,
+                            onSettings = { openService(AppTab.SETTINGS) },
+                            onRefresh = if (currentService == AppTab.SCHEDULE)
+                                ({ viewModel.refreshAgendaWeek(viewedScheduleWeek) })
+                                else null,
+                            refreshing = viewedScheduleWeek in scheduleState.agendaLoadingOffsets,
+                            onCompose = if (searchAppBarAction(
+                                currentService,
+                                mailListReady = mailState.configured &&
+                                    !mailState.composing && mailState.selected == null &&
+                                    !mailWebVisible,
+                            ) == SearchAppBarAction.COMPOSE_MAIL)
+                                mailViewModel::startCompose else null,
+                            results = {
+                                GlobalSearchScreen(
+                                    query = searchUi.query,
+                                    scope = searchUi.scope,
+                                    onScheduleTypeChange = viewModel::setSearchType,
+                                    onQueryChange = { searchText.setTextAndPlaceCursorAtEnd(it) },
+                                    schedule = scheduleState,
+                                    mail = mailState,
+                                    bars = barsState,
+                                    onSchedule = {
+                                        dispatchNavigation(AppNavigationRequest.SelectSchedule(it))
+                                    },
+                                    onToggleFavorite = viewModel::toggleFavorite,
+                                    onRenameFavorite = viewModel::renameFavorite,
+                                    onLesson = {
+                                        dispatchNavigation(AppNavigationRequest.FocusScheduleLesson(it))
+                                    },
+                                    onCampus = {
+                                        dispatchNavigation(AppNavigationRequest.FocusCampus(it))
+                                    },
+                                    onMail = {
+                                        dispatchNavigation(AppNavigationRequest.OpenMail(it))
+                                    },
+                                    onDiscipline = {
+                                        dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(it))
+                                    },
+                                    onClose = ::closeGlobalSearch,
+                                )
+                            },
+                        )
+                        PrimaryIconServiceTabs(
+                            selected = foregroundTab,
+                            unreadMail = mailState.configured && !mailState.loginRequired &&
+                                mailState.items.any { it.unread },
+                            onSelect = { tab ->
+                                if (tab == currentService && tab == AppTab.SCHEDULE) {
+                                    todayJumpRequest++
+                                } else if (tab != currentService) {
+                                    openService(tab)
+                                }
+                            },
+                        )
+                    }
+                }
+            },
+        ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            // Four lightweight slots let Pager drag continuously. Only the
+            // Five lightweight slots let Pager drag continuously. Only the
             // current/target neighborhood mounts costly non-BARS UI.
-            // BARS is ALWAYS mounted, even when three pages offscreen.
+            // BARS remains mounted across every page.
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize().testTag("primary-service-pager"),
                 userScrollEnabled = rootPagingEnabled && !programmaticPaging,
                 beyondViewportPageCount = PRIMARY_TABS.lastIndex,
-                flingBehavior = PagerDefaults.flingBehavior(
-                    state = pagerState,
-                    snapAnimationSpec = pageSpring,
-                ),
+                flingBehavior = PagerDefaults.flingBehavior(state = pagerState),
                 key = { PRIMARY_TABS[it].name },
             ) { page ->
                 val destination = PRIMARY_TABS[page]
@@ -623,63 +693,6 @@ fun MpeiNeoApp(
                     serviceContent(AppTab.SETTINGS, true)
                 }
             }
-        }
-    }
-    // Search moves as a complete spatial overlay without cloning its input state.
-    SpatialScreenOverlay(
-        visible = searchUi.isOpen,
-        modifier = Modifier.imePadding()
-            .padding(bottom = with(LocalDensity.current) { navigationBarHeightPx.toDp() })
-            .testTag("search-elements-overlay"),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            GlobalSearchScreen(
-                query = searchUi.query,
-                scope = searchUi.scope,
-                onScheduleTypeChange = viewModel::setSearchType,
-                onQueryChange = ::updateGlobalQuery,
-                schedule = scheduleState,
-                mail = mailState,
-                bars = barsState,
-                onSchedule = { dispatchNavigation(AppNavigationRequest.SelectSchedule(it)) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onRenameFavorite = viewModel::renameFavorite,
-                onLesson = { dispatchNavigation(AppNavigationRequest.FocusScheduleLesson(it)) },
-                onCampus = { dispatchNavigation(AppNavigationRequest.FocusCampus(it)) },
-                onMail = { dispatchNavigation(AppNavigationRequest.OpenMail(it)) },
-                onDiscipline = { dispatchNavigation(AppNavigationRequest.OpenBarsDiscipline(it)) },
-                onClose = ::closeGlobalSearch,
-                focusWhenReady = searchUi.isOpen,
-            )
-        }
-    }
-    // Draw the navbar above Search, portals and the keyboard. The IME inset
-    // is OUTSIDE the measured bar, avoiding a double keyboard-size spacer.
-    SpatialExpansion(
-        expanded = currentService != AppTab.SETTINGS,
-        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-            .imePadding().testTag("persistent-primary-nav"),
-    ) {
-        Box(Modifier.fillMaxWidth().onSizeChanged {
-            navigationBarHeightPx = it.height
-        }) {
-                FourTabNavigationBar(
-                    selected = if (currentService == AppTab.SETTINGS)
-                        beneathService ?: AppTab.SCHEDULE
-                        else currentService ?: AppTab.SCHEDULE,
-                    unreadMail = mailState.configured && !mailState.loginRequired &&
-                        mailState.items.any { it.unread },
-                    onSelect = { tab ->
-                        if (tab == currentService && tab == AppTab.SCHEDULE) {
-                            todayJumpRequest++
-                        } else if (tab != currentService) {
-                            searchUi.close()
-                            openService(tab)
-                        }
-                    },
-                )
         }
     }
     }

@@ -136,20 +136,9 @@ internal fun GlobalSearchScreen(
     onClose: () -> Unit,
     focusWhenReady: Boolean = true,
 ) {
-    val focus = remember { FocusRequester() }
     var renameTarget by remember { mutableStateOf<ScheduleTarget?>(null) }
     var renameText by remember { mutableStateOf("") }
     val favorites = schedule.favorites.map { it.favoriteKey() }.toSet()
-    val keyboard = LocalSoftwareKeyboardController.current
-    BackHandler(onBack = onClose)
-    // Opening the keyboard before the input field expansion has completed
-    // causes a layout resize in the middle of the transition.
-    LaunchedEffect(focusWhenReady) {
-        if (focusWhenReady) {
-            focus.requestFocus()
-            keyboard?.show()
-        }
-    }
     val trimmed = query.trim()
     val searching = trimmed.isNotBlank()
     // Schedule honors selected target type; Map only includes matching
@@ -171,69 +160,7 @@ internal fun GlobalSearchScreen(
         .take(if (searching) 19 else if (scope == SearchScope.MAPS) 19 else 4)
         else emptyList()
 
-    Box(modifier = Modifier.fillMaxSize().testTag("global-search-screen")) {
-        // The background is an independent surface. It does not clip, resize,
-        // or scale the input and result widgets as a single page.
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {}
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onClose) {
-                    AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
-                }
-                // The search input is not tied to source-button geometry.
-                Box(
-                    modifier = Modifier.weight(1f),
-                ) {
-                    TextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                            .testTag("global-search-input"),
-                        placeholder = { Text(when (scope) {
-                            SearchScope.SCHEDULE -> "Группа, преподаватель, аудитория"
-                            SearchScope.BARS -> "Поиск дисциплины в БАРС"
-                            SearchScope.MAIL -> "Поиск по почте"
-                            SearchScope.MAPS -> "Корпус или аудитория"
-                        }) },
-                        leadingIcon = { AppIcon(AppIcons.Search, contentDescription = null) },
-                        shape = RoundedCornerShape(24.dp),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {
-                            keyboard?.hide()
-                        }),
-                        // SearchBar input tokens on the existing controlled
-                        // field preserve direct query/remote debounce ownership;
-                        // no second SearchBarState or nested search popup.
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
-                            errorIndicatorColor = Color.Transparent,
-                        ),
-                        trailingIcon = if (query.isNotBlank()) {{
-                            IconButton(
-                                onClick = { onQueryChange("") },
-                            ) {
-                                AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
-                            }
-                        }} else null,
-                    )
-                }
-            }
-            // Search results remain inside a scrollable static screen.
-            Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                ) {
+    Column(modifier = Modifier.fillMaxSize().testTag("global-search-screen")) {
             // Search is contextual and independent of navigation transitions.
             // Schedule alone exposes target-type filters.
             if (scope == SearchScope.SCHEDULE) {
@@ -414,9 +341,6 @@ internal fun GlobalSearchScreen(
                     },
                 )
             }
-                }
-            }
-        }
     }
 }
 

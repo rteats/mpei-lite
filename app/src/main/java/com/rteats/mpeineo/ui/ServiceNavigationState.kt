@@ -13,15 +13,15 @@ import androidx.compose.runtime.setValue
  *
  * Stored entries are stable enum names so Android can save/restore them.
  */
-internal class ServiceNavigationState(initialRoutes: List<String> = listOf(AppTab.SCHEDULE.name)) {
+internal class ServiceNavigationState(initialRoutes: List<String> = listOf(AppTab.HOME.name)) {
     var routes: List<String> by mutableStateOf(
         initialRoutes.filter { name -> AppTab.entries.any { it.name == name } }
             .takeLast(2)
             .let { valid ->
                 when {
-                    valid.isEmpty() -> listOf(AppTab.SCHEDULE.name)
+                    valid.isEmpty() -> listOf(AppTab.HOME.name)
                     valid.size == 1 && valid[0] == AppTab.SETTINGS.name ->
-                        listOf(AppTab.SCHEDULE.name, AppTab.SETTINGS.name)
+                        listOf(AppTab.HOME.name, AppTab.SETTINGS.name)
                     else -> valid
                 }
             },
@@ -32,7 +32,7 @@ internal class ServiceNavigationState(initialRoutes: List<String> = listOf(AppTa
         get() = ServiceRouteSnapshot(routes).current
     val beneath: AppTab?
         get() = ServiceRouteSnapshot(routes).beneath
-    val canPop: Boolean get() = current != AppTab.SCHEDULE || routes.size > 1
+    val canPop: Boolean get() = current != AppTab.HOME || routes.size > 1
 
     fun open(tab: AppTab, viaClassroom: Boolean = false) {
         routes = serviceRouteAfterOpen(routes, tab, viaClassroom)
@@ -65,13 +65,13 @@ internal fun rememberServiceNavigationState(
                 restoredRoutes.isNotEmpty() -> restoredRoutes.filter { name ->
                     AppTab.entries.any { it.name == name }
                 }.let { restored ->
-                    val last = restored.lastOrNull() ?: AppTab.SCHEDULE.name
+                    val last = restored.lastOrNull() ?: AppTab.HOME.name
                     if (last == AppTab.SETTINGS.name && restored.size == 1)
-                        listOf(AppTab.SCHEDULE.name, last)
+                        listOf(AppTab.HOME.name, last)
                     else if (restored.size > 1) restored.takeLast(2)
                     else listOf(last)
                 }
-                else -> listOf(AppTab.SCHEDULE.name)
+                else -> listOf(AppTab.HOME.name)
             },
         )
     }
