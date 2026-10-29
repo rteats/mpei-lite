@@ -566,7 +566,9 @@ internal fun CampusMapScreen(
         }
         // Only request the fixed area while the tab is visible. Once fetched,
         // the compact extract stays usable offline for 30 days and beyond.
-        if (active && (CampusAreaData.needsRefresh(context) || mapRetryRequest > 0)) {
+        if (active && (mapRetryRequest > 0 || withContext(Dispatchers.IO) {
+                CampusAreaData.needsRefresh(context)
+            })) {
             mapRefreshing = true
             val refreshed = try {
                 CampusAreaData.refresh(context)

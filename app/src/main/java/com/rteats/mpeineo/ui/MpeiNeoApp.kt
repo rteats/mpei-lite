@@ -347,6 +347,9 @@ fun MpeiNeoApp(
     // Adjacent pages use the Material spring; distant tab taps snap to the
     // destination rather than moving authenticated pages through other slots.
     LaunchedEffect(foregroundTab) {
+        // The scroll offset belongs to each destination, not the global app bar.
+        searchScrollBehavior.scrollOffset = 0f
+        searchScrollBehavior.contentOffset = 0f
         val requested = primaryPageFor(foregroundTab)
         if (pagerState.currentPage == requested &&
             pagerState.currentPageOffsetFraction == 0f) return@LaunchedEffect
