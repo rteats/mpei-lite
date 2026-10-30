@@ -32,8 +32,10 @@ import com.rteats.mpeineo.MailNotificationTarget
 import com.rteats.mpeineo.MpeiNeoApplication
 import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.data.InterfaceTheme
+import com.rteats.mpeineo.data.BarsNetworkDiagnostics
+import com.rteats.mpeineo.data.BarsSnapshotStore
 
-/** Single bottom navigation shell: no pager, search overlay, or active BARS. */
+/** Single bottom navigation shell with native BARS and no pager. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MpeiNeoApp(
@@ -63,7 +65,7 @@ fun MpeiNeoApp(
         mutableStateOf(if (initialMailTab) AppTab.MAIL else AppTab.SCHEDULE)
     }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
-    val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.MAPS, AppTab.SETTINGS)
+    val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS, AppTab.SETTINGS)
 
     fun openTab(tab: AppTab) {
         if (tab == currentTab) return
@@ -194,7 +196,16 @@ fun MpeiNeoApp(
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
-                AppTab.BARS -> Unit
+                AppTab.BARS -> {
+                    val barsViewModel: BarsViewModel = composeViewModel(
+                        factory = BarsViewModel.factory(
+                            diagnostics,
+                            BarsNetworkDiagnostics(application, diagnostics),
+                            BarsSnapshotStore(application),
+                        ),
+                    )
+                    BarsScreen(viewModel = barsViewModel, modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }

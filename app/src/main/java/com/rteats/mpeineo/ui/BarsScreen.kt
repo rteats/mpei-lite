@@ -1,183 +1,172 @@
 package com.rteats.mpeineo.ui
 
-
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.rteats.mpeineo.MpeiNeoApplication
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 
-/**
-* Native BARS frontend backed by the official BARS web session.
-*
-* Authentication intentionally stays on the official BARS pages. This makes the app follow
-* BARS' current password + 2FA flow instead of duplicating the private authentication protocol.
-* Once authenticated, the same WebView session is used to extract the current marks into the
-* native Compose UI. The WebView is kept alive so "Открыть БАРС" exposes that exact session.
-*/
-/** Pure guard: a disabled automatic update must not create a Home WebView. */
-internal fun shouldInitializeBarsWebView(
-  connectionRequired: Boolean,
-  hasWebView: Boolean,
-  active: Boolean,
-  backgroundAllowed: Boolean,
-): Boolean = connectionRequired && (hasWebView || active || backgroundAllowed)
-
-@OptIn(ExperimentalMaterial3Api::class)
+/** The BARS screen never creates a WebView or executes university JavaScript. */
 @Composable
 internal fun BarsScreen(
-  viewModel: BarsViewModel,
-  autoRefreshEnabled: Boolean = true,
-  active: Boolean = true,
-  /** Keep the single WebView alive for automatic Home data refresh. */
-  allowBackgroundSync: Boolean = false,
-  onBrowserExit: () -> Unit = {},
-  onAuthBrowserExit: () -> Unit = {},
-  onSearch: () -> Unit = {},
-  onDetailOpenChange: (Boolean) -> Unit = {},
-  openDisciplineName: String? = null,
-  openDisciplineRequest: Int = 0,
-  onOpenDisciplineConsumed: () -> Unit = {},
-  modifier: Modifier = Modifier,
+    viewModel: BarsViewModel,
+    autoRefreshEnabled: Boolean = true,
+    active: Boolean = true,
+    allowBackgroundSync: Boolean = false,
+    onBrowserExit: () -> Unit = {},
+    onAuthBrowserExit: () -> Unit = {},
+    onSearch: () -> Unit = {},
+    onDetailOpenChange: (Boolean) -> Unit = {},
+    openDisciplineName: String? = null,
+    openDisciplineRequest: Int = 0,
+    onOpenDisciplineConsumed: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
-  val state by viewModel.state.collectAsState()
-  val transport = remember(viewModel) { BarsWebViewTransport(viewModel) }
-  val webFlow = transport.webFlow
-  val webView = transport.webView
-  fun exitEmbeddedBrowser() {
-    if (state.browserVisible) {
-      transport.exitBrowser(onBrowserExit)
-    } else {
-      onBrowserExit()
-      onAuthBrowserExit()
-    }
-  }
-  val browserControlsVisible = active &&
-    (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
-  // AndroidView callbacks must read the latest foreground/browser mode.
-  transport.browserCanInteract = active &&
-    (state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH)
-
-  androidx.compose.runtime.LaunchedEffect(autoRefreshEnabled) {
-    if (!autoRefreshEnabled && !webFlow.manuallyRequestedConnection &&
-      state.disciplines.isNotEmpty()
-    ) {
-      viewModel.showCachedWithoutRefresh()
-    }
-  }
-
-  // The super-app keeps one BARS composition mounted even at Home. Auto-refresh
-  // may establish its authenticated WebView without entering the BARS service.
-  // Explicitly disabling automatic updates still suppresses that background work.
-  val connectionRequired = autoRefreshEnabled || state.disciplines.isEmpty() ||
-    webFlow.manuallyRequestedConnection || state.browserVisible
-  val shouldHaveWebView = shouldInitializeBarsWebView(
-    connectionRequired = connectionRequired,
-    hasWebView = webView != null,
-    active = active,
-    backgroundAllowed = allowBackgroundSync,
-  )
-
-  // The WebView stays mounted on Home; its lifecycle is transport-owned.
-  androidx.compose.runtime.LaunchedEffect(active, allowBackgroundSync, webView, autoRefreshEnabled) {
-    transport.onVisibilityChanged(active || allowBackgroundSync, autoRefreshEnabled)
-  }
-
-  androidx.compose.runtime.LaunchedEffect(state.browserVisible, state.authStage, webView) {
-    transport.onBrowserModeChanged()
-  }
-
-  BackHandler(enabled = active && browserControlsVisible) {
-    if (state.browserVisible && transport.browserToolbarState.canGoBack &&
-        webView?.url != BARS_MARKS_URL) {
-      transport.browserBack()
-    } else exitEmbeddedBrowser()
-  }
-
-  Box(
-    modifier = modifier.fillMaxSize().testTag("bars-screen"),
-  ) {
-    when (state.authStage) {
-      BarsAuthStage.CHECKING -> BarsCheckingState(
-        error = state.error,
-        onRetry = transport::retrySessionCheck,
-      )
-
-      BarsAuthStage.WEB_AUTH -> {
-        // The official BARS page is rendered by the persistent WebView below.
-      }
-
-      BarsAuthStage.AUTHENTICATED -> BarsNativeDashboard(
-        state = state,
-        active = active,
-        onDetailOpenChange = onDetailOpenChange,
-        openDisciplineName = openDisciplineName,
-        openDisciplineRequest = openDisciplineRequest,
-        onOpenDisciplineConsumed = onOpenDisciplineConsumed,
-        showCachedRefreshErrors = autoRefreshEnabled || webFlow.manuallyRequestedConnection,
-        onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
-        onSearch = onSearch,
-        onRefresh = { transport.refreshMarks() },
-        onOpenBrowser = { transport.openBrowser() },
-        onRefreshSummary = transport::refreshSummary,
-      )
+    val app = LocalContext.current.applicationContext as MpeiNeoApplication
+    val auth: BarsNativeAuthViewModel = composeViewModel(
+        factory = BarsNativeAuthViewModel.factory(viewModel, app.container.diagnostics),
+    )
+    val data by viewModel.state.collectAsState()
+    val login by auth.status.collectAsState()
+    LaunchedEffect(active, data.disciplines.isEmpty()) {
+        if (active && data.disciplines.isEmpty() && login.step == BarsNativeStep.IDLE) {
+            auth.openLogin()
+        }
     }
 
-    if (shouldHaveWebView) {
-      AndroidView(
-        // On refresh BARS needs a full-size WebView to lay out its DOM.
-        // Transparent AndroidViews still intercept input when layered on top.
-        // Only the explicit session browser or login should cover native UI.
-        modifier = (when {
-          state.browserVisible || state.authStage == BarsAuthStage.WEB_AUTH ->
-            Modifier.fillMaxSize().padding(top = EMBEDDED_BROWSER_APPBAR_HEIGHT)
-          webFlow.needsFullViewport -> Modifier
-            .fillMaxSize()
-            .alpha(0f)
-          else -> Modifier
-            .size(1.dp)
-            .alpha(0f)
-        }).zIndex(
-          if (!state.browserVisible &&
-            state.authStage != BarsAuthStage.WEB_AUTH
-          ) -1f else 1f,
-        ),
-        factory = transport::create,
-        update = {},
-        onRelease = transport::release,
-      )
-      if (browserControlsVisible) {
-        EmbeddedBrowserAppBar(
-          state = transport.browserToolbarState,
-          onExit = ::exitEmbeddedBrowser,
-          onBack = transport::browserBack,
-          onForward = transport::browserForward,
-          onReload = transport::browserReload,
-          modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
-            
-            .testTag("bars-browser-controls"),
-        )
-      }
+    Box(modifier.fillMaxSize().testTag("bars-screen")) {
+        if (login.forceLogin || data.disciplines.isEmpty()) {
+            BarsCredentialsForm(
+                status = login,
+                onLogin = auth::login,
+                onCode = auth::confirm,
+                onRequestCode = auth::sendCode,
+                onRetry = { auth.openLogin(force = true) },
+                onCancel = if (data.disciplines.isNotEmpty()) auth::cancelLogin else null,
+            )
+        } else {
+            BarsNativeDashboard(
+                state = data, active = active,
+                onDetailOpenChange = onDetailOpenChange,
+                openDisciplineName = openDisciplineName,
+                openDisciplineRequest = openDisciplineRequest,
+                onOpenDisciplineConsumed = onOpenDisciplineConsumed,
+                showCachedRefreshErrors = autoRefreshEnabled,
+                onRefresh = auth::refresh,
+                onOpenBrowser = { auth.openLogin(force = true) },
+                onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
+                onRefreshSummary = auth::refreshSummary,
+                onSearch = onSearch,
+            )
+        }
     }
-
-  }
 }
 
+/** Legacy pure helper used by existing tests. No WebView is initialized. */
+internal fun shouldInitializeBarsWebView(
+    connectionRequired: Boolean,
+    hasWebView: Boolean,
+    active: Boolean,
+    backgroundAllowed: Boolean,
+): Boolean = connectionRequired && (hasWebView || active || backgroundAllowed)
+
+@Composable
+private fun BarsCredentialsForm(
+    status: BarsNativeStatus,
+    onLogin: (String, String) -> Unit,
+    onCode: (String) -> Unit,
+    onRequestCode: () -> Unit,
+    onRetry: () -> Unit,
+    onCancel: (() -> Unit)?,
+) {
+    var account by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("Вход в БАРС", style = MaterialTheme.typography.headlineSmall)
+        Text("Прямое соединение с bars.mpei.ru",
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        status.notice?.let { Text(it) }
+        when (status.step) {
+            BarsNativeStep.IDLE, BarsNativeStep.OPENING, BarsNativeStep.SUBMITTING,
+            BarsNativeStep.REFRESHING -> Box(
+                Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            BarsNativeStep.LOGIN -> {
+                OutlinedTextField(
+                    value = account, onValueChange = { account = it },
+                    label = { Text("Логин") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("bars-native-account"),
+                )
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Пароль") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth().testTag("bars-native-password"),
+                )
+                Button(onClick = {
+                    val submitted = password
+                    password = ""
+                    onLogin(account, submitted)
+                }, enabled = account.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().testTag("bars-native-login"),
+                ) { Text("Войти") }
+                TextButton(onClick = onRetry) { Text("Начать заново") }
+            }
+            BarsNativeStep.CODE -> {
+                Text("Введите код подтверждения из МАКС.")
+                OutlinedTextField(
+                    value = code, onValueChange = { code = it },
+                    label = { Text("Код подтверждения") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("bars-native-code"),
+                )
+                Button(onClick = {
+                    val submitted = code
+                    code = ""
+                    onCode(submitted)
+                }, enabled = code.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().testTag("bars-native-confirm"),
+                ) { Text("Подтвердить") }
+                TextButton(onClick = onRequestCode, enabled = !status.busySending) {
+                    Text(if (status.busySending) "Отправка…" else "Отправить код через МАКС")
+                }
+            }
+        }
+        if (onCancel != null) {
+            TextButton(onClick = onCancel) { Text("К сохранённым оценкам") }
+        }
+    }
+}
