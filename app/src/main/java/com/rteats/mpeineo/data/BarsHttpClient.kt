@@ -5,6 +5,7 @@ import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -36,7 +37,7 @@ internal sealed interface BarsCredentialResult {
  * Private, in-memory BARS session. No WebView, user-agent scripts, or disk cookies.
  * Passwords and MFA codes are used only as method arguments and never logged.
  */
-internal class BarsHttpClient {
+internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
     private val host = "bars.mpei.ru"
     private val root = "https://bars.mpei.ru/bars_web/".toHttpUrl()
     private val jar = object : CookieJar {
@@ -44,7 +45,12 @@ internal class BarsHttpClient {
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             synchronized(this) {
                 cookies.forEach { cookie ->
-                    this.cookies[cookie.name + "|" + cookie.domain + "|" + cookie.path] = cookie
+                    val key = cookie.name + "|" + cookie.domain + "|" + cookie.path
+                    if (cookie.value.isBlank() || cookie.expiresAt <= System.currentTimeMillis()) {
+                        this.cookies.remove(key)
+                    } else {
+                        this.cookies[key] = cookie
+                    }
                 }
             }
         }
@@ -53,6 +59,31 @@ internal class BarsHttpClient {
             cookies.values.filter { it.expiresAt > now && it.matches(url) }
         }
         fun clear() = synchronized(this) { cookies.clear() }
+        fun exported(): List<String> = synchronized(this) {
+            cookies.values.filter { cookie ->
+                cookie.expiresAt > System.currentTimeMillis() &&
+                    cookie.value.isNotBlank() &&
+                    (cookie.domain == "bars.mpei.ru" ||
+                        "bars.mpei.ru".endsWith("." + cookie.domain))
+            }.map { it.toString() }
+        }
+        fun restore(headers: List<String>, url: HttpUrl) = synchronized(this) {
+            cookies.clear()
+            headers.mapNotNull { Cookie.parse(url, it) }.forEach { cookie ->
+                val key = cookie.name + "|" + cookie.domain + "|" + cookie.path
+                if (cookie.value.isNotBlank() && cookie.expiresAt > System.currentTimeMillis() &&
+                    (cookie.domain == "bars.mpei.ru" ||
+                        "bars.mpei.ru".endsWith("." + cookie.domain))) {
+                    cookies[key] = cookie
+                }
+            }
+        }
+        fun hasSessionCookie(): Boolean = synchronized(this) {
+            cookies.values.any {
+                it.name == "ses_bars" && it.value.isNotBlank() &&
+                    it.expiresAt > System.currentTimeMillis()
+            }
+        }
     }
     private val client = OkHttpClient.Builder()
         .cookieJar(jar)
@@ -71,11 +102,47 @@ internal class BarsHttpClient {
         private set
 
     fun clear() {
+        store?.clear()
         jar.clear()
         credentialsForm = null
         codeForm = null
         mainUrl = null
         summaryUrl = null
+    }
+
+    /** Save only verified, authenticated BARS sessions. All fields are encrypted. */
+    private fun saveSession() {
+        val main = mainUrl ?: return
+        val summary = summaryUrl ?: return
+        if (!jar.hasSessionCookie()) return
+        runCatching {
+            store?.write(BarsSavedSession(
+                System.currentTimeMillis(),
+                main.toString(), summary.toString(), jar.exported(),
+            ))
+        }
+    }
+
+    /** Returns a verified study page, or null if no saved credentials exist. */
+    suspend fun restoreSession(): BarsHttpPage? = withContext(Dispatchers.IO) {
+        val saved = store?.read() ?: return@withContext null
+        val main = saved.mainUrl.toHttpUrlOrNull()
+        val summary = saved.summaryUrl.toHttpUrlOrNull()
+        if (main == null || summary == null ||
+            runCatching { valid(main); valid(summary) }.isFailure ||
+            main.encodedPath != "/bars_web/ST_Study/Main/Main" ||
+            summary.encodedPath != "/bars_web/ST_Study/Main/Summary") {
+            clear()
+            return@withContext null
+        }
+        jar.restore(saved.cookieHeaders, root)
+        if (!jar.hasSessionCookie()) {
+            clear()
+            return@withContext null
+        }
+        mainUrl = main
+        summaryUrl = summary
+        refreshMain()
     }
 
     private fun valid(url: HttpUrl): HttpUrl {
@@ -190,6 +257,7 @@ internal class BarsHttpClient {
         codeForm = null
         mainUrl = page.url
         summaryUrl = BarsHtmlParser.summaryUrl(page.html, page.url)
+        saveSession()
         page
     }
 
@@ -197,9 +265,15 @@ internal class BarsHttpClient {
         val url = mainUrl ?: throw IOException("Sign in to BARS first")
         val page = execute(Request.Builder().url(valid(url)).get().build())
         if (Jsoup.parse(page.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
-            clear()
-            throw IOException("BARS authentication has expired")
+            // Only clear the stored session if BARS actually redirected to login.
+            // HTML changes or network failures must not erase a valid session.
+            if (page.url.encodedPath == "/bars_web/" ||
+                Jsoup.parse(page.html).selectFirst("input[name=Password]") != null) {
+                clear()
+            }
+            throw IOException("BARS study page is not authenticated")
         }
+        saveSession()
         page
     }
 
