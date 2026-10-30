@@ -66,6 +66,7 @@ internal fun BarsScreen(
                 onCode = auth::confirm,
                 onRequestCode = auth::sendCode,
                 onRetry = { auth.openLogin(force = true) },
+                onRetrySession = auth::retrySession,
                 onCancel = if (data.disciplines.isNotEmpty()) auth::cancelLogin else null,
             )
         } else {
@@ -101,6 +102,7 @@ private fun BarsCredentialsForm(
     onCode: (String) -> Unit,
     onRequestCode: () -> Unit,
     onRetry: () -> Unit,
+    onRetrySession: () -> Unit,
     onCancel: (() -> Unit)?,
 ) {
     var account by remember { mutableStateOf("") }
@@ -121,6 +123,13 @@ private fun BarsCredentialsForm(
             BarsNativeStep.REFRESHING -> Box(
                 Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
+            BarsNativeStep.RESTORE_FAILED -> {
+                Text("Не удалось проверить предыдущую сессию.")
+                Button(onClick = onRetrySession, modifier = Modifier.fillMaxWidth()) {
+                    Text("Проверить ещё раз")
+                }
+                TextButton(onClick = onRetry) { Text("Войти заново") }
+            }
             BarsNativeStep.LOGIN -> {
                 OutlinedTextField(
                     value = account, onValueChange = { account = it },
