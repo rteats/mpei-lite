@@ -181,6 +181,7 @@ class MainViewModel(
                 agendaFailedOffsets = it.agendaFailedOffsets - offset,
             )
         }
+        container.diagnostics.log("SCHEDULE", "week request offset=$offset force=$forceNetwork")
         // Register before dispatch so even a synchronously completed cache hit
         // observes its own request identity.
         val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
@@ -212,6 +213,8 @@ class MainViewModel(
                     forceNetwork = forceNetwork,
                 )
                 if (isCurrentRequest()) {
+                    container.diagnostics.log("SCHEDULE",
+                        "week received offset=$offset source=${result.source} days=${result.week.days.size}")
                     _state.update {
                         it.copy(
                             agendaWeeks = it.agendaWeeks + (offset to result.week),
@@ -224,8 +227,11 @@ class MainViewModel(
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
                 if (isCurrentRequest()) {
+                    container.diagnostics.log("SCHEDULE",
+                        "week error offset=$offset type=${error.javaClass.simpleName} " +
+                            "detail=${error.message.orEmpty().take(160)}")
                     _state.update {
                         it.copy(agendaFailedOffsets = it.agendaFailedOffsets + offset)
                     }

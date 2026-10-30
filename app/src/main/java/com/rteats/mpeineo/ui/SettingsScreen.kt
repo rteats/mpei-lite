@@ -117,7 +117,7 @@ internal fun SettingsScreen(
     var interfaceExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("interface", false)) }
     var mailExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("mail", true)) }
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
-    var logsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("logs", true)) }
+    var logsExpanded by remember { mutableStateOf(true) }
     var aboutExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("about", false)) }
     // Technical probes stay off the normal diagnostic path until requested.
     var advancedDiagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
