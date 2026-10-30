@@ -90,8 +90,6 @@ import java.time.Instant
 internal fun SettingsScreen(
     updateViewModel: UpdateViewModel,
     mailViewModel: MailViewModel,
-    barsAutoRefreshEnabled: Boolean,
-    onBarsAutoRefreshEnabledChange: (Boolean) -> Unit,
     interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
     onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
     navigationHaptics: Boolean = false,
@@ -117,10 +115,9 @@ internal fun SettingsScreen(
         context.getSharedPreferences("settings_sections", Context.MODE_PRIVATE)
     }
     var interfaceExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("interface", false)) }
-    var barsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("bars", false)) }
     var mailExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("mail", true)) }
     var updatesExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("updates", false)) }
-    var logsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("logs", false)) }
+    var logsExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("logs", true)) }
     var aboutExpanded by remember { mutableStateOf(sectionPrefs.getBoolean("about", false)) }
     // Technical probes stay off the normal diagnostic path until requested.
     var advancedDiagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -128,7 +125,6 @@ internal fun SettingsScreen(
         sectionPrefs.edit().putBoolean(key, next).apply()
         when (key) {
             "interface" -> interfaceExpanded = next
-            "bars" -> barsExpanded = next
             "mail" -> mailExpanded = next
             "updates" -> updatesExpanded = next
             "logs" -> logsExpanded = next
@@ -332,23 +328,6 @@ internal fun SettingsScreen(
         }
         item {
             SettingsExpansion(
-                "БАРС",
-                "Настройки обновления оценок",
-                AppIcons.Bars,
-                barsExpanded, { changeSection("bars", !barsExpanded) },
-            ) {
-                SettingsSwitchRow(
-                    "Автообновление оценок",
-                    "Обновлять при возвращении в БАРС, если данные старше 5 минут",
-                    AppIcons.Updates,
-                    barsAutoRefreshEnabled,
-                    true,
-                    onBarsAutoRefreshEnabledChange,
-                )
-            }
-        }
-        item {
-            SettingsExpansion(
                 "Почта МЭИ",
                 if (mailState.configured)
                     mailState.username.ifBlank { "Сессия ОСЭП" }
@@ -438,7 +417,7 @@ internal fun SettingsScreen(
         item {
             SettingsExpansion(
                 "Обновления приложения",
-                "Версия " + BuildConfig.VERSION_NAME + " · канал " + BuildConfig.UPDATE_CHANNEL,
+                "Сборка " + BuildConfig.VERSION_NAME,
                 AppIcons.Updates,
                 updatesExpanded, { changeSection("updates", !updatesExpanded) },
             ) {
@@ -564,7 +543,7 @@ internal fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    "Неофициальный клиент МЭИ. Пароли и коды 2FA БАРС не сохраняются. " +
+                    "Неофициальный клиент МЭИ. БАРС временно отключён. " +
                         "Цвета интерфейса берутся из палитры Material You.",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
