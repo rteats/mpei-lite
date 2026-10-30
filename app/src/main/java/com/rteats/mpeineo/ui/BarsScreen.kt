@@ -50,14 +50,12 @@ internal fun BarsScreen(
 ) {
     val app = LocalContext.current.applicationContext as MpeiNeoApplication
     val auth: BarsNativeAuthViewModel = composeViewModel(
-        factory = BarsNativeAuthViewModel.factory(viewModel, app.container.diagnostics),
+        factory = BarsNativeAuthViewModel.factory(viewModel, app.container.diagnostics, app),
     )
     val data by viewModel.state.collectAsState()
     val login by auth.status.collectAsState()
-    LaunchedEffect(active, data.disciplines.isEmpty()) {
-        if (active && data.disciplines.isEmpty() && login.step == BarsNativeStep.IDLE) {
-            auth.openLogin()
-        }
+    LaunchedEffect(active) {
+        if (active) auth.start()
     }
 
     Box(modifier.fillMaxSize().testTag("bars-screen")) {
