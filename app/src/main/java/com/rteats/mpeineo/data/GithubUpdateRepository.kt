@@ -18,15 +18,15 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 private const val RELEASES_URL =
-    "https://api.github.com/repos/rteats/mpei-neo/releases?per_page=30"
+    "https://api.github.com/repos/rteats/mpei-lite/releases?per_page=30"
 private const val DEV_RELEASE_URL =
-    "https://api.github.com/repos/rteats/mpei-neo/releases/tags/dev"
+    "https://api.github.com/repos/rteats/mpei-lite/releases/tags/latest"
 private const val DEV_MANIFEST_URL =
-    "https://github.com/rteats/mpei-neo/releases/download/dev/update.json"
+    "https://github.com/rteats/mpei-lite/releases/download/latest/update.json"
 private const val DEV_APK_URL =
-    "https://github.com/rteats/mpei-neo/releases/download/dev/MPEI-Neo-Dev.apk"
+    "https://github.com/rteats/mpei-lite/releases/download/latest/MPEI-Lite.apk"
 private const val DEV_PAGE_URL =
-    "https://github.com/rteats/mpei-neo/releases/tag/dev"
+    "https://github.com/rteats/mpei-lite/releases/tag/latest"
 
 data class GithubReleaseInfo(
     val versionCode: Int,
@@ -67,11 +67,7 @@ class GithubUpdateRepository(
     suspend fun getLatestRelease(channel: String): GithubReleaseInfo =
         withContext(Dispatchers.IO) {
             diagnostics.log("UPDATE", "check started channel=$channel")
-            val result = if (channel == "dev") {
-                fetchDevRelease()
-            } else {
-                fetchLatestStableRelease()
-            }
+            val result = fetchDevRelease()
             diagnostics.log(
                 "UPDATE",
                 "check completed channel=$channel version=${result.versionName} code=${result.versionCode}",
@@ -253,7 +249,7 @@ class GithubUpdateRepository(
             fetchDevReleaseFromApi()
         } catch (problem: Exception) {
             throw IllegalStateException(
-                "Не удалось проверить Dev-обновление. " +
+                "Не удалось проверить обновление. " +
                     "GitHub может ограничивать запросы; APK можно установить " +
                     "вручную со страницы релизов. ${problem.message.orEmpty().take(160)}",
                 problem,
@@ -291,7 +287,7 @@ class GithubUpdateRepository(
             ?.groupValues
             ?.getOrNull(1)
             ?.toIntOrNull()
-            ?: Regex("""dev\.(\d+)""")
+            ?: Regex("""(?:\d{4}\.\d{2}\.\d{2}\.)(\d+)""")
                 .find(release.name)
                 ?.groupValues
                 ?.getOrNull(1)
@@ -302,7 +298,7 @@ class GithubUpdateRepository(
             .find(release.body)
             ?.groupValues
             ?.getOrNull(1)
-            ?: release.name.substringAfter("MPEI Neo Dev ", "dev.$versionCode")
+            ?: release.name.substringAfter("MPEI Lite ", "build.$versionCode")
 
         return release.toReleaseInfo(
             versionCode = versionCode,
@@ -508,7 +504,7 @@ internal fun parseDevUpdateManifest(json: String, gson: Gson): GithubReleaseInfo
     val data = gson.fromJson(json, DevUpdateManifest::class.java)
         ?: error("Empty Dev update manifest")
     require(data.versionCode > 0) { "Invalid Dev versionCode" }
-    val match = Regex("""^\d+\.\d+\.\d+-dev\.(\d+)$""")
+    val match = Regex("""^\d{4}\.\d{2}\.\d{2}\.(\d+)$""")
         .matchEntire(data.versionName)
     require(match != null && match.groupValues[1].toIntOrNull() == data.versionCode) {
         "Invalid Dev versionName"
@@ -519,12 +515,12 @@ internal fun parseDevUpdateManifest(json: String, gson: Gson): GithubReleaseInfo
     return GithubReleaseInfo(
         versionCode = data.versionCode,
         versionName = data.versionName,
-        tagName = "dev",
-        title = "MPEI Neo Dev ${data.versionName}",
+        tagName = "latest",
+        title = "MPEI Lite ${data.versionName}",
         notes = "Автоматическая сборка из main.",
         releasePageUrl = DEV_PAGE_URL,
         apkUrl = DEV_APK_URL,
-        apkName = "MPEI-Neo-Dev.apk",
+        apkName = "MPEI-Lite.apk",
         sha256 = data.sha256.lowercase(),
     )
 }

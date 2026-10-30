@@ -1,0 +1,117 @@
+name: Main APK
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: main-apk
+  cancel-in-progress: false
+
+jobs:
+  test-and-build:
+    name: Test and publish dated APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Architecture and utility tests
+        run: |
+          python3 scripts/check_architecture.py
+          python3 -m unittest discover -s scripts -p "test_*.py" -q
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Android SDK packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+          cache-cleanup: on-success
+          gradle-home-cache-excludes: |
+            caches/keyrings
+      - name: Set UTC build version
+        run: |
+          CODE=$((1000000 + GITHUB_RUN_NUMBER))
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$(date -u +%Y.%m.%d).$CODE" >> "$GITHUB_ENV"
+      - name: Prepare existing signing key
+        run: |
+          base64 --decode ci/mpei-neo-dev.p12.b64 > "$RUNNER_TEMP/mpei-neo-dev.p12"
+          echo "ANDROID_DEV_KEYSTORE_FILE=$RUNNER_TEMP/mpei-neo-dev.p12" >> "$GITHUB_ENV"
+          echo "ANDROID_DEV_KEYSTORE_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
+          echo "ANDROID_DEV_KEY_ALIAS=mpei-neo-dev" >> "$GITHUB_ENV"
+          echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
+          echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
+      - name: Run JVM tests and build signed APK
+        run: |
+          gradle --no-daemon testRollingDebugUnitTest assembleRollingRelease \
+            -POPTIMIZE_RELEASE=true \
+            -PVERSION_CODE="$VERSION_CODE" \
+            -PVERSION_NAME="$VERSION_NAME"
+          cp app/build/outputs/apk/rolling/release/app-rolling-release.apk MPEI-Lite.apk
+      - name: Write checked update manifest
+        run: |
+          SHA256="$(sha256sum MPEI-Lite.apk | cut -d ' ' -f1)"
+          printf '{"versionCode":%s,"versionName":"%s","sha256":"%s"}\n' \
+            "$VERSION_CODE" "$VERSION_NAME" "$SHA256" > update.json
+      - name: Save downloadable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpei-lite-apk
+          path: |
+            MPEI-Lite.apk
+            update.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Point latest tag at tested commit
+        run: |
+          git tag -f latest "$GITHUB_SHA"
+          git push origin refs/tags/latest --force
+      - name: Publish one rolling release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: latest
+          name: MPEI Lite ${{ env.VERSION_NAME }}
+          prerelease: false
+          make_latest: true
+          overwrite_files: true
+          body: |
+            Single rolling MPEI Lite build from main.
+            versionCode: ${{ env.VERSION_CODE }}
+            versionName: ${{ env.VERSION_NAME }}
+            commit: ${{ github.sha }}
+            Package: com.rteats.mpeineo.dev, signed with the former Dev key.
+            Diagnostics can be exported from Settings.
+          files: |
+            MPEI-Lite.apk
+            update.json
+      - name: Retire previous releases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.tag_name != "latest") | [.id, .tag_name] | @tsv' |
+          while IFS=$'\t' read -r id tag; do
+            [ -n "$id" ] || continue
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
+          done
+      - name: Save failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-failure-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

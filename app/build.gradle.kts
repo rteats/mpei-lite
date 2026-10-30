@@ -4,9 +4,7 @@ plugins {
 }
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
-val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "0.5.0-dev"
-// PR artifacts use a separate package so test builds cannot replace the rolling dev app.
-val prNumber = providers.gradleProperty("PR_NUMBER").orNull?.toIntOrNull()?.takeIf { it > 0 }
+val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "2026.10.31.0"
 // R8 remains an explicit release build property; CI controls the production setting.
 val optimizeRelease = providers.gradleProperty("OPTIMIZE_RELEASE").orNull == "true"
 
@@ -20,18 +18,6 @@ val devSigningReady = listOf(
     devStorePassword,
     devKeyAlias,
     devKeyPassword,
-).all { !it.isNullOrBlank() }
-
-val releaseStoreFile = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
-val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
-val releaseStoreType = providers.environmentVariable("ANDROID_KEYSTORE_TYPE").orNull ?: "PKCS12"
-val releaseSigningReady = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
 android {
@@ -58,36 +44,19 @@ android {
             }
         }
 
-        if (releaseSigningReady) {
-            create("ciRelease") {
-                storeFile = rootProject.file(releaseStoreFile!!)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-                storeType = releaseStoreType
-            }
-        }
+
     }
 
     flavorDimensions += "channel"
     productFlavors {
-        create("dev") {
+        create("rolling") {
             dimension = "channel"
-            applicationIdSuffix = ".dev" + (prNumber?.let { ".pr$it" } ?: "")
-            manifestPlaceholders["appLabel"] =
-                prNumber?.let { "MPEI Lite PR #$it" } ?: "MPEI Lite Dev"
-            buildConfigField("String", "UPDATE_CHANNEL", "\"dev\"")
+            // Keep the former Dev application ID and signing identity.
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "MPEI Lite"
+            buildConfigField("String", "UPDATE_CHANNEL", "\"rolling\"")
             if (devSigningReady) {
                 signingConfig = signingConfigs.getByName("ciDev")
-            }
-        }
-
-        create("stable") {
-            dimension = "channel"
-            manifestPlaceholders["appLabel"] = "MPEI Lite"
-            buildConfigField("String", "UPDATE_CHANNEL", "\"stable\"")
-            if (releaseSigningReady) {
-                signingConfig = signingConfigs.getByName("ciRelease")
             }
         }
     }
