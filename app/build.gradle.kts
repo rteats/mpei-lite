@@ -119,6 +119,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.13.1")
+    implementation("org.jsoup:jsoup:1.18.3")
 
     testImplementation("junit:junit:4.13.2")
     // Real JSON for JVM contract tests; Android runtime supplies org.json.
