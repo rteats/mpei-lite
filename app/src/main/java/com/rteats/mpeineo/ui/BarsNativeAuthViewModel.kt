@@ -1,5 +1,6 @@
 package com.rteats.mpeineo.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,13 +9,14 @@ import com.rteats.mpeineo.data.BarsCredentialResult
 import com.rteats.mpeineo.data.BarsHtmlParser
 import com.rteats.mpeineo.data.BarsHttpClient
 import com.rteats.mpeineo.data.BarsHttpPage
+import com.rteats.mpeineo.data.BarsSessionStore
 import com.rteats.mpeineo.data.DiagnosticLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal enum class BarsNativeStep { IDLE, OPENING, LOGIN, SUBMITTING, CODE, REFRESHING }
+internal enum class BarsNativeStep { IDLE, OPENING, RESTORE_FAILED, LOGIN, SUBMITTING, CODE, REFRESHING }
 
 internal data class BarsNativeStatus(
     val step: BarsNativeStep = BarsNativeStep.IDLE,
@@ -27,11 +29,49 @@ internal data class BarsNativeStatus(
 internal class BarsNativeAuthViewModel(
     private val bars: BarsViewModel,
     private val diagnostics: DiagnosticLog,
+    context: Context,
 ) : ViewModel() {
-    private val http = BarsHttpClient()
+    private val http = BarsHttpClient(BarsSessionStore(context.applicationContext))
+    private var started = false
     private val gson = Gson()
     private val _status = MutableStateFlow(BarsNativeStatus())
     val status = _status.asStateFlow()
+
+    /** Check saved session with the server before falling back to the login form. */
+    fun start() {
+        if (started) return
+        started = true
+        _status.value = BarsNativeStatus(step = BarsNativeStep.OPENING)
+        viewModelScope.launch {
+            val restored = runCatching { http.restoreSession() }
+            val page = restored.getOrNull()
+            if (page != null) {
+                diagnostics.log("BARS_NATIVE", "session_restore=verified")
+                publish(page)
+                return@launch
+            }
+            if (restored.isFailure) {
+                // Transient network errors must not delete session material.
+                diagnostics.log("BARS_NATIVE", "session_restore=unverified type=" +
+                    restored.exceptionOrNull()!!.javaClass.simpleName)
+                bars.extractionFailed("Не удалось проверить сохранённую сессию БАРС.")
+                _status.value = BarsNativeStatus(
+                    step = BarsNativeStep.RESTORE_FAILED,
+                    error = "Нет связи с БАРС. Сохранённая сессия не удалена.",
+                )
+                return@launch
+            }
+            diagnostics.log("BARS_NATIVE", "session_restore=missing")
+            val needsLogin = bars.state.value.disciplines.isEmpty()
+            _status.value = BarsNativeStatus()
+            if (needsLogin) openLogin(force = true) else bars.webAuth(BARS_LOGIN_URL)
+        }
+    }
+
+    fun retrySession() {
+        started = false
+        start()
+    }
 
     fun openLogin(force: Boolean = false) {
         if (_status.value.step in setOf(BarsNativeStep.OPENING, BarsNativeStep.SUBMITTING)) return
@@ -161,11 +201,15 @@ internal class BarsNativeAuthViewModel(
     }
 
     companion object {
-        fun factory(bars: BarsViewModel, diagnostics: DiagnosticLog): ViewModelProvider.Factory =
+        fun factory(
+            bars: BarsViewModel,
+            diagnostics: DiagnosticLog,
+            context: Context,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    BarsNativeAuthViewModel(bars, diagnostics) as T
+                    BarsNativeAuthViewModel(bars, diagnostics, context) as T
             }
     }
 }
