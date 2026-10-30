@@ -268,6 +268,7 @@ class MainViewModel(
 
         searchJob = viewModelScope.launch {
             if (delayMillis > 0) delay(delayMillis)
+            container.diagnostics.log("SCHEDULE", "lookup start type=${type?.apiName ?: "all"} length=${query.length}")
             if (state.value.searchQuery.trim() != query || state.value.searchType != type) return@launch
 
             _state.update { it.copy(isSearching = true, searchError = null) }
@@ -289,6 +290,7 @@ class MainViewModel(
             try {
                 val results = container.repository.search(query, type)
                 if (stillCurrent()) {
+                    container.diagnostics.log("SCHEDULE", "lookup completed remote=${results.size} cached=${offline.size}")
                     val merged = (results + offline).distinctBy { it.type to it.id }
                     _state.update {
                         it.copy(
@@ -302,6 +304,8 @@ class MainViewModel(
                 throw error
             } catch (error: Throwable) {
                 if (stillCurrent()) {
+                    container.diagnostics.log("SCHEDULE", "lookup failed type=${error.javaClass.simpleName} " +
+                        "detail=${error.message.orEmpty().take(160)}")
                     _state.update {
                         it.copy(
                             isSearching = false,

@@ -100,7 +100,7 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            if (!mailWebVisible) TopAppBar(
                 title = {
                     Text(when (currentTab) {
                         AppTab.SCHEDULE -> "Расписание"
@@ -167,7 +167,7 @@ fun MpeiNeoApp(
                         onSearch = {},
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (mailWebVisible) {
+                    SpatialScreenOverlay(visible = mailWebVisible) {
                         WebPortalScreen(
                             url = "https://mail.mpei.ru/owa",
                             testTag = "portal-mail",

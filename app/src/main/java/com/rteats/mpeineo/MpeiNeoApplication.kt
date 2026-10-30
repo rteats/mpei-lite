@@ -9,8 +9,6 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import com.rteats.mpeineo.ui.clearCampusRasterOnLowMemory
 import com.google.gson.GsonBuilder
-import com.rteats.mpeineo.data.BarsNetworkDiagnostics
-import com.rteats.mpeineo.data.BarsSnapshotStore
 import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.UiFrameProfiler
 import com.rteats.mpeineo.data.FileScheduleCache
@@ -133,8 +131,6 @@ class AppContainer(application: Application) {
     val owaAuthProbe = OwaAuthProbe(application, diagnostics)
     val owaMailRepository = OwaMailRepository(application, diagnostics)
     val owaInboxProbe = OwaInboxProbe(application, diagnostics)
-    val barsNetworkDiagnostics = BarsNetworkDiagnostics(application, diagnostics)
-    internal val barsSnapshots = BarsSnapshotStore(application)
     val preferences = UserPreferences(application, gson)
     // The updater is only needed by Settings and post-launch housekeeping.
     // Avoid reading its preferences or creating its download directory at launch.
