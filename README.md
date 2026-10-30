@@ -18,7 +18,7 @@ The old BARS source is retained as inactive reference code.
 
 One rolling release, no Stable/Dev channels. A main push runs JVM/Python
 tests and publishes a signed APK as `latest`. Version names use UTC
-`YYYY.MM.DD.<GitHub run number>`; Android versionCode is the run number.
+`YYYY.MM.DD.<GitHub run number>`; Android versionCode is 1,000,000 + the run number.
 PRs run Python and JVM tests and Android lint without APK assembly.
 The former Dev package ID `com.rteats.mpeineo.dev` and signing key remain
 unchanged for in-place upgrades. Former Stable apps have a different package ID.
