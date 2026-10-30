@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal enum class BarsNativeStep { IDLE, OPENING, LOGIN, SUBMITTING, CODE, REFRESHING }
+internal enum class BarsNativeStep { IDLE, OPENING, RESTORE_FAILED, LOGIN, SUBMITTING, CODE, REFRESHING }
 
 internal data class BarsNativeStatus(
     val step: BarsNativeStep = BarsNativeStep.IDLE,
@@ -50,15 +50,27 @@ internal class BarsNativeAuthViewModel(
                 publish(page)
                 return@launch
             }
-            diagnostics.log("BARS_NATIVE", "session_restore=" +
-                if (restored.isFailure) "unverified" else "missing")
-            // Keep cached marks available even when the network is offline.
+            if (restored.isFailure) {
+                // Transient network errors must not delete session material.
+                diagnostics.log("BARS_NATIVE", "session_restore=unverified type=" +
+                    restored.exceptionOrNull()!!.javaClass.simpleName)
+                bars.extractionFailed("Не удалось проверить сохранённую сессию БАРС.")
+                _status.value = BarsNativeStatus(
+                    step = BarsNativeStep.RESTORE_FAILED,
+                    error = "Нет связи с БАРС. Сохранённая сессия не удалена.",
+                )
+                return@launch
+            }
+            diagnostics.log("BARS_NATIVE", "session_restore=missing")
             val needsLogin = bars.state.value.disciplines.isEmpty()
             _status.value = BarsNativeStatus()
-            if (needsLogin) openLogin(force = true) else {
-                bars.webAuth(BARS_LOGIN_URL)
-            }
+            if (needsLogin) openLogin(force = true) else bars.webAuth(BARS_LOGIN_URL)
         }
+    }
+
+    fun retrySession() {
+        started = false
+        start()
     }
 
     fun openLogin(force: Boolean = false) {
