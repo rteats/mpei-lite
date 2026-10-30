@@ -11,20 +11,20 @@ class DevUpdateManifestTest {
 
     @Test fun parsesPublishedManifestWithoutGithubApi() {
         val data = parseDevUpdateManifest(
-            """{"versionCode":163,"versionName":"0.4.0-dev.163","sha256":"$checksum"}""",
+            """{"versionCode":163,"versionName":"2026.10.31.163","sha256":"$checksum"}""",
             gson,
         )
         assertEquals(163, data.versionCode)
-        assertEquals("dev", data.tagName)
-        assertEquals("0.4.0-dev.163", data.versionName)
+        assertEquals("latest", data.tagName)
+        assertEquals("2026.10.31.163", data.versionName)
         assertEquals(checksum, data.sha256)
-        assertTrue(data.apkUrl.endsWith("/releases/download/dev/MPEI-Neo-Dev.apk"))
+        assertTrue(data.apkUrl.endsWith("/releases/download/latest/MPEI-Lite.apk"))
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsMismatchedVersion() {
         parseDevUpdateManifest(
-            """{"versionCode":162,"versionName":"0.4.0-dev.163","sha256":"$checksum"}""",
+            """{"versionCode":162,"versionName":"2026.10.31.163","sha256":"$checksum"}""",
             gson,
         )
     }
@@ -32,7 +32,7 @@ class DevUpdateManifestTest {
     @Test(expected = IllegalArgumentException::class)
     fun rejectsMissingChecksum() {
         parseDevUpdateManifest(
-            """{"versionCode":163,"versionName":"0.4.0-dev.163","sha256":""}""",
+            """{"versionCode":163,"versionName":"2026.10.31.163","sha256":""}""",
             gson,
         )
     }
