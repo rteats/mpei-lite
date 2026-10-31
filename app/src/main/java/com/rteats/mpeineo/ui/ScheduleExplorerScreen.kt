@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +47,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
@@ -70,6 +74,7 @@ internal fun ScheduleExplorerScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val focus = remember { FocusRequester() }
+    val agendaStateHolder = rememberSaveableStateHolder()
     val query = state.searchQuery.trim()
     val favorites = remember(state.favorites) { state.favorites.map { it.type to it.id }.toSet() }
 
@@ -107,12 +112,17 @@ internal fun ScheduleExplorerScreen(
                 trailingIcon = {
                     if (state.searchQuery.isNotBlank()) {
                         IconButton(onClick = { onQueryChange("") }) {
-                            AppIcon(AppIcons.ClearLog, contentDescription = "Очистить запрос")
+                            AppIcon(AppIcons.Close, contentDescription = "Очистить запрос")
                         }
                     }
                 },
                 placeholder = { Text("Группа, преподаватель, аудитория…") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }),
                 shape = RoundedCornerShape(24.dp),
             )
             LaunchedEffect(searching) { focus.requestFocus() }
@@ -311,7 +321,8 @@ internal fun ScheduleExplorerScreen(
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                ScheduleScreen(
+                agendaStateHolder.SaveableStateProvider("schedule-agenda") {
+                    ScheduleScreen(
                     state = state,
                     onEnsureAgendaWeek = onEnsureWeek,
                     onRefreshAgendaWeek = onRefreshWeek,
@@ -321,7 +332,8 @@ internal fun ScheduleExplorerScreen(
                     onLocateRoom = {},
                     todayJumpRequest = 0,
                     modifier = Modifier.fillMaxSize(),
-                )
+                    )
+                }
             }
         }
     }
@@ -332,7 +344,7 @@ private val scheduleSearchFilters: List<Pair<String, ScheduleTargetType?>> = lis
     "Группы" to ScheduleTargetType.GROUP,
     "Преподаватели" to ScheduleTargetType.LECTURER,
     "Аудитории" to ScheduleTargetType.ROOM,
-    "Люди" to ScheduleTargetType.PERSON,
+    "Личное" to ScheduleTargetType.PERSON,
 )
 
 @Composable
