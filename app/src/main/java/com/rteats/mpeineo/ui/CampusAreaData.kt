@@ -6,11 +6,18 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.concurrent.CancellationException
-import java.util.zip.GZIPInputStream
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,12 +44,83 @@ internal object CampusAreaData {
     private const val KEY_RETRY_AFTER = "retry_after"
     private const val KEY_LAST_ERROR = "last_error"
     // A live internet connection is not proof that a single Overpass instance works.
-    // Prefer a dedicated Overpass mirror; other public servers can be unavailable.
+    // A bounded attempt is preferable to an indefinitely pending map download.
     private val ENDPOINTS = listOf(
-        "https://overpass.private.coffee/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
         "https://overpass-api.de/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
     )
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(35, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .build()
+
+    internal data class DownloadState(
+        val loading: Boolean = false,
+        val detail: String? = null,
+        val error: String? = null,
+        val completed: Int = 0,
+    )
+
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _downloadState = MutableStateFlow(DownloadState())
+    internal val downloadState: StateFlow<DownloadState> = _downloadState
+    private var downloadJob: Job? = null
+
+    /**
+     * One application-lifetime download. Switching navigation screens does not
+     * cancel an in-flight HTTP request or start duplicate downloads.
+     */
+    internal fun requestRefresh(
+        context: Context,
+        force: Boolean = false,
+        log: (String) -> Unit = {},
+    ) {
+        val appContext = context.applicationContext
+        synchronized(this) {
+            if (downloadJob?.isActive == true) {
+                log("download_reused_in_flight")
+                return
+            }
+            downloadJob = downloadScope.launch {
+                try {
+                    if (!force && !needsRefresh(appContext)) {
+                        log("download_skipped_cache_or_backoff")
+                        return@launch
+                    }
+                    _downloadState.value = _downloadState.value.copy(
+                        loading = true, detail = "Preparing request", error = null,
+                    )
+                    val result = refresh(appContext) { event ->
+                        log(event)
+                        _downloadState.value = _downloadState.value.copy(detail = event)
+                    }
+                    _downloadState.value = _downloadState.value.copy(
+                        loading = false,
+                        detail = if (result != null) "Map saved" else "All servers failed",
+                        error = if (result == null) refreshError(appContext) else null,
+                        completed = _downloadState.value.completed + if (result != null) 1 else 0,
+                    )
+                    log(if (result != null) "download_completed" else "download_exhausted")
+                } catch (error: CancellationException) {
+                    _downloadState.value = _downloadState.value.copy(
+                        loading = false, detail = "Download cancelled",
+                    )
+                    log("download_cancelled type=${error.javaClass.simpleName}")
+                    throw error
+                } catch (error: Exception) {
+                    val reason = failureSummary(error)
+                    lastRefreshError = reason
+                    _downloadState.value = _downloadState.value.copy(
+                        loading = false, detail = "Download failed", error = reason,
+                    )
+                    log("download_unexpected_error reason=$reason")
+                }
+            }
+        }
+    }
 
     @Volatile internal var lastRefreshError: String? = null
         private set
@@ -82,7 +160,7 @@ internal object CampusAreaData {
     // Two outputs prevent large POI geometry (including relations) from being
     // downloaded. Only base-map ways need their vertices.
     private val query = """
-        [out:json][timeout:90];
+        [out:json][timeout:35];
         (
           way["building"]($SOUTH,$WEST,$NORTH,$EAST);
           way["highway"]($SOUTH,$WEST,$NORTH,$EAST);
@@ -305,12 +383,11 @@ internal object CampusAreaData {
         }.getOrDefault(true)
     }
 
-    /** Download events contain server and failure details, never user credentials. */
+    /** Each endpoint has an OkHttp hard deadline, including response and upload. */
     internal suspend fun refresh(
         context: Context,
         onEvent: (String) -> Unit = {},
     ): CampusGeometry? = withContext(Dispatchers.IO) {
-        val request = "data=" + URLEncoder.encode(query, "UTF-8")
         val failures = mutableListOf<String>()
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         lastRefreshError = null
@@ -318,53 +395,39 @@ internal object CampusAreaData {
         for (endpoint in ENDPOINTS) {
             val host = URL(endpoint).host
             val started = android.os.SystemClock.elapsedRealtime()
-            onEvent("connecting host=$host")
+            onEvent("connecting host=$host maxSeconds=45")
             val attempt = runCatching {
-                val connection = URL(endpoint).openConnection() as HttpURLConnection
-                try {
-                    connection.requestMethod = "POST"
-                    connection.setRequestProperty("User-Agent", "MPEILiteAndroid (OSM area cache)")
-                    connection.setRequestProperty("Accept-Encoding", "gzip")
-                    connection.setRequestProperty(
-                        "Content-Type", "application/x-www-form-urlencoded; charset=UTF-8",
-                    )
-                    connection.connectTimeout = 12_000
-                    connection.readTimeout = 95_000
-                    connection.doOutput = true
-                    connection.outputStream.bufferedWriter(Charsets.UTF_8).use {
-                        it.write(request)
+                val body = FormBody.Builder().add("data", query).build()
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .header("User-Agent", "MPEILiteAndroid (OSM area cache)")
+                    .post(body)
+                    .build()
+                onEvent("request_sent host=$host")
+                http.newCall(request).execute().use { response ->
+                    onEvent("response host=$host http=${response.code}")
+                    if (!response.isSuccessful) {
+                        val excerpt = response.body?.charStream()?.use { reader ->
+                            val chars = CharArray(160)
+                            val count = reader.read(chars)
+                            if (count > 0) String(chars, 0, count)
+                                .replace(Regex("\\s+"), " ").trim() else ""
+                        }.orEmpty()
+                        throw IOException("HTTP ${response.code} ${excerpt.take(120)}".trim())
                     }
-                    val status = connection.responseCode
-                    onEvent("response host=$host http=$status")
-                    if (status != HttpURLConnection.HTTP_OK) {
-                        // Overpass errors are often informative even when HTTP is 400/429/504.
-                        // Keep the excerpt bounded; never store full request/response bodies.
-                        val excerpt = runCatching {
-                            connection.errorStream?.bufferedReader()?.use { reader ->
-                                val chars = CharArray(160)
-                                val count = reader.read(chars)
-                                if (count > 0) String(chars, 0, count)
-                                    .replace(Regex("\\s+"), " ").trim() else ""
-                            }
-                        }.getOrNull().orEmpty()
-                        throw IOException("HTTP $status ${excerpt.take(120)}".trim())
-                    }
-                    val stream = connection.inputStream.let {
-                        if (connection.contentEncoding.equals("gzip", ignoreCase = true))
-                            GZIPInputStream(it) else it
-                    }
-                    val bytes = stream.use {
+                    val bytes = response.body?.byteStream()?.use { stream ->
                         val output = java.io.ByteArrayOutputStream()
                         val buffer = ByteArray(8192)
                         while (true) {
-                            val count = it.read(buffer)
+                            val count = stream.read(buffer)
                             if (count < 0) break
-                            if (output.size() + count > MAX_RESPONSE_BYTES)
+                            if (output.size() + count > MAX_RESPONSE_BYTES) {
                                 throw IOException("Map response too large (32 MB limit)")
+                            }
                             output.write(buffer, 0, count)
                         }
                         output.toByteArray()
-                    }
+                    } ?: throw IOException("Empty HTTP response body")
                     onEvent("received host=$host bytes=${bytes.size}")
                     val result = parseOverpass(String(bytes, Charsets.UTF_8))
                     if (!coversLefortovo(result) || result.buildings.size < 100 ||
@@ -384,8 +447,6 @@ internal object CampusAreaData {
                         " roads=${result.roads.size} pois=${result.pois.size}" +
                         " elapsedMs=${android.os.SystemClock.elapsedRealtime() - started}")
                     result
-                } finally {
-                    connection.disconnect()
                 }
             }
             if (attempt.isSuccess) {
