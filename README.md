@@ -7,7 +7,7 @@ Built with Kotlin, Jetpack Compose and Material 3.
 
 - Schedule: raw week JSON and group, teacher, room lookup with local cache.
 - Mail: OWA Inbox/Sent, compose, attachments and notifications (unchanged).
-- Map: campus map.
+- Map: cached campus map; independent background download of the Lefortovo OSM extract with bounded network attempts and visible error details.
 - Settings: appearance, mail, APK updates, diagnostic ZIP export.
 
 Bottom navbar only. Global search, top tabs, pager and visual timetable are
@@ -17,8 +17,10 @@ The old BARS source is retained as inactive reference code.
 ## Releases and tests
 
 One rolling release, no Stable/Dev channels. A main push runs JVM/Python
-tests and publishes a signed APK as `latest`. Version names use UTC
-`YYYY.MM.DD.<GitHub run number>`; Android versionCode is 1,000,000 + the run number.
+tests and publishes a signed APK as `latest`. Version names follow Moscow
+time (`Europe/Moscow`): `YYYY.MM.DD.<daily published-build counter>`, starting at
+1 each Moscow day. Android versionCode remains 1,000,000 + the monotonic
+GitHub run number, so existing devices accept upgrades.
 PRs run Python and JVM tests and Android lint without APK assembly.
 The former Dev package ID `com.rteats.mpeineo.dev` and signing key remain
 unchanged for in-place upgrades. Former Stable apps have a different package ID.

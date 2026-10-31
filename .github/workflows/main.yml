@@ -37,11 +37,18 @@ jobs:
           cache-cleanup: on-success
           gradle-home-cache-excludes: |
             caches/keyrings
-      - name: Set UTC build version
+      - name: Set Moscow build version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Main APK jobs run in series. Use the last published release as
+          # the daily counter so failed attempts do not consume build numbers.
+          PREVIOUS="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest"             --jq '.name' 2>/dev/null || true)"
+          VERSION_NAME="$(python3 scripts/moscow_version.py "$PREVIOUS")"
           CODE=$((1000000 + GITHUB_RUN_NUMBER))
           echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
-          echo "VERSION_NAME=$(date -u +%Y.%m.%d).$CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "Build version: $VERSION_NAME (Europe/Moscow); Android code: $CODE"
       - name: Prepare existing signing key
         run: |
           base64 --decode ci/mpei-neo-dev.p12.b64 > "$RUNNER_TEMP/mpei-neo-dev.p12"

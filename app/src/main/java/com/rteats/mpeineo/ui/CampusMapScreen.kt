@@ -39,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
@@ -539,67 +540,38 @@ internal fun CampusMapScreen(
 ) {
     val context = LocalContext.current
     var mapLoadFailed by remember(context) { mutableStateOf(false) }
-    var mapRefreshing by remember(context) { mutableStateOf(false) }
-    var mapRetryRequest by remember { mutableIntStateOf(0) }
-    var mapDownloadEvent by remember(context) { mutableStateOf<String?>(null) }
     val mapDiagnostics = remember(context) {
         (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
             ?.container?.diagnostics
     }
+    val downloadStatus by CampusAreaData.downloadState.collectAsState()
+    LaunchedEffect(active) {
+        if (active) {
+            CampusAreaData.requestRefresh(context) { event ->
+                mapDiagnostics?.log("MAP_NET", event)
+            }
+        }
+    }
     val scene by produceState<PreparedCampusScene?>(
-        CampusRenderCache.scene, context, active, mapRetryRequest,
+        CampusRenderCache.scene, context, downloadStatus.completed,
     ) {
         val started = SystemClock.elapsedRealtime()
-        if (value == null) {
-            val geometry = CampusAreaData.loadLocal(context)
-            val result = withContext(Dispatchers.Default) {
-                geometry?.takeIf { it.buildings.isNotEmpty() }?.let {
-                    PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
-                }
+        val geometry = CampusAreaData.loadLocal(context)
+        val result = withContext(Dispatchers.Default) {
+            geometry?.takeIf { it.buildings.isNotEmpty() }?.let {
+                PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
             }
-            mapLoadFailed = result == null
-            if (result != null) {
-                CampusRenderCache.keepScene(result)
-                value = result
-            }
-            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
-                ?.container?.diagnostics?.log(
-                    "PERF", "campus_prepare local durationMs=" +
-                        (SystemClock.elapsedRealtime() - started) +
-                        " buildings=" + (geometry?.buildings?.size ?: 0),
-                )
         }
-        // Only request the fixed area while the tab is visible. Once fetched,
-        // the compact extract stays usable offline for 30 days and beyond.
-        if (active && (mapRetryRequest > 0 || withContext(Dispatchers.IO) {
-                CampusAreaData.needsRefresh(context)
-            })) {
-            mapRefreshing = true
-            val refreshed = try {
-                CampusAreaData.refresh(context) { event ->
-                    mapDownloadEvent = event
-                    mapDiagnostics?.log("MAP_NET", event)
-                }
-            } finally {
-                mapRefreshing = false
-            }
-            val newScene = withContext(Dispatchers.Default) {
-                refreshed?.let {
-                    PreparedCampusScene(it, prepareCampus(it), placesFromGeometry(it))
-                }
-            }
-            if (newScene != null) {
-                CampusRenderCache.keepScene(newScene)
-                value = newScene
-            }
-            (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
-                ?.container?.diagnostics?.log(
-                    "MAP_UI", "area_refresh result=" +
-                        (if (newScene != null) "success" else "offline_fallback") +
-                        " poiCount=" + (refreshed?.pois?.size ?: 0) +
-                        " error=" + (CampusAreaData.lastRefreshError ?: "none"),
-                )
+        mapLoadFailed = result == null
+        if (result != null) {
+            CampusRenderCache.keepScene(result)
+            value = result
         }
+        mapDiagnostics?.log(
+            "PERF", "campus_prepare local durationMs=" +
+                (SystemClock.elapsedRealtime() - started) +
+                " buildings=" + (geometry?.buildings?.size ?: 0),
+        )
     }
 
     val ready = scene
@@ -998,17 +970,17 @@ internal fun CampusMapScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (mapRefreshing) "Загрузка карты Лефортово…"
+                            if (downloadStatus.loading) "Загрузка карты Лефортово…"
                             else "Доступна только карта кампуса",
                             style = MaterialTheme.typography.labelMedium,
                         )
-                        val detail = if (mapRefreshing) mapDownloadEvent
-                            else CampusAreaData.refreshError(context)
+                        val detail = if (downloadStatus.loading) downloadStatus.detail
+                            else downloadStatus.error ?: CampusAreaData.refreshError(context)
                         if (!detail.isNullOrBlank()) {
                             Text(
                                 detail,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (mapRefreshing) colors.onSurfaceVariant
+                                color = if (downloadStatus.loading) colors.onSurfaceVariant
                                     else colors.error,
                                 maxLines = 4,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -1016,10 +988,12 @@ internal fun CampusMapScreen(
                             )
                         }
                     }
-                    if (!mapRefreshing) {
+                    if (!downloadStatus.loading) {
                         TextButton(onClick = {
                             mapDiagnostics?.log("MAP_UI", "manual_retry")
-                            mapRetryRequest++
+                            CampusAreaData.requestRefresh(context, force = true) { event ->
+                                mapDiagnostics?.log("MAP_NET", event)
+                            }
                         }) { Text("Повторить") }
                     }
                 }
