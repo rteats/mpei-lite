@@ -59,6 +59,13 @@ class CampusAreaDataTest {
         ))
     }
 
+    @Test fun mapNetworkFailureSummaryContainsExceptionTypeAndIsBounded() {
+        val error = java.io.IOException("Connection timed out " + "x".repeat(1000))
+        val summary = CampusAreaData.failureSummary(error)
+        assertTrue(summary.startsWith("IOException: Connection timed out"))
+        assertTrue(summary.length <= 200)
+    }
+
     @Test fun denseMarkersRemainAvailableAsZoomIncreases() {
         val world = Rect(-1000f, -1500f, 1000f, 1500f)
         val viewport = IntSize(1000, 1000)
