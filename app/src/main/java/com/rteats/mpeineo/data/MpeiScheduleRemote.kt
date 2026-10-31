@@ -56,7 +56,9 @@ class MpeiScheduleRemote(
             searchTyped(query.trim(), type)
         } else {
             coroutineScope {
-                val results = listOf(\n                    ScheduleTargetType.GROUP, ScheduleTargetType.LECTURER, ScheduleTargetType.ROOM,\n                ).map { requestedType ->
+                val results = listOf(
+                    ScheduleTargetType.GROUP, ScheduleTargetType.LECTURER, ScheduleTargetType.ROOM,
+                ).map { requestedType ->
                     async {
                         try {
                             Result.success(searchTyped(query.trim(), requestedType))
