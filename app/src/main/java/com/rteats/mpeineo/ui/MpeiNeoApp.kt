@@ -102,7 +102,7 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (!mailWebVisible) TopAppBar(
+            if (!mailWebVisible && currentTab != AppTab.SCHEDULE) TopAppBar(
                 title = {
                     Text(when (currentTab) {
                         AppTab.SCHEDULE -> "Расписание"
@@ -152,10 +152,12 @@ fun MpeiNeoApp(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (currentTab) {
-                AppTab.SCHEDULE -> ScheduleRawScreen(
+                AppTab.SCHEDULE -> ScheduleExplorerScreen(
                     state = scheduleState,
                     onQueryChange = viewModel::updateSearchQuery,
+                    onSearchTypeChange = viewModel::setSearchType,
                     onSelectTarget = viewModel::selectTarget,
+                    onToggleFavorite = viewModel::toggleFavorite,
                     onEnsureWeek = viewModel::ensureAgendaWeek,
                     onRefreshWeek = viewModel::refreshAgendaWeek,
                     onRetryWeek = viewModel::retryAgendaWeek,
