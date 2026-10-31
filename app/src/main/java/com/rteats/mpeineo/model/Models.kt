@@ -4,8 +4,9 @@ import com.google.gson.annotations.SerializedName
 
 enum class ScheduleTargetType(val apiName: String, val displayName: String) {
     GROUP("group", "Группа"),
-    PERSON("person", "Преподаватель"),
-    ROOM("room", "Аудитория"),
+    LECTURER("lecturer", "Преподаватель"),
+    ROOM("auditorium", "Аудитория"),
+    PERSON("person", "Люди"),
 }
 
 data class ScheduleTarget(

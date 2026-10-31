@@ -5,6 +5,8 @@ import com.rteats.mpeineo.widget.NextLessonWidgetProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.AppContainer
+import com.rteats.mpeineo.data.rankScheduleTargets
+import com.rteats.mpeineo.data.shouldQueryScheduleServer
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.ScheduleWeek
@@ -26,6 +28,7 @@ import kotlinx.coroutines.launch
 data class MainUiState(
     val selected: ScheduleTarget? = null,
     val favorites: List<ScheduleTarget> = emptyList(),
+    val recentlyViewed: List<ScheduleTarget> = emptyList(),
     val favoriteNames: Map<String, String> = emptyMap(),
     val agendaWeeks: Map<Int, ScheduleWeek> = emptyMap(),
     val agendaLoadingOffsets: Set<Int> = emptySet(),
@@ -71,6 +74,11 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
+            container.preferences.recentlyViewed.collect { recent ->
+                _state.update { it.copy(recentlyViewed = recent) }
+            }
+        }
+        viewModelScope.launch {
             val selected = container.preferences.selected.first()
             // Preferences loading may finish after the user has selected another
             // schedule; do not restore an obsolete selection in that case.
@@ -91,7 +99,7 @@ class MainViewModel(
             )
         }
 
-        if (query.trim().length < 2) {
+        if (query.trim().isEmpty()) {
             searchJob?.cancel()
             _state.update {
                 it.copy(
@@ -102,24 +110,24 @@ class MainViewModel(
             return
         }
 
-        scheduleSearch(delayMillis = 200)
+        scheduleSearch(delayMillis = 170)
     }
 
     fun setSearchType(type: ScheduleTargetType?) {
         _state.update { it.copy(searchType = type, searchError = null) }
-        if (state.value.searchQuery.trim().length >= 2) {
+        if (state.value.searchQuery.trim().isNotEmpty()) {
             scheduleSearch(delayMillis = 0)
         }
     }
 
     fun search() {
         val query = state.value.searchQuery.trim()
-        if (query.length < 2) {
+        if (query.isEmpty()) {
             searchJob?.cancel()
             _state.update {
                 it.copy(
                     isSearching = false,
-                    searchError = "Введите минимум 2 символа",
+                    searchError = "Введите поисковый запрос",
                 )
             }
             return
@@ -261,57 +269,74 @@ class MainViewModel(
         }
     }
 
+    /**
+     * Cache-first search: local results appear before the remote debounce.
+     * One owner job cancels the previous request and ignores obsolete responses.
+     */
     private fun scheduleSearch(delayMillis: Long) {
         searchJob?.cancel()
         val query = state.value.searchQuery.trim()
         val type = state.value.searchType
-
+        if (query.isEmpty()) return
         searchJob = viewModelScope.launch {
-            if (delayMillis > 0) delay(delayMillis)
-            container.diagnostics.log("SCHEDULE", "lookup start type=${type?.apiName ?: "all"} length=${query.length}")
-            if (state.value.searchQuery.trim() != query || state.value.searchType != type) return@launch
+            val remoteAllowed = shouldQueryScheduleServer(query, type)
+            fun current() = state.value.searchQuery.trim() == query &&
+                state.value.searchType == type
 
-            _state.update { it.copy(isSearching = true, searchError = null) }
-
-            // Show previously discovered groups/teachers/rooms immediately,
-            // even with no network. Remote results subsequently take priority.
-            val offline = try {
+            val local = try {
                 container.repository.cachedSearch(query, type)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 emptyList()
             }
-            fun stillCurrent() = state.value.searchQuery.trim() == query &&
-                state.value.searchType == type
-            if (stillCurrent()) {
-                _state.update { it.copy(searchResults = offline, searchError = null) }
+            if (!current()) return@launch
+            val shortcuts = state.value.favorites + state.value.recentlyViewed
+            val offline = rankScheduleTargets(
+                local + shortcuts, query, type,
+                favorites = state.value.favorites,
+                recent = state.value.recentlyViewed,
+            )
+            _state.update {
+                it.copy(searchResults = offline, isSearching = remoteAllowed, searchError = null)
             }
+            if (!remoteAllowed) return@launch
+
+            if (delayMillis > 0) delay(delayMillis)
+            if (!current()) return@launch
+            container.diagnostics.log(
+                "SCHEDULE",
+                "lookup type=${type?.apiName ?: "all"} length=${query.length} cached=${offline.size}",
+            )
             try {
                 val results = container.repository.search(query, type)
-                if (stillCurrent()) {
-                    container.diagnostics.log("SCHEDULE", "lookup completed remote=${results.size} cached=${offline.size}")
-                    val merged = (results + offline).distinctBy { it.type to it.id }
+                if (current()) {
+                    val ranked = rankScheduleTargets(
+                        results + offline, query, type,
+                        favorites = state.value.favorites,
+                        recent = state.value.recentlyViewed,
+                        includeUnmatched = true,
+                    )
+                    container.diagnostics.log("SCHEDULE",
+                        "lookup remote=${results.size} visible=${ranked.size}")
                     _state.update {
-                        it.copy(
-                            isSearching = false,
-                            searchResults = merged,
-                            searchError = null,
-                        )
+                        it.copy(searchResults = ranked, isSearching = false, searchError = null)
                     }
                 }
-            } catch (error: CancellationException) {
-                throw error
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
-                if (stillCurrent()) {
-                    container.diagnostics.log("SCHEDULE", "lookup failed type=${error.javaClass.simpleName} " +
-                        "detail=${error.message.orEmpty().take(160)}")
+                if (current()) {
+                    container.diagnostics.log(
+                        "SCHEDULE",
+                        "lookup failed type=${error.javaClass.simpleName}",
+                    )
                     _state.update {
                         it.copy(
-                            isSearching = false,
                             searchResults = offline,
+                            isSearching = false,
                             searchError = if (offline.isEmpty()) {
-                                error.message ?: "Не удалось выполнить поиск"
+                                "Не удалось получить результаты с сервера."
                             } else null,
                         )
                     }

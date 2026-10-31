@@ -31,8 +31,8 @@ class ScheduleSearchIndexTest {
                 .map { it.name })
     }
 
-    @Test fun aShortQueryDoesNotSearchWholeIndex() {
-        assertTrue(searchIndexedScheduleTargets(stored, "а", null).isEmpty())
+    @Test fun aShortQueryShowsKnownOfflineMatches() {
+        assertTrue(searchIndexedScheduleTargets(stored, "а", null).isNotEmpty())
     }
 
     @Test fun unknownTargetIsNotInvented() {

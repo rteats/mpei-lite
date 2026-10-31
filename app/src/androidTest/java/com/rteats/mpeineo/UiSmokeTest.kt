@@ -14,12 +14,12 @@ import org.junit.runner.RunWith
 class UiSmokeTest {
     @get:Rule val composeRule = createAndroidComposeRule<MainActivity>()
 
-    @Test fun fourBottomDestinationsAndNoBars() {
+    @Test fun fiveBottomDestinationsAndNativeScheduleSearch() {
         composeRule.onNodeWithTag("main-navigation-bar").assertIsDisplayed()
-        composeRule.onNodeWithTag("schedule-raw").assertIsDisplayed()
+        composeRule.onNodeWithTag("schedule-explorer").assertIsDisplayed()
         composeRule.onNodeWithTag("primary-icon-tabs").assertDoesNotExist()
         composeRule.onNodeWithTag("global-search-input").assertDoesNotExist()
-        composeRule.onNodeWithTag("nav-bars").assertDoesNotExist()
+        composeRule.onNodeWithTag("nav-bars").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav-mail").performClick()
         composeRule.onNodeWithTag("mail-inbox").assertIsDisplayed()
@@ -29,7 +29,9 @@ class UiSmokeTest {
         composeRule.onNodeWithTag("nav-settings").performClick()
         composeRule.onNodeWithTag("settings-overview").assertIsDisplayed()
         composeRule.onNodeWithTag("nav-schedule").performClick()
-        composeRule.onNodeWithTag("schedule-raw").assertIsDisplayed()
+        composeRule.onNodeWithTag("schedule-explorer").assertIsDisplayed()
+        composeRule.onNodeWithTag("schedule-search-open").performClick()
+        composeRule.onNodeWithTag("schedule-target-query").assertIsDisplayed()
     }
 
     @Test fun mailBrowserDoesNotSwitchToMap() {
