@@ -20,10 +20,15 @@ class UserPreferences(
 ) {
     private val favoritesKey = stringPreferencesKey("favorites")
     private val selectedKey = stringPreferencesKey("selected_schedule")
+    private val recentlyViewedKey = stringPreferencesKey("recent_schedule_targets")
     private val favoriteNamesKey = stringPreferencesKey("favorite_custom_names")
 
     val favorites: Flow<List<ScheduleTarget>> = context.dataStore.data.map { prefs ->
         decodeFavorites(prefs[favoritesKey])
+    }
+
+    val recentlyViewed: Flow<List<ScheduleTarget>> = context.dataStore.data.map { prefs ->
+        decodeFavorites(prefs[recentlyViewedKey]).take(12)
     }
 
     val selected: Flow<ScheduleTarget?> = context.dataStore.data.map { prefs ->
@@ -39,7 +44,12 @@ class UserPreferences(
     }
 
     suspend fun setSelected(target: ScheduleTarget) {
-        context.dataStore.edit { it[selectedKey] = gson.toJson(target) }
+        context.dataStore.edit { prefs ->
+            prefs[selectedKey] = gson.toJson(target)
+            val recent = (listOf(target) + decodeFavorites(prefs[recentlyViewedKey]))
+                .distinctBy { it.type to it.id }.take(12)
+            prefs[recentlyViewedKey] = gson.toJson(recent)
+        }
     }
 
     suspend fun toggleFavorite(target: ScheduleTarget) {
