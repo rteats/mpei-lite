@@ -75,17 +75,5 @@ internal fun searchIndexedScheduleTargets(
     targets: List<ScheduleTarget>,
     query: String,
     type: ScheduleTargetType?,
-): List<ScheduleTarget> {
-    val needle = query.trim().lowercase(Locale.ROOT)
-    if (needle.length < 2) return emptyList()
-    return targets.asSequence()
-        .filter { type == null || it.type == type }
-        .filter {
-            it.name.lowercase(Locale.ROOT).contains(needle) ||
-                it.description.lowercase(Locale.ROOT).contains(needle)
-        }
-        .sortedWith(compareBy<ScheduleTarget> {
-            if (it.name.lowercase(Locale.ROOT).startsWith(needle)) 0 else 1
-        }.thenBy { it.type.ordinal }.thenBy { it.name })
-        .take(50).toList()
-}
+): List<ScheduleTarget> =
+    rankScheduleTargets(targets, query, type, includeUnmatched = false, limit = 60)
