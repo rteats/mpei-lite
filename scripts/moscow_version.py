@@ -7,7 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 MOSCOW = ZoneInfo("Europe/Moscow")
-_RELEASE = re.compile(r"^MPEI Lite (\\d{4}\\.\\d{2}\\.\\d{2})\\.(\\d+)$")
+_RELEASE = re.compile(r"^MPEI Lite (\d{4}\.\d{2}\.\d{2})\.(\d+)$")
 
 
 def next_version(previous: str, *, now: datetime | None = None) -> str:
