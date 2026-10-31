@@ -118,7 +118,7 @@ class MpeiScheduleRemoteTest {
 
         val request = server.takeRequest()
         assertEquals(
-            "/api/schedule/room/77",
+            "/api/schedule/auditorium/77",
             request.requestUrl?.encodedPath,
         )
         assertEquals(
@@ -129,7 +129,7 @@ class MpeiScheduleRemoteTest {
             "2026.10.11",
             request.requestUrl?.queryParameter("finish"),
         )
-        assertTrue(request.getHeader("User-Agent")!!.startsWith("MPEI-Neo/"))
+        assertTrue(request.getHeader("User-Agent")!!.startsWith("MPEI-Lite/"))
     }
 
     @Test
