@@ -16,12 +16,16 @@ The old BARS source is retained as inactive reference code.
 
 ## Releases and tests
 
-One rolling release, no Stable/Dev channels. A main push runs JVM/Python
-tests and publishes a signed APK as `latest`. Version names follow Moscow
-time (`Europe/Moscow`): `YYYY.MM.DD.<daily published-build counter>`, starting at
-1 each Moscow day. Android versionCode remains 1,000,000 + the monotonic
-GitHub run number, so existing devices accept upgrades.
-PRs run Python and JVM tests and Android lint without APK assembly.
+One rolling release, no Stable/Dev channels. Each PR runs architecture
+checks, Python and JVM tests, and Android lint without building an APK.
+After the PR is merged, a main push only assembles and publishes the signed APK
+as `latest`; it does not repeat PR tests or lint. Main must receive changes
+through checked PRs, since direct pushes bypass these checks.
+
+Version names follow Moscow time (`Europe/Moscow`):
+`YYYY.MM.DD.<daily published-build counter>`, starting at 1 each Moscow day.
+Android versionCode remains 1,000,000 + the monotonic GitHub run number,
+so existing devices accept upgrades.
 The former Dev package ID `com.rteats.mpeineo.dev` and signing key remain
 unchanged for in-place upgrades. Former Stable apps have a different package ID.
 After publishing, the workflow removes older GitHub releases and tags.
