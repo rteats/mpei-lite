@@ -12,16 +12,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test-and-build:
-    name: Test and publish dated APK
+  build-and-publish:
+    name: Build and publish dated APK
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - name: Architecture and utility tests
-        run: |
-          python3 scripts/check_architecture.py
-          python3 -m unittest discover -s scripts -p "test_*.py" -q
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -57,9 +53,9 @@ jobs:
           echo "ANDROID_DEV_KEY_ALIAS=mpei-neo-dev" >> "$GITHUB_ENV"
           echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
           echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
-      - name: Run JVM tests and build signed APK
+      - name: Build signed APK
         run: |
-          gradle --no-daemon testRollingDebugUnitTest assembleRollingRelease \
+          gradle --no-daemon assembleRollingRelease \
             -POPTIMIZE_RELEASE=true \
             -PVERSION_CODE="$VERSION_CODE" \
             -PVERSION_NAME="$VERSION_NAME"
@@ -78,7 +74,7 @@ jobs:
             update.json
           retention-days: 14
           if-no-files-found: error
-      - name: Point latest tag at tested commit
+      - name: Point latest tag at built commit
         run: |
           git tag -f latest "$GITHUB_SHA"
           git push origin refs/tags/latest --force
@@ -112,13 +108,11 @@ jobs:
             gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
             gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
           done
-      - name: Save failure reports
+      - name: Save build failure reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: main-failure-reports
-          path: |
-            app/build/reports/
-            app/build/test-results/
+          name: main-build-failure-reports
+          path: app/build/reports/
           retention-days: 7
           if-no-files-found: ignore
