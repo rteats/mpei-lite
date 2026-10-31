@@ -37,6 +37,7 @@ object AppIcons {
     @get:DrawableRes val Overflow: Int get() = R.drawable.ms_more_vert
     @get:DrawableRes val Edit: Int get() = R.drawable.ms_edit
     @get:DrawableRes val Search: Int get() = R.drawable.ms_search
+    @get:DrawableRes val Close: Int get() = R.drawable.ms_close
     @get:DrawableRes val Refresh: Int get() = R.drawable.ms_refresh
     @get:DrawableRes val ZoomIn: Int get() = R.drawable.ms_add
     @get:DrawableRes val ZoomOut: Int get() = R.drawable.ms_remove
