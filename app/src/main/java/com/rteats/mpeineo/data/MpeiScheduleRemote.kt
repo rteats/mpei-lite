@@ -47,16 +47,16 @@ internal data class RemoteClassDto(
 class MpeiScheduleRemote(
     private val client: OkHttpClient,
     private val gson: Gson,
-    private val baseUrl: HttpUrl = "http://ts.mpei.ru/api/".toHttpUrl(),
+    private val baseUrl: HttpUrl = "https://ts.mpei.ru/api/".toHttpUrl(),
 ) : ScheduleRemoteDataSource {
 
     override suspend fun search(query: String, type: ScheduleTargetType?): List<ScheduleTarget> {
-        require(query.trim().length >= 2) { "Введите минимум 2 символа" }
+        require(query.trim().isNotEmpty()) { "Введите поисковый запрос" }
         return if (type != null) {
             searchTyped(query.trim(), type)
         } else {
             coroutineScope {
-                val results = ScheduleTargetType.entries.map { requestedType ->
+                val results = listOf(\n                    ScheduleTargetType.GROUP, ScheduleTargetType.LECTURER, ScheduleTargetType.ROOM,\n                ).map { requestedType ->
                     async {
                         try {
                             Result.success(searchTyped(query.trim(), requestedType))
@@ -142,7 +142,7 @@ class MpeiScheduleRemote(
             val request = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json")
-                .header("User-Agent", "MPEI-Neo/0.2 Android")
+                .header("User-Agent", "MPEI-Lite/1 Android")
                 .build()
 
             val call = client.newCall(request)
