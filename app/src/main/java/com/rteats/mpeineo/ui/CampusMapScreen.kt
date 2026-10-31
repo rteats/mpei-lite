@@ -541,6 +541,11 @@ internal fun CampusMapScreen(
     var mapLoadFailed by remember(context) { mutableStateOf(false) }
     var mapRefreshing by remember(context) { mutableStateOf(false) }
     var mapRetryRequest by remember { mutableIntStateOf(0) }
+    var mapDownloadEvent by remember(context) { mutableStateOf<String?>(null) }
+    val mapDiagnostics = remember(context) {
+        (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
+            ?.container?.diagnostics
+    }
     val scene by produceState<PreparedCampusScene?>(
         CampusRenderCache.scene, context, active, mapRetryRequest,
     ) {
@@ -571,7 +576,10 @@ internal fun CampusMapScreen(
             })) {
             mapRefreshing = true
             val refreshed = try {
-                CampusAreaData.refresh(context)
+                CampusAreaData.refresh(context) { event ->
+                    mapDownloadEvent = event
+                    mapDiagnostics?.log("MAP_NET", event)
+                }
             } finally {
                 mapRefreshing = false
             }
@@ -985,19 +993,34 @@ internal fun CampusMapScreen(
                 color = colors.surfaceContainerHigh,
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        if (mapRefreshing) "Загрузка карты Лефортово…"
-                        else "Доступна только карта кампуса",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    if (!mapRefreshing) {
-                        TextButton(onClick = { mapRetryRequest++ }) {
-                            Text("Повторить")
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (mapRefreshing) "Загрузка карты Лефортово…"
+                            else "Доступна только карта кампуса",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        val detail = if (mapRefreshing) mapDownloadEvent
+                            else CampusAreaData.refreshError(context)
+                        if (!detail.isNullOrBlank()) {
+                            Text(
+                                detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (mapRefreshing) colors.onSurfaceVariant
+                                    else colors.error,
+                                maxLines = 4,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("lefortovo-map-error"),
+                            )
                         }
+                    }
+                    if (!mapRefreshing) {
+                        TextButton(onClick = {
+                            mapDiagnostics?.log("MAP_UI", "manual_retry")
+                            mapRetryRequest++
+                        }) { Text("Повторить") }
                     }
                 }
             }
