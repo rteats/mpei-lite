@@ -54,6 +54,9 @@ fun MpeiNeoApp(
             application.container.owaMailRepository,
         ),
     )
+    val mailLoginViewModel: MailLoginViewModel = composeViewModel(
+        factory = MailLoginViewModel.factory(application, diagnostics),
+    )
     val updateViewModel: UpdateViewModel = composeViewModel(
         factory = UpdateViewModel.factory(application.container),
     )
@@ -166,6 +169,7 @@ fun MpeiNeoApp(
                 AppTab.MAIL -> {
                     MailScreen(
                         viewModel = mailViewModel,
+                        loginViewModel = mailLoginViewModel,
                         active = !mailWebVisible,
                         onOpenPortal = { mailWebVisible = true },
                         onSearch = {},
