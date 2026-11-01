@@ -39,6 +39,18 @@ internal data class OwaLoginForm(
         }.build()
 }
 
+/**
+ * MPEI OWA uses /CookieAuth.dll to collect credentials, then /owa/ for mail.
+ * Restrict all navigation to the observed routes on the exact HTTPS origin.
+ */
+internal fun isTrustedOwaAuthUrl(url: HttpUrl): Boolean =
+    url.isHttps && url.host.equals("mail.mpei.ru", ignoreCase = true) &&
+        url.port == 443 && (
+            url.encodedPath.equals("/CookieAuth.dll", ignoreCase = true) ||
+            url.encodedPath.equals("/owa", ignoreCase = true) ||
+            url.encodedPath.startsWith("/owa/", ignoreCase = true)
+        )
+
 internal fun parseOwaLoginForm(html: String, pageUrl: HttpUrl): OwaLoginForm? {
     val page = Jsoup.parse(html, pageUrl.toString())
     val password = page.selectFirst("input[type=password][name]") ?: return null
@@ -46,8 +58,9 @@ internal fun parseOwaLoginForm(html: String, pageUrl: HttpUrl): OwaLoginForm? {
     if (!form.attr("method").equals("post", ignoreCase = true)) return null
     val action = pageUrl.resolve(form.attr("action").ifBlank { pageUrl.toString() })
         ?: return null
-    if (action.scheme != "https" || action.host != pageUrl.host ||
-        !action.encodedPath.startsWith("/owa/", ignoreCase = true)) return null
+    // CookieAuth.dll is the observed login endpoint, outside /owa/.
+    if (!isTrustedOwaAuthUrl(pageUrl) || !isTrustedOwaAuthUrl(action) ||
+        !action.encodedPath.equals("/CookieAuth.dll", ignoreCase = true)) return null
 
     val inputs = form.select("input[name]")
     val user = inputs.firstOrNull {
@@ -198,9 +211,7 @@ internal class OwaNativeLogin(context: Context) {
     private fun sameOriginRedirect(response: Response): Boolean {
         val redirected = response.request.url.resolve(response.header("Location").orEmpty())
             ?: return false
-        return redirected.scheme == "https" && redirected.host == OWA_ROOT.host &&
-            redirected.port == OWA_ROOT.port &&
-            redirected.encodedPath.startsWith("/owa/", ignoreCase = true)
+        return isTrustedOwaAuthUrl(redirected)
     }
 
     private class TemporaryCookieJar : CookieJar {
