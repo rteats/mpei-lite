@@ -110,6 +110,7 @@ internal fun mailNoticeInSnackbar(note: String?): Boolean =
 @Composable
 internal fun MailScreen(
     viewModel: MailViewModel,
+    loginViewModel: MailLoginViewModel,
     active: Boolean,
     onOpenPortal: () -> Unit = {},
     onSearch: () -> Unit = {},
@@ -198,7 +199,15 @@ internal fun MailScreen(
         ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (state.configured) {
-                if (state.error != null) {
+                if (state.loginRequired) {
+                    MailLoginPanel(
+                        loginViewModel = loginViewModel,
+                        onAuthenticated = viewModel::refresh,
+                        onOpenBrowser = onOpenPortal,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
+                if (state.error != null && !state.loginRequired) {
                     val hasCachedContent = folderItems.isNotEmpty() || state.message != null
                     val canRetryMessage = state.selected != null && state.message == null
                     ServiceStatus(
@@ -251,25 +260,10 @@ internal fun MailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        ServiceStatus(
-                            title = when {
-                                state.loginRequired -> "Войдите в ОСЭП"
-                                state.error != null -> "Не удалось получить почту"
-                                else -> "Почта ОСЭП не подключена"
-                            },
-                            detail = when {
-                                state.loginRequired -> "Откройте ОСЭП, войдите и вернитесь к почте."
-                                state.error != null -> state.error
-                                else -> "Войдите через кнопку ОСЭП и вернитесь к входящим."
-                            },
-                            tone = if (state.error != null) ServiceStatusTone.ERROR
-                                else ServiceStatusTone.INFO,
-                            actionLabel = if (state.error != null && !state.loginRequired) {
-                                "Повторить"
-                            } else "Открыть ОСЭП",
-                            onAction = if (state.error != null && !state.loginRequired) {
-                                viewModel::refresh
-                            } else onOpenPortal,
+                        MailLoginPanel(
+                            loginViewModel = loginViewModel,
+                            onAuthenticated = viewModel::refresh,
+                            onOpenBrowser = onOpenPortal,
                         )
                     }
                 }
