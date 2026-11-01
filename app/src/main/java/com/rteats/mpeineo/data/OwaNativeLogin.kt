@@ -131,8 +131,10 @@ internal class OwaNativeLogin(context: Context) {
                 return OwaLoginResult.USE_BROWSER to emptyList()
         }
         // Some deployments establish extra cookies on the landing page.
-        val landed = getLoginPage(client, agent)
-        if (landed == null) return OwaLoginResult.USE_BROWSER to emptyList()
+        // Load OWA once to collect any landing cookies. Its full HTML is not
+        // needed: a signed-in mailbox page can be much larger than the login form.
+        if (!primeLandingPage(client, agent))
+            return OwaLoginResult.USE_BROWSER to emptyList()
 
         val verified = client.newCall(
             Request.Builder().url(SESSION_DATA)
@@ -145,7 +147,7 @@ internal class OwaNativeLogin(context: Context) {
             if (response.code in setOf(401, 403, 440) || response.isRedirect) false
             else if (!response.isSuccessful) throw IOException("OWA session check failed")
             else {
-                val body = response.body?.string().orEmpty()
+                val body = response.peekBody(2_000_001).string()
                 if (body.length > 2_000_000) throw IOException("OWA session response too large")
                 runCatching {
                     JSONObject(body).optJSONObject("owaUserConfig")
@@ -155,6 +157,23 @@ internal class OwaNativeLogin(context: Context) {
         }
         return if (verified) OwaLoginResult.SUCCESS to jar.snapshot()
         else OwaLoginResult.REJECTED to emptyList()
+    }
+
+    private fun primeLandingPage(client: OkHttpClient, agent: String): Boolean {
+        var url = OWA_ROOT
+        repeat(8) {
+            client.newCall(
+                Request.Builder().url(url).header("User-Agent", agent).get().build(),
+            ).execute().use { response ->
+                if (!response.isRedirect) {
+                    if (!response.isSuccessful) throw IOException("OWA landing page unavailable")
+                    return true
+                }
+                if (!sameOriginRedirect(response)) return false
+                url = url.resolve(response.header("Location").orEmpty()) ?: return false
+            }
+        }
+        return false
     }
 
     private fun getLoginPage(client: OkHttpClient, agent: String): Pair<HttpUrl, String>? {
@@ -167,7 +186,7 @@ internal class OwaNativeLogin(context: Context) {
                     url = url.resolve(response.header("Location").orEmpty()) ?: return null
                 } else {
                     if (!response.isSuccessful) throw IOException("OWA login page unavailable")
-                    val html = response.body?.string().orEmpty()
+                    val html = response.peekBody(1_000_001).string()
                     if (html.length > 1_000_000) return null
                     return url to html
                 }
