@@ -153,7 +153,7 @@ private fun BarsCredentialsForm(
                 TextButton(onClick = onRetry) { Text("Начать заново") }
             }
             BarsNativeStep.CODE -> {
-                Text("Введите код подтверждения из МАКС.")
+                Text("Введите код подтверждения из выбранного способа получения.")
                 OutlinedTextField(
                     value = code, onValueChange = { code = it },
                     label = { Text("Код подтверждения") }, singleLine = true,
@@ -168,7 +168,7 @@ private fun BarsCredentialsForm(
                     modifier = Modifier.fillMaxWidth().testTag("bars-native-confirm"),
                 ) { Text("Подтвердить") }
                 TextButton(onClick = onRequestCode, enabled = !status.busySending) {
-                    Text(if (status.busySending) "Отправка…" else "Отправить код через МАКС")
+                    Text(if (status.busySending) "Отправка…" else "Отправить код ещё раз")
                 }
             }
         }

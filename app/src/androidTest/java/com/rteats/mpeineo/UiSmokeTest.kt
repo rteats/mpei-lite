@@ -3,6 +3,7 @@ package com.rteats.mpeineo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -36,7 +37,19 @@ class UiSmokeTest {
 
     @Test fun mailBrowserDoesNotSwitchToMap() {
         composeRule.onNodeWithTag("nav-mail").performClick()
-        composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodesWithTag("portal-header-ОСЭП")
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithTag("mail-native-browser-fallback")
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (composeRule.onAllNodesWithTag("mail-native-browser-fallback")
+                .fetchSemanticsNodes().isNotEmpty()) {
+            composeRule.onNodeWithTag("mail-native-login").assertIsDisplayed()
+            composeRule.onNodeWithTag("mail-native-browser-fallback").performClick()
+        } else {
+            composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
+        }
         composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
         composeRule.onNodeWithTag("nav-mail").assertIsSelected()
         composeRule.onNodeWithTag("campus-map-screen").assertDoesNotExist()
