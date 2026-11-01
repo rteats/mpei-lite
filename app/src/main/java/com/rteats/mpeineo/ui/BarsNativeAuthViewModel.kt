@@ -117,7 +117,7 @@ internal class BarsNativeAuthViewModel(
         _status.update { it.copy(busySending = true, error = null) }
         viewModelScope.launch {
             runCatching { http.requestCode() }.onSuccess {
-                _status.update { it.copy(busySending = false, notice = "Код запрошен через МАКС.") }
+                _status.update { it.copy(busySending = false, notice = "Код подтверждения запрошен.") }
             }.onFailure {
                 diagnostics.log("BARS_NATIVE", "send_code=failed type=" + it.javaClass.simpleName)
                 _status.update { it.copy(busySending = false,
