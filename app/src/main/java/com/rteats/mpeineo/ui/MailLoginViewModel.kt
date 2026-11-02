@@ -5,8 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.data.DiagnosticLog
-import com.rteats.mpeineo.data.MailCredentialStore
-import com.rteats.mpeineo.data.MailSavedCredentials
+import com.rteats.mpeineo.data.SavedCredentialStore
+import com.rteats.mpeineo.data.SavedLoginService
+import com.rteats.mpeineo.data.SavedLoginCredentials
 import com.rteats.mpeineo.data.OwaLoginResult
 import com.rteats.mpeineo.data.OwaNativeLogin
 import kotlinx.coroutines.CancellationException
@@ -29,7 +30,7 @@ internal class MailLoginViewModel(
     private val diagnostics: DiagnosticLog,
 ) : ViewModel() {
     private val loginClient = OwaNativeLogin(context.applicationContext)
-    private val credentials = MailCredentialStore(context.applicationContext)
+    private val credentials = SavedCredentialStore(context.applicationContext, SavedLoginService.MAIL)
     private val mutableStatus = MutableStateFlow(
         MailLoginStatus(savedLoginAvailable = credentials.hasSavedLogin()),
     )
@@ -132,7 +133,7 @@ internal class MailLoginViewModel(
                         withContext(Dispatchers.IO) {
                             if (rememberLogin) {
                                 runCatching {
-                                    credentials.save(MailSavedCredentials(username.trim(), password))
+                                    credentials.save(SavedLoginCredentials(username.trim(), password))
                                 }.onFailure {
                                     diagnostics.log("OWA_NATIVE",
                                         "save_login_failed type=" + it.javaClass.simpleName)
