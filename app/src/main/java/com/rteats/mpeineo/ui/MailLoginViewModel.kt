@@ -1,6 +1,9 @@
 package com.rteats.mpeineo.ui
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -9,6 +12,7 @@ import com.rteats.mpeineo.data.SavedCredentialStore
 import com.rteats.mpeineo.data.SavedLoginService
 import com.rteats.mpeineo.data.SavedLoginCredentials
 import com.rteats.mpeineo.data.OwaLoginResult
+import com.rteats.mpeineo.data.OwaLoginStageException
 import com.rteats.mpeineo.data.OwaNativeLogin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +33,8 @@ internal class MailLoginViewModel(
     context: Context,
     private val diagnostics: DiagnosticLog,
 ) : ViewModel() {
-    private val loginClient = OwaNativeLogin(context.applicationContext)
+    private val application = context.applicationContext
+    private val loginClient = OwaNativeLogin(application)
     private val credentials = SavedCredentialStore(context.applicationContext, SavedLoginService.MAIL)
     private val mutableStatus = MutableStateFlow(
         MailLoginStatus(savedLoginAvailable = credentials.hasSavedLogin()),
@@ -38,6 +43,21 @@ internal class MailLoginViewModel(
     // Do not retry automatically more than once for the same expired session.
     // Incorrect credentials or unexpected OWA errors must not cause a login loop.
     private var automaticAttempted = false
+
+    /** Coarse connection metadata. Never include network names, hosts or credentials. */
+    private fun connectionSummary(): String = runCatching {
+        val cm = application.getSystemService(ConnectivityManager::class.java)
+        val capabilities = cm?.getNetworkCapabilities(cm.activeNetwork)
+        "vpn=${capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}" +
+            " validated=${capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}"
+    }.getOrDefault("vpn=unknown validated=unknown")
+
+    private fun failureSummary(failure: Exception): String {
+        val structured = failure as? OwaLoginStageException
+        return " stage=${structured?.stage ?: "unknown"}" +
+            " category=${structured?.category ?: failure.javaClass.simpleName}" +
+            " http=${structured?.httpStatus ?: "none"}"
+    }
 
     /** Called when a mailbox request confirms an authenticated session. */
     fun onMailboxReady() {
@@ -68,23 +88,28 @@ internal class MailLoginViewModel(
             mutableStatus.value = MailLoginStatus(
                 busy = true, savedLoginAvailable = true, usingSavedLogin = true,
             )
+            val startedAt = SystemClock.elapsedRealtime()
+            diagnostics.log("OWA_NATIVE", "attempt=auto event=start " + connectionSummary())
             try {
                 when (loginClient.login(saved.username, saved.password)) {
                     OwaLoginResult.SUCCESS -> {
-                        diagnostics.log("OWA_NATIVE", "saved_login=verified")
+                        diagnostics.log("OWA_NATIVE", "attempt=auto result=verified" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(savedLoginAvailable = true)
                         onSuccess()
                     }
                     OwaLoginResult.REJECTED -> {
-                        // A rejected saved password must never be retried automatically.
-                        withContext(Dispatchers.IO) { credentials.clear() }
-                        diagnostics.log("OWA_NATIVE", "saved_login=rejected")
+                        // A VPN/proxy could block access. Preserve the password until user deletion.
+                        diagnostics.log("OWA_NATIVE", "attempt=auto result=rejected" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(
-                            error = "Сохранённый вход больше не действует. Введите пароль.",
+                            error = "Не удалось подтвердить вход. Проверьте VPN или пароль.",
+                            savedLoginAvailable = true,
                         )
                     }
                     OwaLoginResult.USE_BROWSER -> {
-                        diagnostics.log("OWA_NATIVE", "saved_login=browser_required")
+                        diagnostics.log("OWA_NATIVE", "attempt=auto result=browser_required" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(
                             error = "Для повторного входа требуется браузер ОСЭП.",
                             browserRecommended = true, savedLoginAvailable = true,
@@ -95,7 +120,8 @@ internal class MailLoginViewModel(
                 throw cancelled
             } catch (failure: Exception) {
                 diagnostics.log("OWA_NATIVE",
-                    "saved_login=network_error type=" + failure.javaClass.simpleName)
+                    "attempt=auto result=failed" + failureSummary(failure) +
+                        " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                 mutableStatus.value = MailLoginStatus(
                     error = "Не удалось войти автоматически. Проверьте подключение.",
                     savedLoginAvailable = credentials.hasSavedLogin(),
@@ -134,6 +160,8 @@ internal class MailLoginViewModel(
             busy = true, savedLoginAvailable = credentials.hasSavedLogin(),
         )
         viewModelScope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            diagnostics.log("OWA_NATIVE", "attempt=manual event=start " + connectionSummary())
             try {
                 when (loginClient.login(username.trim(), password)) {
                     OwaLoginResult.SUCCESS -> {
@@ -149,21 +177,24 @@ internal class MailLoginViewModel(
                                 credentials.clear()
                             }
                         }
-                        diagnostics.log("OWA_NATIVE", "login=verified")
+                        diagnostics.log("OWA_NATIVE", "attempt=manual result=verified" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(
                             savedLoginAvailable = credentials.hasSavedLogin(),
                         )
                         onSuccess()
                     }
                     OwaLoginResult.REJECTED -> {
-                        diagnostics.log("OWA_NATIVE", "login=unverified")
+                        diagnostics.log("OWA_NATIVE", "attempt=manual result=rejected" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(
                             error = "Не удалось подтвердить вход. Проверьте данные или используйте браузер.",
                             savedLoginAvailable = credentials.hasSavedLogin(),
                         )
                     }
                     OwaLoginResult.USE_BROWSER -> {
-                        diagnostics.log("OWA_NATIVE", "login=browser_required")
+                        diagnostics.log("OWA_NATIVE", "attempt=manual result=browser_required" +
+                            " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                         mutableStatus.value = MailLoginStatus(
                             error = "Эта форма входа требует браузер ОСЭП.",
                             browserRecommended = true,
@@ -176,7 +207,8 @@ internal class MailLoginViewModel(
             } catch (failure: Exception) {
                 // Never include credential-bearing URLs, HTTP bodies or tokens in logs.
                 diagnostics.log("OWA_NATIVE",
-                    "login=network_error type=" + failure.javaClass.simpleName)
+                    "attempt=manual result=failed" + failureSummary(failure) +
+                        " durationMs=${SystemClock.elapsedRealtime() - startedAt} " + connectionSummary())
                 mutableStatus.value = MailLoginStatus(
                     error = "Не удалось связаться с ОСЭП. Повторите попытку или откройте браузер.",
                     savedLoginAvailable = credentials.hasSavedLogin(),
