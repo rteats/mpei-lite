@@ -60,6 +60,13 @@ internal class BarsNativeAuthViewModel(
                 publish(page)
                 return@launch
             }
+            if (restored.isFailure && http.mainUrl == null) {
+                // A verified redirect to the login form cleared the stale session.
+                // Reuse the saved password; an actual network failure retains mainUrl.
+                diagnostics.log("BARS_NATIVE", "session_restore=expired")
+                openLogin(force = true, trySaved = true)
+                return@launch
+            }
             if (restored.isFailure) {
                 // Transient network errors must not delete session material.
                 diagnostics.log("BARS_NATIVE", "session_restore=unverified type=" +
