@@ -271,7 +271,8 @@ internal class MailViewModel(
         if (current.loading || current.sentLoading || current.loginRequired) return
         if (!OwaSessionHealth.hasKnownAccount(repository.contextForNotifications)) return
         val now = SystemClock.elapsedRealtime()
-        if (lastProbeAtElapsed != 0L && now - lastProbeAtElapsed < 60_000L) return
+        if (reason != "manual_retry" && lastProbeAtElapsed != 0L &&
+            now - lastProbeAtElapsed < 60_000L) return
         lastProbeAtElapsed = now
         val version = sessionVersion
         sessionProbeJob = viewModelScope.launch {
@@ -589,6 +590,8 @@ internal class MailViewModel(
                 _state.update { current ->
                     if (current.selected?.uid != summary.uid) current
                     else current.copy(loadingMessage = false,
+                        selected = if (failure is OwaMailRepository.LoginRequired && cached == null)
+                            null else current.selected,
                         loginRequired = current.loginRequired ||
                             failure is OwaMailRepository.LoginRequired,
                         error = if (failure is OwaMailRepository.LoginRequired)
