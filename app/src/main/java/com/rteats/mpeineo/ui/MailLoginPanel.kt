@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ internal fun MailLoginPanel(
     modifier: Modifier = Modifier,
 ) {
     val state by loginViewModel.status.collectAsState()
+    LaunchedEffect(Unit) { loginViewModel.refreshSavedLoginState() }
     var account by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var rememberLogin by remember { mutableStateOf(true) }
@@ -117,6 +119,10 @@ internal fun MailLoginPanel(
                     onClick = { loginViewModel.retrySavedLogin(onAuthenticated) },
                     modifier = Modifier.testTag("mail-retry-saved-login"),
                 ) { Text("Войти с сохранёнными данными") }
+                TextButton(
+                    onClick = loginViewModel::forgetSavedLogin,
+                    modifier = Modifier.testTag("mail-forget-saved-login"),
+                ) { Text("Забыть сохранённый пароль") }
             }
             Button(
                 onClick = { submit() },
