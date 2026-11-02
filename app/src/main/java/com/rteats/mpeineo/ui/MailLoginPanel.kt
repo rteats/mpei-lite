@@ -1,5 +1,6 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -40,11 +42,12 @@ internal fun MailLoginPanel(
     val state by loginViewModel.status.collectAsState()
     var account by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var rememberLogin by remember { mutableStateOf(true) }
     fun submit() {
         if (state.busy || account.isBlank() || password.isBlank()) return
         val submitted = password
         password = ""
-        loginViewModel.login(account, submitted, onAuthenticated)
+        loginViewModel.login(account, submitted, rememberLogin, onAuthenticated)
     }
     Surface(
         modifier = modifier.fillMaxWidth().testTag("mail-native-login"),
@@ -58,7 +61,7 @@ internal fun MailLoginPanel(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold)
             Text(
-                "Укажите данные учётной записи МЭИ. Пароль не сохраняется.",
+                "Введите данные учётной записи МЭИ.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -80,9 +83,40 @@ internal fun MailLoginPanel(
                 keyboardActions = KeyboardActions(onDone = { submit() }),
                 modifier = Modifier.fillMaxWidth().testTag("mail-native-password"),
             )
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Checkbox(
+                    checked = rememberLogin,
+                    onCheckedChange = { rememberLogin = it },
+                    enabled = !state.busy,
+                    modifier = Modifier.testTag("mail-remember-login"),
+                )
+                Text(
+                    "Запомнить вход на устройстве",
+                    modifier = Modifier.weight(1f)
+                        .clickable { if (!state.busy) rememberLogin = !rememberLogin },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                "Данные защищены Android Keystore. При выходе из аккаунта они удаляются.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.busy && state.usingSavedLogin) {
+                Text("Входим с сохранёнными данными…")
+            }
             state.error?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error)
+            }
+            if (!state.busy && state.savedLoginAvailable) {
+                TextButton(
+                    onClick = { loginViewModel.retrySavedLogin(onAuthenticated) },
+                    modifier = Modifier.testTag("mail-retry-saved-login"),
+                ) { Text("Войти с сохранёнными данными") }
             }
             Button(
                 onClick = { submit() },
