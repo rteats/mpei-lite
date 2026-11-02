@@ -241,6 +241,13 @@ internal class BarsNativeAuthViewModel(
         }
     }
 
+    fun forgetSavedLogin() {
+        credentials.clear()
+        savedLoginAttempted = true
+        _status.update { it.copy(savedLoginAvailable = false) }
+        diagnostics.log("BARS_NATIVE", "saved_login=cleared")
+    }
+
     fun retrySavedLogin() {
         if (_status.value.step != BarsNativeStep.LOGIN) return
         savedLoginAttempted = false
