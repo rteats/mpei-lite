@@ -117,6 +117,12 @@ internal fun MailScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    val loginState by loginViewModel.status.collectAsState()
+    var showLoginPage by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
+    LaunchedEffect(state.loginRequired) {
+        if (!state.loginRequired) showLoginPage = false
+    }
     LaunchedEffect(active) {
         if (active) viewModel.onMailScreenVisible()
     }
@@ -183,7 +189,7 @@ internal fun MailScreen(
             }
         }
     }
-    BackHandler(enabled = active && !state.composing && state.selected != null) {
+    BackHandler(enabled = active && !showLoginPage && !state.composing && state.selected != null) {
         viewModel.closeMessage()
     }
 
@@ -200,11 +206,27 @@ internal fun MailScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             if (state.configured) {
                 if (state.loginRequired) {
-                    MailLoginPanel(
-                        loginViewModel = loginViewModel,
-                        onAuthenticated = viewModel::refresh,
-                        onOpenBrowser = onOpenPortal,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    ServiceStatus(
+                        title = if (loginState.busy) "Восстанавливаем сеанс ОСЭП…"
+                            else "Сессия ОСЭП истекла",
+                        detail = if (loginState.busy)
+                            "Проверяем сохранённые данные входа."
+                        else loginState.error ?: "Письма доступны из кэша. Для обновления войдите снова.",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            .testTag("mail-session-expired-banner"),
+                        tone = ServiceStatusTone.RECOVERY,
+                        actionLabel = if (loginState.busy) null else "Войти",
+                        onAction = if (loginState.busy) null else { { showLoginPage = true } },
+                    )
+                }
+                if (state.sessionCheckProblem && !state.loginRequired && state.error == null) {
+                    ServiceStatus(
+                        title = "Не удалось проверить подключение к ОСЭП",
+                        detail = "Сессия может быть действительна. Проверьте VPN или соединение.",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        tone = ServiceStatusTone.RECOVERY,
+                        actionLabel = "Повторить",
+                        onAction = { viewModel.checkSessionProactively("manual_retry") },
                     )
                 }
                 if (state.error != null && !state.loginRequired) {
@@ -432,6 +454,39 @@ internal fun MailScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+        SpatialScreenOverlay(
+            visible = showLoginPage && state.configured,
+            modifier = Modifier.testTag("mail-login-slide-layer"),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = { showLoginPage = false }) {
+                            AppIcon(AppIcons.Back, contentDescription = "Назад к письмам")
+                        }
+                        Text("Вход в ОСЭП", style = MaterialTheme.typography.titleLarge)
+                    }
+                    MailLoginPanel(
+                        loginViewModel = loginViewModel,
+                        onAuthenticated = {
+                            showLoginPage = false
+                            viewModel.refresh()
+                        },
+                        onOpenBrowser = {
+                            showLoginPage = false
+                            onOpenPortal()
+                        },
+                        modifier = Modifier.testTag("mail-login-deep-page"),
+                    )
                 }
             }
         }
