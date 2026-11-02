@@ -64,6 +64,7 @@ internal class BarsNativeAuthViewModel(
                 // A verified redirect to the login form cleared the stale session.
                 // Reuse the saved password; an actual network failure retains mainUrl.
                 diagnostics.log("BARS_NATIVE", "session_restore=expired")
+                _status.value = BarsNativeStatus()
                 openLogin(force = true, trySaved = true)
                 return@launch
             }
@@ -188,6 +189,7 @@ internal class BarsNativeAuthViewModel(
             diagnostics.log("BARS_NATIVE", "marks=loaded subjects=" + payload.disciplines.size)
             _status.value = BarsNativeStatus()
         }.onSuccess {
+            savedLoginAttempted = false
             val save = pendingSave
             val forget = pendingForget
             pendingSave = null
