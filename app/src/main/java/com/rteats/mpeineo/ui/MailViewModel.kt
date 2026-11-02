@@ -13,7 +13,8 @@ import androidx.lifecycle.viewModelScope
 import com.rteats.mpeineo.data.MailAttachment
 import com.rteats.mpeineo.data.MailDetail
 import com.rteats.mpeineo.data.MailRepository
-import com.rteats.mpeineo.data.MailCredentialStore
+import com.rteats.mpeineo.data.SavedCredentialStore
+import com.rteats.mpeineo.data.SavedLoginService
 import com.rteats.mpeineo.data.OwaAuthProbe
 import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.OwaMailFolder
@@ -611,7 +612,7 @@ internal class MailViewModel(
 
     fun logout() {
         // Explicit sign-out revokes automatic reauthentication too.
-        MailCredentialStore(repository.contextForNotifications).clear()
+        SavedCredentialStore(repository.contextForNotifications, SavedLoginService.MAIL).clear()
         sessionVersion++
         pendingNotification = null
         sentRecipientJob?.cancel()
