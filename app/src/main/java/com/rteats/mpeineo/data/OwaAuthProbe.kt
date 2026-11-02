@@ -1,6 +1,8 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebSettings
@@ -98,6 +100,12 @@ class OwaAuthProbe(
             "none"
         }
         val duration = SystemClock.elapsedRealtime() - started
+        val network = runCatching {
+            val cm = application.getSystemService(ConnectivityManager::class.java)
+            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+            " vpn=${caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}" +
+                " validated=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}"
+        }.getOrDefault(" vpn=unknown validated=unknown")
         val event = when (source) {
             Source.MANUAL -> "manual_probe"
             Source.INBOX_REFRESH -> "refresh_probe"
@@ -110,7 +118,7 @@ class OwaAuthProbe(
             "$event source=${source.name.lowercase()}$refreshLabel " +
                 "state=$state http=${status ?: "none"} " +
                 "cookies=$cookieCount setCookies=$refreshedCookieCount " +
-                "failureType=$failureType durationMs=$duration " +
+                "failureType=$failureType durationMs=$duration$network " +
                 "sincePrevious=$previousAge previousState=$lastState",
         )
         preferences.edit()
