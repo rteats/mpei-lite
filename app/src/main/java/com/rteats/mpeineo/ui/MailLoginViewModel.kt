@@ -104,6 +104,13 @@ internal class MailLoginViewModel(
         }
     }
 
+    fun forgetSavedLogin() {
+        credentials.clear()
+        automaticAttempted = true
+        mutableStatus.value = MailLoginStatus()
+        diagnostics.log("OWA_NATIVE", "saved_login=cleared")
+    }
+
     fun retrySavedLogin(onSuccess: () -> Unit) {
         if (mutableStatus.value.busy) return
         automaticAttempted = false
