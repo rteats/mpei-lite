@@ -1,6 +1,8 @@
 package com.rteats.mpeineo.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -63,6 +66,8 @@ internal fun BarsScreen(
             BarsCredentialsForm(
                 status = login,
                 onLogin = auth::login,
+                onRetrySavedLogin = auth::retrySavedLogin,
+                onForgetSavedLogin = auth::forgetSavedLogin,
                 onCode = auth::confirm,
                 onRequestCode = auth::sendCode,
                 onRetry = { auth.openLogin(force = true) },
@@ -98,7 +103,9 @@ internal fun shouldInitializeBarsWebView(
 @Composable
 private fun BarsCredentialsForm(
     status: BarsNativeStatus,
-    onLogin: (String, String) -> Unit,
+    onLogin: (String, String, Boolean) -> Unit,
+    onRetrySavedLogin: () -> Unit,
+    onForgetSavedLogin: () -> Unit,
     onCode: (String) -> Unit,
     onRequestCode: () -> Unit,
     onRetry: () -> Unit,
@@ -108,6 +115,7 @@ private fun BarsCredentialsForm(
     var account by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
+    var rememberLogin by remember { mutableStateOf(true) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -143,10 +151,35 @@ private fun BarsCredentialsForm(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth().testTag("bars-native-password"),
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = rememberLogin,
+                        onCheckedChange = { rememberLogin = it },
+                        modifier = Modifier.testTag("bars-remember-login"),
+                    )
+                    Text(
+                        "Запомнить вход на устройстве",
+                        modifier = Modifier.clickable { rememberLogin = !rememberLogin },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                Text(
+                    "Пароль защищён Android Keystore. Код подтверждения может потребоваться снова.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (status.savedLoginAvailable) {
+                    TextButton(onClick = onRetrySavedLogin) {
+                        Text("Войти с сохранёнными данными")
+                    }
+                    TextButton(onClick = onForgetSavedLogin) {
+                        Text("Забыть сохранённый пароль")
+                    }
+                }
                 Button(onClick = {
                     val submitted = password
                     password = ""
-                    onLogin(account, submitted)
+                    onLogin(account, submitted, rememberLogin)
                 }, enabled = account.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().testTag("bars-native-login"),
                 ) { Text("Войти") }
