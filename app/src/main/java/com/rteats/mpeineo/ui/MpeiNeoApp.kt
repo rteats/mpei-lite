@@ -83,6 +83,17 @@ fun MpeiNeoApp(
         mailViewModel.refresh()
     }
 
+    // Only retry an expired OWA session once with previously saved credentials.
+    // A successful mailbox request resets the guard for the next expiry.
+    LaunchedEffect(mailState.loginRequired, mailState.loading, mailState.configured, mailState.error) {
+        when {
+            mailState.loginRequired && !mailState.loading ->
+                mailLoginViewModel.restoreSavedLogin(mailViewModel::refresh)
+            mailState.configured && !mailState.loading &&
+                !mailState.loginRequired && mailState.error == null ->
+                mailLoginViewModel.onMailboxReady()
+        }
+    }
     LaunchedEffect(Unit) { application.startPostLaunchMaintenance() }
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
@@ -146,7 +157,7 @@ fun MpeiNeoApp(
                                 }
                             } else AppIcon(icon, contentDescription = label)
                         },
-                        label = { Text(label) },
+                        label = null,
                         modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
                     )
                 }
