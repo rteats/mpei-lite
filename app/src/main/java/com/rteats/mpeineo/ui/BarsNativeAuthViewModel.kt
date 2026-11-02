@@ -11,6 +11,11 @@ import com.rteats.mpeineo.data.BarsHttpClient
 import com.rteats.mpeineo.data.BarsHttpPage
 import com.rteats.mpeineo.data.BarsSessionStore
 import com.rteats.mpeineo.data.DiagnosticLog
+import com.rteats.mpeineo.data.SavedCredentialStore
+import com.rteats.mpeineo.data.SavedLoginCredentials
+import com.rteats.mpeineo.data.SavedLoginService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -24,6 +29,7 @@ internal data class BarsNativeStatus(
     val busySending: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
+    val savedLoginAvailable: Boolean = false,
 )
 
 internal class BarsNativeAuthViewModel(
@@ -32,6 +38,10 @@ internal class BarsNativeAuthViewModel(
     context: Context,
 ) : ViewModel() {
     private val http = BarsHttpClient(BarsSessionStore(context.applicationContext))
+    private val credentials = SavedCredentialStore(context.applicationContext, SavedLoginService.BARS)
+    private var savedLoginAttempted = false
+    private var pendingSave: SavedLoginCredentials? = null
+    private var pendingForget = false
     private var started = false
     private val gson = Gson()
     private val _status = MutableStateFlow(BarsNativeStatus())
@@ -64,7 +74,9 @@ internal class BarsNativeAuthViewModel(
             diagnostics.log("BARS_NATIVE", "session_restore=missing")
             val needsLogin = bars.state.value.disciplines.isEmpty()
             _status.value = BarsNativeStatus()
-            if (needsLogin) openLogin(force = true) else bars.webAuth(BARS_LOGIN_URL)
+            if (needsLogin || credentials.hasSavedLogin()) {
+                openLogin(force = true, trySaved = true)
+            } else bars.webAuth(BARS_LOGIN_URL)
         }
     }
 
@@ -73,15 +85,26 @@ internal class BarsNativeAuthViewModel(
         start()
     }
 
-    fun openLogin(force: Boolean = false) {
+    fun openLogin(force: Boolean = false, trySaved: Boolean = false) {
         if (_status.value.step in setOf(BarsNativeStep.OPENING, BarsNativeStep.SUBMITTING)) return
-        _status.value = BarsNativeStatus(BarsNativeStep.OPENING, force)
+        _status.value = BarsNativeStatus(BarsNativeStep.OPENING, force,
+            savedLoginAvailable = credentials.hasSavedLogin())
         viewModelScope.launch {
             runCatching { http.openLogin() }
                 .onSuccess {
                     bars.webAuth(BARS_LOGIN_URL)
                     diagnostics.log("BARS_NATIVE", "login_form=ready")
                     _status.update { it.copy(step = BarsNativeStep.LOGIN) }
+                    if (trySaved && !savedLoginAttempted) {
+                        savedLoginAttempted = true
+                        val stored = withContext(Dispatchers.IO) { credentials.load() }
+                        if (stored != null) {
+                            diagnostics.log("BARS_NATIVE", "saved_login=starting")
+                            login(stored.username, stored.password, rememberLogin = true)
+                        } else {
+                            _status.update { it.copy(savedLoginAvailable = false) }
+                        }
+                    }
                 }.onFailure {
                     diagnostics.log("BARS_NATIVE", "login_form=failed type=" + it.javaClass.simpleName)
                     _status.update { it.copy(step = BarsNativeStep.LOGIN,
@@ -90,12 +113,14 @@ internal class BarsNativeAuthViewModel(
         }
     }
 
-    fun login(account: String, password: String) {
+    fun login(account: String, password: String, rememberLogin: Boolean = true) {
         if (_status.value.step != BarsNativeStep.LOGIN) return
         if (account.isBlank() || password.isBlank()) {
             _status.update { it.copy(error = "Введите логин и пароль.") }
             return
         }
+        pendingSave = if (rememberLogin) SavedLoginCredentials(account.trim(), password) else null
+        pendingForget = !rememberLogin
         _status.update { it.copy(step = BarsNativeStep.SUBMITTING, error = null) }
         viewModelScope.launch {
             runCatching { http.credentials(account.trim(), password) }.onSuccess { result ->
@@ -105,6 +130,8 @@ internal class BarsNativeAuthViewModel(
                     is BarsCredentialResult.Complete -> publish(result.page)
                 }
             }.onFailure {
+                pendingSave = null
+                pendingForget = false
                 diagnostics.log("BARS_NATIVE", "credentials=failed type=" + it.javaClass.simpleName)
                 _status.update { it.copy(step = BarsNativeStep.LOGIN,
                     error = "Вход не выполнен. Проверьте логин и пароль.") }
@@ -136,6 +163,8 @@ internal class BarsNativeAuthViewModel(
         viewModelScope.launch {
             runCatching { http.confirm(code.trim()) }.onSuccess { publish(it) }.onFailure {
                 diagnostics.log("BARS_NATIVE", "code=failed type=" + it.javaClass.simpleName)
+                pendingSave = null
+                pendingForget = false
                 http.clear()
                 _status.update { it.copy(step = BarsNativeStep.LOGIN,
                     error = "Код отклонён. Начните вход заново.") }
@@ -152,6 +181,20 @@ internal class BarsNativeAuthViewModel(
             diagnostics.log("BARS_NATIVE", "marks=loaded subjects=" + payload.disciplines.size)
             _status.value = BarsNativeStatus()
         }.onSuccess {
+            val save = pendingSave
+            val forget = pendingForget
+            pendingSave = null
+            pendingForget = false
+            if (save != null || forget) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        if (forget) credentials.clear() else credentials.save(save!!)
+                    }.onFailure {
+                        diagnostics.log("BARS_NATIVE", "save_login_failed type=" +
+                            it.javaClass.simpleName)
+                    }
+                }
+            }
             refreshSummary()
         }.onFailure {
             diagnostics.log("BARS_NATIVE", "parse=failed type=" + it.javaClass.simpleName)
@@ -164,7 +207,7 @@ internal class BarsNativeAuthViewModel(
     fun refresh() {
         if (_status.value.step == BarsNativeStep.REFRESHING) return
         if (http.mainUrl == null) {
-            openLogin(force = true)
+            openLogin(force = true, trySaved = true)
             return
         }
         bars.startRefresh()
@@ -175,8 +218,11 @@ internal class BarsNativeAuthViewModel(
             }.onFailure {
                 diagnostics.log("BARS_NATIVE", "refresh=failed type=" + it.javaClass.simpleName)
                 bars.extractionFailed("Не удалось обновить БАРС.")
-                if (http.mainUrl == null) bars.webAuth(BARS_LOGIN_URL)
-                _status.update { it.copy(step = BarsNativeStep.IDLE) }
+                if (http.mainUrl == null) {
+                    openLogin(force = true, trySaved = true)
+                } else {
+                    _status.update { it.copy(step = BarsNativeStep.IDLE) }
+                }
             }
         }
     }
@@ -195,7 +241,15 @@ internal class BarsNativeAuthViewModel(
         }
     }
 
+    fun retrySavedLogin() {
+        if (_status.value.step != BarsNativeStep.LOGIN) return
+        savedLoginAttempted = false
+        openLogin(force = true, trySaved = true)
+    }
+
     fun cancelLogin() {
+        pendingSave = null
+        pendingForget = false
         http.clear()
         _status.value = BarsNativeStatus()
     }
