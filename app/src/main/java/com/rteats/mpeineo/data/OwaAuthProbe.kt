@@ -1,6 +1,8 @@
 package com.rteats.mpeineo.data
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebSettings
@@ -20,7 +22,7 @@ import java.net.URL
  * bodies, email addresses, or anti-CSRF tokens are persisted or logged.
  *
  * This check is active network traffic and MAY extend the remote idle timeout.
- * It must never run on a timer or during normal app startup.
+ * Proactive checks are rate-limited and avoid downloading mailbox contents.
  */
 class OwaAuthProbe(
     context: Context,
@@ -30,9 +32,9 @@ class OwaAuthProbe(
     private val preferences = application.getSharedPreferences("owa_auth_diagnostics", Context.MODE_PRIVATE)
     private val probeMutex = Mutex()
 
-    enum class Source { MANUAL, INBOX_REFRESH }
+    enum class Source { MANUAL, INBOX_REFRESH, FOREGROUND, BACKGROUND }
 
-    data class Result(val summary: String)
+    data class Result(val summary: String, val state: String, val httpStatus: Int?)
 
     private data class HttpResult(
         val status: Int,
@@ -98,21 +100,32 @@ class OwaAuthProbe(
             "none"
         }
         val duration = SystemClock.elapsedRealtime() - started
-        val event = if (source == Source.MANUAL) "manual_probe" else "refresh_probe"
+        val network = runCatching {
+            val cm = application.getSystemService(ConnectivityManager::class.java)
+            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+            " vpn=${caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}" +
+                " validated=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}"
+        }.getOrDefault(" vpn=unknown validated=unknown")
+        val event = when (source) {
+            Source.MANUAL -> "manual_probe"
+            Source.INBOX_REFRESH -> "refresh_probe"
+            Source.FOREGROUND -> "foreground_probe"
+            Source.BACKGROUND -> "background_probe"
+        }
         val refreshLabel = refreshId?.let { " refreshId=$it" }.orEmpty()
         diagnostics.log(
             "OWA_AUTH",
             "$event source=${source.name.lowercase()}$refreshLabel " +
                 "state=$state http=${status ?: "none"} " +
                 "cookies=$cookieCount setCookies=$refreshedCookieCount " +
-                "failureType=$failureType durationMs=$duration " +
+                "failureType=$failureType durationMs=$duration$network " +
                 "sincePrevious=$previousAge previousState=$lastState",
         )
         preferences.edit()
             .putLong("checked_at", timestamp)
             .putString("last_state", state)
             .apply()
-        return Result(summary)
+        return Result(summary, state, status)
         } finally {
             probeMutex.unlock()
         }

@@ -4,6 +4,10 @@ import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -85,6 +89,23 @@ internal fun parseOwaLoginForm(html: String, pageUrl: HttpUrl): OwaLoginForm? {
 
 internal enum class OwaLoginResult { SUCCESS, REJECTED, USE_BROWSER }
 
+/** Safe failure metadata only: never includes request URLs, form bodies or cookies. */
+internal class OwaLoginStageException(
+    val stage: String,
+    val category: String,
+    val httpStatus: Int? = null,
+    cause: Throwable? = null,
+) : IOException("OWA login stage=$stage category=$category", cause)
+
+internal fun owaNetworkFailureCategory(error: IOException): String = when (error) {
+    is SocketTimeoutException -> "timeout"
+    is UnknownHostException -> "dns"
+    is ConnectException -> "connection"
+    is SSLException -> "tls"
+    else -> "io"
+}
+
+
 /**
  * No password storage, telemetry or WebView JavaScript. A successful login is
  * proved using the OWA sessiondata endpoint before we publish cookies to the
@@ -117,6 +138,8 @@ internal class OwaNativeLogin(context: Context) {
     private fun authenticate(
         username: String, password: String, agent: String,
     ): Pair<OwaLoginResult, List<Cookie>> {
+        var stage = "load_login"
+        try {
         val jar = TemporaryCookieJar()
         val client = OkHttpClient.Builder()
             .cookieJar(jar)
@@ -131,6 +154,7 @@ internal class OwaNativeLogin(context: Context) {
             ?: return OwaLoginResult.USE_BROWSER to emptyList()
         val form = parseOwaLoginForm(formHtml, url)
             ?: return OwaLoginResult.USE_BROWSER to emptyList()
+        stage = "submit_credentials"
         val request = Request.Builder().url(form.action)
             .header("User-Agent", agent)
             .header("Origin", "https://mail.mpei.ru")
@@ -139,16 +163,18 @@ internal class OwaNativeLogin(context: Context) {
         client.newCall(request).execute().use { response ->
             if (response.code == 401 || response.code == 403)
                 return OwaLoginResult.REJECTED to emptyList()
-            if (response.code >= 500) throw IOException("OWA login server unavailable")
+            if (response.code >= 500) throw OwaLoginStageException(stage, "http_error", response.code)
             if (response.isRedirect && !sameOriginRedirect(response))
                 return OwaLoginResult.USE_BROWSER to emptyList()
         }
         // Some deployments establish extra cookies on the landing page.
         // Load OWA once to collect any landing cookies. Its full HTML is not
         // needed: a signed-in mailbox page can be much larger than the login form.
+        stage = "landing_page"
         if (!primeLandingPage(client, agent))
             return OwaLoginResult.USE_BROWSER to emptyList()
 
+        stage = "session_verification"
         val verified = client.newCall(
             Request.Builder().url(SESSION_DATA)
                 .header("User-Agent", agent)
@@ -158,10 +184,10 @@ internal class OwaNativeLogin(context: Context) {
                 .post(byteArrayOf().toRequestBody(null)).build(),
         ).execute().use { response ->
             if (response.code in setOf(401, 403, 440) || response.isRedirect) false
-            else if (!response.isSuccessful) throw IOException("OWA session check failed")
+            else if (!response.isSuccessful) throw OwaLoginStageException(stage, "http_error", response.code)
             else {
                 val body = response.peekBody(2_000_001).string()
-                if (body.length > 2_000_000) throw IOException("OWA session response too large")
+                if (body.length > 2_000_000) throw OwaLoginStageException(stage, "response_too_large")
                 runCatching {
                     JSONObject(body).optJSONObject("owaUserConfig")
                         ?.optJSONObject("SessionSettings") != null
@@ -170,6 +196,12 @@ internal class OwaNativeLogin(context: Context) {
         }
         return if (verified) OwaLoginResult.SUCCESS to jar.snapshot()
         else OwaLoginResult.REJECTED to emptyList()
+        } catch (failure: IOException) {
+            if (failure is OwaLoginStageException) throw failure
+            throw OwaLoginStageException(
+                stage, owaNetworkFailureCategory(failure), cause = failure,
+            )
+        }
     }
 
     private fun primeLandingPage(client: OkHttpClient, agent: String): Boolean {
@@ -179,7 +211,7 @@ internal class OwaNativeLogin(context: Context) {
                 Request.Builder().url(url).header("User-Agent", agent).get().build(),
             ).execute().use { response ->
                 if (!response.isRedirect) {
-                    if (!response.isSuccessful) throw IOException("OWA landing page unavailable")
+                    if (!response.isSuccessful) throw OwaLoginStageException("landing_page", "http_error", response.code)
                     return true
                 }
                 if (!sameOriginRedirect(response)) return false
@@ -198,7 +230,7 @@ internal class OwaNativeLogin(context: Context) {
                     if (!sameOriginRedirect(response)) return null
                     url = url.resolve(response.header("Location").orEmpty()) ?: return null
                 } else {
-                    if (!response.isSuccessful) throw IOException("OWA login page unavailable")
+                    if (!response.isSuccessful) throw OwaLoginStageException("load_login", "http_error", response.code)
                     val html = response.peekBody(1_000_001).string()
                     if (html.length > 1_000_000) return null
                     return url to html

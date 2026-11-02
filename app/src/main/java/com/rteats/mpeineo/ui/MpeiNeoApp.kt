@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,6 +25,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.AppIcon
@@ -92,6 +98,26 @@ fun MpeiNeoApp(
             mailState.configured && !mailState.loading &&
                 !mailState.loginRequired && mailState.error == null ->
                 mailLoginViewModel.onMailboxReady()
+        }
+    }
+    // Keep session state fresh without requiring the user to open Mail.
+    // Checks stop while the app is not visible; WorkManager handles longer periods.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val listener = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                mailViewModel.checkSessionProactively("app_foreground")
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(listener)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(listener) }
+    }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                delay(15 * 60_000L)
+                mailViewModel.checkSessionProactively("foreground_periodic")
+            }
         }
     }
     LaunchedEffect(Unit) { application.startPostLaunchMaintenance() }

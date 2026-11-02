@@ -16,6 +16,7 @@ import com.rteats.mpeineo.data.GithubUpdateRepository
 import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.MailNotificationScheduler
 import com.rteats.mpeineo.data.OwaAuthProbe
+import com.rteats.mpeineo.data.OwaSessionHealth
 import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.OwaInboxProbe
 import com.rteats.mpeineo.data.MpeiScheduleRemote
@@ -62,6 +63,7 @@ class MpeiNeoApplication : Application() {
             runCatching {
                 // KEEP retains a healthy periodic mail notification registration.
                 MailNotificationScheduler.reconcileOnStartup(this@MpeiNeoApplication)
+                OwaSessionHealth.start(this@MpeiNeoApplication)
                 androidx.work.WorkManager.getInstance(this@MpeiNeoApplication)
                     .cancelUniqueWork("automatic_apk_updates")
             }.onFailure {
