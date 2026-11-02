@@ -16,6 +16,8 @@ import com.rteats.mpeineo.data.MailRepository
 import com.rteats.mpeineo.data.SavedCredentialStore
 import com.rteats.mpeineo.data.SavedLoginService
 import com.rteats.mpeineo.data.OwaAuthProbe
+import com.rteats.mpeineo.data.OwaSessionHealth
+import android.os.SystemClock
 import com.rteats.mpeineo.data.OwaMailRepository
 import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.data.OwaRecipientSuggestion
@@ -41,6 +43,7 @@ internal enum class RecipientField { TO, CC, BCC }
 internal data class MailUiState(
     val configured: Boolean = false,
     val loginRequired: Boolean = false,
+    val sessionCheckProblem: Boolean = false,
     val username: String = "",
     val loading: Boolean = false,
     val items: List<MailSummary> = emptyList(),
@@ -117,6 +120,8 @@ internal class MailViewModel(
     private val _state = MutableStateFlow(MailUiState())
     val state: StateFlow<MailUiState> = _state.asStateFlow()
     private var sessionVersion = 0L
+    private var sessionProbeJob: Job? = null
+    private var lastProbeAtElapsed = 0L
     private var refreshSequence = 0L
     private var pendingNotification: Pair<Long, Long>? = null
     private var sentRecipientJob: Job? = null
@@ -256,6 +261,41 @@ internal class MailViewModel(
      * Mail is a lazy tab. Its first network synchronization starts on entry,
      * not while Schedule is racing to display its first frame.
      */
+    /**
+     * Assess the cookie session independently of opening a message or refreshing the inbox.
+     * Do not confuse VPN/proxy failures with an expired session.
+     */
+    fun checkSessionProactively(reason: String) {
+        if (sessionProbeJob?.isActive == true) return
+        val current = _state.value
+        if (current.loading || current.sentLoading || current.loginRequired) return
+        if (!OwaSessionHealth.hasKnownAccount(repository.contextForNotifications)) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastProbeAtElapsed != 0L && now - lastProbeAtElapsed < 60_000L) return
+        lastProbeAtElapsed = now
+        val version = sessionVersion
+        sessionProbeJob = viewModelScope.launch {
+            val result = owaAuthProbe.check(OwaAuthProbe.Source.FOREGROUND)
+            if (version != sessionVersion || _state.value.loading) return@launch
+            repository.logState(
+                "session_health trigger=$reason state=${result.state} http=${result.httpStatus ?: "none"}",
+            )
+            when (result.state) {
+                "AUTHENTICATED" -> _state.update {
+                    it.copy(loginRequired = false, sessionCheckProblem = false)
+                }
+                "LOGIN_REQUIRED", "NO_COOKIES" -> _state.update {
+                    it.copy(loginRequired = true, sessionCheckProblem = false,
+                        error = "Сессия ОСЭП истекла. Для обновления почты требуется вход.")
+                }
+                else -> _state.update {
+                    // Keep the cached mailbox and do not trigger password submission.
+                    it.copy(sessionCheckProblem = true)
+                }
+            }
+        }
+    }
+
     fun onMailScreenVisible() {
         if (initialRefreshStarted) return
         initialRefreshStarted = true
@@ -279,6 +319,7 @@ internal class MailViewModel(
                 val items = owaMailRepository.inbox(maxConversations = MAIL_PAGE_SIZE, refreshId = id)
                 if (version != sessionVersion) return@launch
                 repository.credentials.clear()
+                OwaSessionHealth.start(repository.contextForNotifications)
                 compose.restoreDraftForActiveAccount()
                 repository.logState("refresh success id=$id protocol=OWA items=${items.size}")
                 _state.update { old ->
@@ -293,6 +334,7 @@ internal class MailViewModel(
                     old.copy(
                         configured = true,
                         loginRequired = false,
+                        sessionCheckProblem = false,
                         loading = false,
                         items = page.messages,
                         nextPageOffset = page.nextOffset,
@@ -542,11 +584,16 @@ internal class MailViewModel(
                 throw cancelled
             } catch (failure: Exception) {
                 if (version != sessionVersion) return@launch
-                repository.logState("OWA message failure type=${failure.javaClass.simpleName}")
+                repository.logState("OWA message failure type=${failure.javaClass.simpleName}" +
+                    " loginRequired=${failure is OwaMailRepository.LoginRequired}")
                 _state.update { current ->
                     if (current.selected?.uid != summary.uid) current
                     else current.copy(loadingMessage = false,
-                        error = if (cached == null) "Не удалось открыть переписку через ОСЭП." else null,
+                        loginRequired = current.loginRequired ||
+                            failure is OwaMailRepository.LoginRequired,
+                        error = if (failure is OwaMailRepository.LoginRequired)
+                            "Сессия ОСЭП истекла."
+                            else if (cached == null) "Не удалось открыть переписку через ОСЭП." else null,
                         notice = if (cached != null) "Показана сохранённая переписка" else null)
                 }
             }
@@ -614,6 +661,8 @@ internal class MailViewModel(
         // Explicit sign-out revokes automatic reauthentication too.
         SavedCredentialStore(repository.contextForNotifications, SavedLoginService.MAIL).clear()
         sessionVersion++
+        sessionProbeJob?.cancel()
+        OwaSessionHealth.stop(repository.contextForNotifications)
         pendingNotification = null
         sentRecipientJob?.cancel()
         compose.cancelAndRelease()
