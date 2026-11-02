@@ -252,27 +252,10 @@ internal fun ScheduleExplorerScreen(
                 item(key = "end-space") { Spacer(Modifier.height(24.dp)) }
             }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Расписание",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                if (state.selected != null) {
-                    TextButton(onClick = { searching = true }) {
-                        Text("Сменить")
-                    }
-                }
-            }
             Surface(
                 onClick = { searching = true },
                 modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 3.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
                     .testTag("schedule-search-open"),
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -298,40 +281,20 @@ internal fun ScheduleExplorerScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    AppIcon(AppIcons.Forward, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (state.selected == null && (state.favorites.isNotEmpty() ||
-                    state.recentlyViewed.isNotEmpty())) {
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    (state.favorites + state.recentlyViewed)
-                        .distinctBy { it.type to it.id }.take(8).forEach { target ->
-                            FilterChip(
-                                selected = false,
-                                onClick = { openTarget(target) },
-                                label = { Text(target.name, maxLines = 1) },
-                            )
-                        }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 agendaStateHolder.SaveableStateProvider("schedule-agenda") {
                     ScheduleScreen(
-                    state = state,
-                    onEnsureAgendaWeek = onEnsureWeek,
-                    onRefreshAgendaWeek = onRefreshWeek,
-                    onRetryAgendaWeek = onRetryWeek,
-                    onViewedAgendaWeek = {},
-                    onAgendaScrollingChanged = {},
-                    onLocateRoom = {},
-                    todayJumpRequest = 0,
-                    modifier = Modifier.fillMaxSize(),
+                        state = state,
+                        onEnsureAgendaWeek = onEnsureWeek,
+                        onRefreshAgendaWeek = onRefreshWeek,
+                        onRetryAgendaWeek = onRetryWeek,
+                        onViewedAgendaWeek = {},
+                        onAgendaScrollingChanged = {},
+                        onLocateRoom = {},
+                        todayJumpRequest = 0,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
