@@ -67,6 +67,7 @@ internal fun BarsScreen(
                 status = login,
                 onLogin = auth::login,
                 onRetrySavedLogin = auth::retrySavedLogin,
+                onForgetSavedLogin = auth::forgetSavedLogin,
                 onCode = auth::confirm,
                 onRequestCode = auth::sendCode,
                 onRetry = { auth.openLogin(force = true) },
@@ -104,6 +105,7 @@ private fun BarsCredentialsForm(
     status: BarsNativeStatus,
     onLogin: (String, String, Boolean) -> Unit,
     onRetrySavedLogin: () -> Unit,
+    onForgetSavedLogin: () -> Unit,
     onCode: (String) -> Unit,
     onRequestCode: () -> Unit,
     onRetry: () -> Unit,
@@ -169,6 +171,9 @@ private fun BarsCredentialsForm(
                 if (status.savedLoginAvailable) {
                     TextButton(onClick = onRetrySavedLogin) {
                         Text("Войти с сохранёнными данными")
+                    }
+                    TextButton(onClick = onForgetSavedLogin) {
+                        Text("Забыть сохранённый пароль")
                     }
                 }
                 Button(onClick = {
