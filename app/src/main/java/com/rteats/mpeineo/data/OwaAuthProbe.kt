@@ -20,7 +20,7 @@ import java.net.URL
  * bodies, email addresses, or anti-CSRF tokens are persisted or logged.
  *
  * This check is active network traffic and MAY extend the remote idle timeout.
- * It must never run on a timer or during normal app startup.
+ * Proactive checks are rate-limited and avoid downloading mailbox contents.
  */
 class OwaAuthProbe(
     context: Context,
@@ -30,9 +30,9 @@ class OwaAuthProbe(
     private val preferences = application.getSharedPreferences("owa_auth_diagnostics", Context.MODE_PRIVATE)
     private val probeMutex = Mutex()
 
-    enum class Source { MANUAL, INBOX_REFRESH }
+    enum class Source { MANUAL, INBOX_REFRESH, FOREGROUND, BACKGROUND }
 
-    data class Result(val summary: String)
+    data class Result(val summary: String, val state: String, val httpStatus: Int?)
 
     private data class HttpResult(
         val status: Int,
@@ -98,7 +98,12 @@ class OwaAuthProbe(
             "none"
         }
         val duration = SystemClock.elapsedRealtime() - started
-        val event = if (source == Source.MANUAL) "manual_probe" else "refresh_probe"
+        val event = when (source) {
+            Source.MANUAL -> "manual_probe"
+            Source.INBOX_REFRESH -> "refresh_probe"
+            Source.FOREGROUND -> "foreground_probe"
+            Source.BACKGROUND -> "background_probe"
+        }
         val refreshLabel = refreshId?.let { " refreshId=$it" }.orEmpty()
         diagnostics.log(
             "OWA_AUTH",
@@ -112,7 +117,7 @@ class OwaAuthProbe(
             .putLong("checked_at", timestamp)
             .putString("last_state", state)
             .apply()
-        return Result(summary)
+        return Result(summary, state, status)
         } finally {
             probeMutex.unlock()
         }
