@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonDefaults
@@ -114,14 +115,26 @@ internal fun MailScreen(
     loginViewModel: MailLoginViewModel,
     active: Boolean,
     onOpenPortal: () -> Unit = {},
-    onSearch: () -> Unit = {},
+    searchRequest: Int = 0,
+    reselectRequest: Int = 0,
+    onFullScreenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
     val loginState by loginViewModel.status.collectAsState()
     var showLoginPage by rememberSaveable { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
     var confirmLogout by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(searchRequest) {
+        if (searchRequest > 0) showSearch = true
+    }
+    LaunchedEffect(showLoginPage, showSearch, state.selected, state.composing) {
+        onFullScreenChange(showLoginPage || showSearch ||
+            state.selected != null || state.composing)
+    }
+    DisposableEffect(Unit) { onDispose { onFullScreenChange(false) } }
     BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
+    BackHandler(enabled = active && showSearch) { showSearch = false }
     LaunchedEffect(state.loginRequired) {
         if (!state.loginRequired) showLoginPage = false
     }
@@ -154,6 +167,9 @@ internal fun MailScreen(
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
+    LaunchedEffect(reselectRequest) {
+        if (reselectRequest > 0) scrollState.animateScrollToItem(0)
+    }
     // Compose list keys contain only stable, opaque IDs; never log or persist
     // those identifiers. Prioritize rows that are actually on screen.
     LaunchedEffect(active, state.mailbox, state.selected, state.composing, sentScrollState) {
@@ -222,6 +238,18 @@ internal fun MailScreen(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (active && state.configured && !state.loginRequired &&
+                state.selected == null && !state.composing &&
+                !showLoginPage && !showSearch) {
+                FloatingActionButton(
+                    onClick = viewModel::startCompose,
+                    modifier = Modifier.testTag("mail-compose-fab"),
+                ) {
+                    AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
+                }
+            }
+        },
         // The app scaffold already handles safe-area insets; no second blank header.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { insets ->
@@ -490,6 +518,17 @@ internal fun MailScreen(
             }
         }
         }
+    }
+    if (showSearch) {
+        MailSearchDialog(
+            mail = state,
+            onOpen = { hit ->
+                showSearch = false
+                viewModel.switchMailbox(hit.folder)
+                viewModel.open(hit.message)
+            },
+            onClose = { showSearch = false },
+        )
     }
 }
 
