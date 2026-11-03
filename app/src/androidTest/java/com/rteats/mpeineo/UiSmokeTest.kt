@@ -47,19 +47,8 @@ class UiSmokeTest {
 
     @Test fun mailBrowserDoesNotSwitchToMap() {
         composeRule.onNodeWithTag("nav-mail").performClick()
-        composeRule.waitUntil(timeoutMillis = 30_000) {
-            composeRule.onAllNodesWithTag("portal-header-ОСЭП")
-                .fetchSemanticsNodes().isNotEmpty() ||
-                composeRule.onAllNodesWithTag("mail-native-browser-fallback")
-                    .fetchSemanticsNodes().isNotEmpty()
-        }
-        if (composeRule.onAllNodesWithTag("mail-native-browser-fallback")
-                .fetchSemanticsNodes().isNotEmpty()) {
-            composeRule.onNodeWithTag("mail-native-login").assertIsDisplayed()
-            composeRule.onNodeWithTag("mail-native-browser-fallback").performClick()
-        } else {
-            composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
-        }
+        composeRule.onNodeWithTag("mail-actions-overflow").performClick()
+        composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
         composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
         composeRule.onNodeWithTag("nav-mail").assertDoesNotExist()
         composeRule.onNodeWithTag("campus-map-screen").assertDoesNotExist()
