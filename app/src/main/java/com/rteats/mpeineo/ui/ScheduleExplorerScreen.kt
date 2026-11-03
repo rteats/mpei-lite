@@ -68,6 +68,7 @@ internal fun ScheduleExplorerScreen(
     onEnsureWeek: (Int) -> Unit,
     onRefreshWeek: (Int) -> Unit,
     onRetryWeek: (Int) -> Unit,
+    reselectRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -86,6 +87,13 @@ internal fun ScheduleExplorerScreen(
         searching = false
     }
 
+    LaunchedEffect(reselectRequest) {
+        if (reselectRequest > 0) {
+            searching = false
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
     BackHandler(searching) {
         focusManager.clearFocus()
         keyboard?.hide()
@@ -116,6 +124,7 @@ internal fun ScheduleExplorerScreen(
                         }
                     }
                 },
+                label = { Text("Поиск расписания") },
                 placeholder = { Text("Группа, преподаватель, аудитория…") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -293,7 +302,7 @@ internal fun ScheduleExplorerScreen(
                         onViewedAgendaWeek = {},
                         onAgendaScrollingChanged = {},
                         onLocateRoom = {},
-                        todayJumpRequest = 0,
+                        todayJumpRequest = reselectRequest,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -386,7 +395,7 @@ private fun SearchTargetRow(
         IconButton(onClick = onToggleFavorite,
             modifier = Modifier.testTag("schedule-favorite-toggle")) {
             AppIcon(
-                AppIcons.Favorite,
+                if (favorite) AppIcons.FavoriteFilled else AppIcons.Favorite,
                 contentDescription = if (favorite) "Удалить из избранного" else "В избранное",
                 tint = if (favorite) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.outline,
