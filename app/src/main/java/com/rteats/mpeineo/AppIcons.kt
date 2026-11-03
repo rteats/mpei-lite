@@ -21,6 +21,12 @@ import androidx.compose.ui.unit.LayoutDirection
  */
 object AppIcons {
     @get:DrawableRes val Schedule: Int get() = R.drawable.ms_date_range
+    @get:DrawableRes val ScheduleFilled: Int get() = R.drawable.ms_date_range_filled
+    @get:DrawableRes val BarsFilled: Int get() = R.drawable.ms_account_balance_filled
+    @get:DrawableRes val MailFilled: Int get() = R.drawable.ms_mail_filled
+    @get:DrawableRes val SettingsFilled: Int get() = R.drawable.ms_settings_filled
+    @get:DrawableRes val LocationFilled: Int get() = R.drawable.ms_location_on_filled
+    @get:DrawableRes val FavoriteFilled: Int get() = R.drawable.ms_star_filled
     @get:DrawableRes val Bars: Int get() = R.drawable.ms_account_balance
     @get:DrawableRes val Mail: Int get() = R.drawable.ms_mail
     @get:DrawableRes val Settings: Int get() = R.drawable.ms_settings
