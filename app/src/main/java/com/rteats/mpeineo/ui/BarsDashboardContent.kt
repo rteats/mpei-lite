@@ -139,6 +139,7 @@ internal fun BarsNativeDashboard(
   state: BarsUiState,
   active: Boolean,
   onDetailOpenChange: (Boolean) -> Unit,
+  reselectRequest: Int = 0,
   openDisciplineName: String?,
   openDisciplineRequest: Int,
   onOpenDisciplineConsumed: () -> Unit,
@@ -181,6 +182,9 @@ internal fun BarsNativeDashboard(
     androidx.compose.runtime.mutableIntStateOf(-1)
   }
   val dashboardListState = rememberLazyListState()
+  androidx.compose.runtime.LaunchedEffect(reselectRequest) {
+    if (reselectRequest > 0) dashboardListState.animateScrollToItem(0)
+  }
   androidx.compose.runtime.LaunchedEffect(selectedSection) {
     dashboardListState.scrollToItem(0)
   }
