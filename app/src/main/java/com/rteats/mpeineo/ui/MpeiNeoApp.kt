@@ -158,7 +158,7 @@ fun MpeiNeoApp(
         closeMailBrowser()
     }
     BackHandler(enabled = currentTab != AppTab.SCHEDULE && !mailWebVisible &&
-        !(currentTab == AppTab.MAIL && (mailState.selected != null || mailState.composing))) {
+        !detailOpen) {
         openTab(AppTab.SCHEDULE)
     }
 
