@@ -182,8 +182,10 @@ internal fun BarsNativeDashboard(
     androidx.compose.runtime.mutableIntStateOf(-1)
   }
   val dashboardListState = rememberLazyListState()
+  var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
   androidx.compose.runtime.LaunchedEffect(reselectRequest) {
-    if (reselectRequest > 0) dashboardListState.animateScrollToItem(0)
+    if (reselectRequest != lastReselect) dashboardListState.animateScrollToItem(0)
+    lastReselect = reselectRequest
   }
   androidx.compose.runtime.LaunchedEffect(selectedSection) {
     dashboardListState.scrollToItem(0)
