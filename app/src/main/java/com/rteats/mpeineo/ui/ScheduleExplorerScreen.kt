@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -111,7 +112,8 @@ internal fun ScheduleExplorerScreen(
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .focusRequester(focus).testTag("schedule-target-query"),
                 leadingIcon = {
@@ -267,7 +269,8 @@ internal fun ScheduleExplorerScreen(
         } else {
             Surface(
                 onClick = { searching = true },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
                     .padding(horizontal = 16.dp, vertical = 10.dp)
                     .testTag("schedule-search-open"),
                 shape = RoundedCornerShape(24.dp),
