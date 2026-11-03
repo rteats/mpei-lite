@@ -46,6 +46,7 @@ internal fun BarsScreen(
     onAuthBrowserExit: () -> Unit = {},
     onSearch: () -> Unit = {},
     onDetailOpenChange: (Boolean) -> Unit = {},
+    reselectRequest: Int = 0,
     openDisciplineName: String? = null,
     openDisciplineRequest: Int = 0,
     onOpenDisciplineConsumed: () -> Unit = {},
@@ -78,6 +79,7 @@ internal fun BarsScreen(
             BarsNativeDashboard(
                 state = data, active = active,
                 onDetailOpenChange = onDetailOpenChange,
+                reselectRequest = reselectRequest,
                 openDisciplineName = openDisciplineName,
                 openDisciplineRequest = openDisciplineRequest,
                 onOpenDisciplineConsumed = onOpenDisciplineConsumed,
