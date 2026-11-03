@@ -248,6 +248,7 @@ fun MpeiNeoApp(
                     onEnsureWeek = viewModel::ensureAgendaWeek,
                     onRefreshWeek = viewModel::refreshAgendaWeek,
                     onRetryWeek = viewModel::retryAgendaWeek,
+                    reselectRequest = reselectRequest,
                     modifier = Modifier.fillMaxSize(),
                 )
                 AppTab.MAIL -> {
@@ -256,7 +257,9 @@ fun MpeiNeoApp(
                         loginViewModel = mailLoginViewModel,
                         active = !mailWebVisible,
                         onOpenPortal = { mailWebVisible = true },
-                        onSearch = {},
+                        searchRequest = mailSearchRequest,
+                        reselectRequest = reselectRequest,
+                        onFullScreenChange = { mailFullScreenOpen = it },
                         modifier = Modifier.fillMaxSize(),
                     )
                     SpatialScreenOverlay(visible = mailWebVisible) {
@@ -279,6 +282,7 @@ fun MpeiNeoApp(
                     interfaceTheme = interfaceTheme,
                     onInterfaceThemeChange = onInterfaceThemeChange,
                     navigationHaptics = navigationHaptics,
+                    reselectRequest = reselectRequest,
                     onNavigationHapticsChange = {
                         interfacePrefs.setNavigationHaptics(it)
                         navigationHaptics = it
@@ -294,7 +298,12 @@ fun MpeiNeoApp(
                             BarsSnapshotStore(application),
                         ),
                     )
-                    BarsScreen(viewModel = barsViewModel, modifier = Modifier.fillMaxSize())
+                    BarsScreen(
+                        viewModel = barsViewModel,
+                        reselectRequest = reselectRequest,
+                        onDetailOpenChange = { barsDetailOpen = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 }
             }
