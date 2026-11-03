@@ -2,6 +2,7 @@ package com.rteats.mpeineo.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -9,8 +10,14 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
+import androidx.compose.material3.ShortNavigationBarArrangement
+import androidx.compose.material3.NavigationItemIconPosition
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -20,11 +27,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -42,7 +51,7 @@ import com.rteats.mpeineo.data.BarsNetworkDiagnostics
 import com.rteats.mpeineo.data.BarsSnapshotStore
 
 /** Single bottom navigation shell with native BARS and no pager. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MpeiNeoApp(
     viewModel: MainViewModel,
@@ -75,9 +84,24 @@ fun MpeiNeoApp(
     }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS, AppTab.SETTINGS)
+    val widthDp = LocalConfiguration.current.screenWidthDp
+    val expandedWidth = widthDp >= 840
+    val compactWidth = widthDp < 600
+    var mailSearchRequest by remember { mutableIntStateOf(0) }
+    var reselectRequest by remember { mutableIntStateOf(0) }
+    var barsDetailOpen by remember { mutableStateOf(false) }
+    var mailFullScreenOpen by remember { mutableStateOf(false) }
+    val detailOpen = currentTab == AppTab.MAIL &&
+        (mailState.selected != null || mailState.composing || mailFullScreenOpen) ||
+        currentTab == AppTab.BARS && barsDetailOpen
+    val navigationVisible = !mailWebVisible && !detailOpen
 
     fun openTab(tab: AppTab) {
-        if (tab == currentTab) return
+        if (tab == currentTab) {
+            reselectRequest++
+            diagnostics.log("NAV", "reselect=" + tab.name)
+            return
+        }
         if (mailWebVisible) mailWebVisible = false
         diagnostics.log("NAV", "tab=" + tab.name + " from=" + currentTab.name)
         currentTab = tab
@@ -134,7 +158,7 @@ fun MpeiNeoApp(
         closeMailBrowser()
     }
     BackHandler(enabled = currentTab != AppTab.SCHEDULE && !mailWebVisible &&
-        !(currentTab == AppTab.MAIL && (mailState.selected != null || mailState.composing))) {
+        !detailOpen) {
         openTab(AppTab.SCHEDULE)
     }
 
@@ -142,7 +166,7 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (!mailWebVisible && currentTab != AppTab.SCHEDULE) TopAppBar(
+            if (!mailWebVisible && !detailOpen && currentTab != AppTab.SCHEDULE) TopAppBar(
                 title = {
                     Text(when (currentTab) {
                         AppTab.SCHEDULE -> "Расписание"
@@ -152,46 +176,69 @@ fun MpeiNeoApp(
                         AppTab.BARS -> "БАРС"
                     })
                 },
+                actions = {
+                    if (currentTab == AppTab.MAIL) {
+                        IconButton(
+                            onClick = { mailSearchRequest++ },
+                            modifier = Modifier.testTag("mail-search-open"),
+                        ) {
+                            AppIcon(AppIcons.Search, contentDescription = "Поиск писем")
+                        }
+                    }
+                },
                 modifier = Modifier.testTag("main-app-bar"),
             )
         },
         bottomBar = {
-            NavigationBar(modifier = Modifier.testTag("main-navigation-bar")) {
-                primaryTabs.forEach { tab ->
-                    val label = when (tab) {
-                        AppTab.SCHEDULE -> "Расписание"
-                        AppTab.MAIL -> "Почта"
-                        AppTab.MAPS -> "Карта"
-                        AppTab.SETTINGS -> "Настройки"
-                        AppTab.BARS -> "БАРС"
+            if (navigationVisible && !expandedWidth) {
+                ShortNavigationBar(
+                    modifier = Modifier.testTag("main-navigation-bar"),
+                    arrangement = if (compactWidth) ShortNavigationBarArrangement.EqualWeight
+                        else ShortNavigationBarArrangement.Centered,
+                ) {
+                    primaryTabs.forEach { tab ->
+                        val selected = currentTab == tab
+                        ShortNavigationBarItem(
+                            selected = selected,
+                            onClick = { openTab(tab) },
+                            icon = {
+                                MainNavigationIcon(
+                                    tab = tab, selected = selected,
+                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
+                                )
+                            },
+                            label = { Text(mainTabLabel(tab), maxLines = 1) },
+                            iconPosition = if (compactWidth) NavigationItemIconPosition.Top
+                                else NavigationItemIconPosition.Start,
+                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                        )
                     }
-                    val icon = when (tab) {
-                        AppTab.SCHEDULE -> AppIcons.Schedule
-                        AppTab.MAIL -> AppIcons.Mail
-                        AppTab.MAPS -> AppIcons.Location
-                        AppTab.SETTINGS -> AppIcons.Settings
-                        AppTab.BARS -> AppIcons.Bars
-                    }
-                    NavigationBarItem(
-                        selected = currentTab == tab,
-                        onClick = { openTab(tab) },
-                        icon = {
-                            if (tab == AppTab.MAIL && mailState.configured &&
-                                mailState.items.any { it.unread }) {
-                                BadgedBox(badge = { Badge() }) {
-                                    AppIcon(icon, contentDescription = label)
-                                }
-                            } else AppIcon(icon, contentDescription = label)
-                        },
-                        label = null,
-                        modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
-                    )
                 }
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (currentTab) {
+        Row(Modifier.fillMaxSize().padding(padding)) {
+            if (navigationVisible && expandedWidth) {
+                NavigationRail(modifier = Modifier.testTag("main-navigation-rail")) {
+                    primaryTabs.forEach { tab ->
+                        val selected = currentTab == tab
+                        NavigationRailItem(
+                            selected = selected,
+                            onClick = { openTab(tab) },
+                            icon = {
+                                MainNavigationIcon(
+                                    tab = tab, selected = selected,
+                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
+                                )
+                            },
+                            label = { Text(mainTabLabel(tab), maxLines = 1) },
+                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                        )
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxSize()) {
+                when (currentTab) {
                 AppTab.SCHEDULE -> ScheduleExplorerScreen(
                     state = scheduleState,
                     onQueryChange = viewModel::updateSearchQuery,
@@ -201,6 +248,7 @@ fun MpeiNeoApp(
                     onEnsureWeek = viewModel::ensureAgendaWeek,
                     onRefreshWeek = viewModel::refreshAgendaWeek,
                     onRetryWeek = viewModel::retryAgendaWeek,
+                    reselectRequest = reselectRequest,
                     modifier = Modifier.fillMaxSize(),
                 )
                 AppTab.MAIL -> {
@@ -209,7 +257,9 @@ fun MpeiNeoApp(
                         loginViewModel = mailLoginViewModel,
                         active = !mailWebVisible,
                         onOpenPortal = { mailWebVisible = true },
-                        onSearch = {},
+                        searchRequest = mailSearchRequest,
+                        reselectRequest = reselectRequest,
+                        onFullScreenChange = { mailFullScreenOpen = it },
                         modifier = Modifier.fillMaxSize(),
                     )
                     SpatialScreenOverlay(visible = mailWebVisible) {
@@ -232,6 +282,7 @@ fun MpeiNeoApp(
                     interfaceTheme = interfaceTheme,
                     onInterfaceThemeChange = onInterfaceThemeChange,
                     navigationHaptics = navigationHaptics,
+                    reselectRequest = reselectRequest,
                     onNavigationHapticsChange = {
                         interfacePrefs.setNavigationHaptics(it)
                         navigationHaptics = it
@@ -247,9 +298,41 @@ fun MpeiNeoApp(
                             BarsSnapshotStore(application),
                         ),
                     )
-                    BarsScreen(viewModel = barsViewModel, modifier = Modifier.fillMaxSize())
+                    BarsScreen(
+                        viewModel = barsViewModel,
+                        reselectRequest = reselectRequest,
+                        onDetailOpenChange = { barsDetailOpen = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 }
             }
         }
+    }
+}
+
+private fun mainTabLabel(tab: AppTab): String = when (tab) {
+    AppTab.SCHEDULE -> "Пары"
+    AppTab.MAIL -> "Почта"
+    AppTab.BARS -> "БАРС"
+    AppTab.MAPS -> "Карта"
+    AppTab.SETTINGS -> "Настройки"
+}
+
+@Composable
+private fun MainNavigationIcon(tab: AppTab, selected: Boolean, unreadMail: Boolean) {
+    val icon = when (tab) {
+        AppTab.SCHEDULE -> if (selected) AppIcons.ScheduleFilled else AppIcons.Schedule
+        AppTab.MAIL -> if (selected) AppIcons.MailFilled else AppIcons.Mail
+        AppTab.BARS -> if (selected) AppIcons.BarsFilled else AppIcons.Bars
+        AppTab.MAPS -> if (selected) AppIcons.LocationFilled else AppIcons.Location
+        AppTab.SETTINGS -> if (selected) AppIcons.SettingsFilled else AppIcons.Settings
+    }
+    if (tab == AppTab.MAIL && unreadMail) {
+        BadgedBox(badge = { Badge() }) {
+            AppIcon(icon, contentDescription = null)
+        }
+    } else {
+        AppIcon(icon, contentDescription = null)
     }
 }

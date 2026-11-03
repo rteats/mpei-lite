@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +49,7 @@ internal fun BarsScreen(
     onAuthBrowserExit: () -> Unit = {},
     onSearch: () -> Unit = {},
     onDetailOpenChange: (Boolean) -> Unit = {},
+    reselectRequest: Int = 0,
     openDisciplineName: String? = null,
     openDisciplineRequest: Int = 0,
     onOpenDisciplineConsumed: () -> Unit = {},
@@ -60,8 +64,14 @@ internal fun BarsScreen(
     LaunchedEffect(active) {
         if (active) auth.start()
     }
+    LaunchedEffect(login.forceLogin, data.disciplines.isEmpty()) {
+        if (login.forceLogin || data.disciplines.isEmpty()) {
+            onDetailOpenChange(false)
+        }
+    }
 
-    Box(modifier.fillMaxSize().testTag("bars-screen")) {
+    Box(modifier.fillMaxSize().testTag("bars-screen"),
+        contentAlignment = Alignment.TopCenter) {
         if (login.forceLogin || data.disciplines.isEmpty()) {
             BarsCredentialsForm(
                 status = login,
@@ -78,6 +88,7 @@ internal fun BarsScreen(
             BarsNativeDashboard(
                 state = data, active = active,
                 onDetailOpenChange = onDetailOpenChange,
+                reselectRequest = reselectRequest,
                 openDisciplineName = openDisciplineName,
                 openDisciplineRequest = openDisciplineRequest,
                 onOpenDisciplineConsumed = onOpenDisciplineConsumed,
@@ -118,7 +129,8 @@ private fun BarsCredentialsForm(
     var rememberLogin by remember { mutableStateOf(true) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        Modifier.widthIn(max = 560.dp).fillMaxWidth().fillMaxHeight()
+            .verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Вход в БАРС", style = MaterialTheme.typography.headlineSmall)

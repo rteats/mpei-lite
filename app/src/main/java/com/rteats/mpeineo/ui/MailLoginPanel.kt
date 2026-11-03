@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
@@ -52,7 +53,8 @@ internal fun MailLoginPanel(
         loginViewModel.login(account, submitted, rememberLogin, onAuthenticated)
     }
     Surface(
-        modifier = modifier.fillMaxWidth().testTag("mail-native-login"),
+        modifier = modifier.widthIn(max = 520.dp).fillMaxWidth()
+            .testTag("mail-native-login"),
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(

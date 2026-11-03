@@ -227,7 +227,8 @@ internal fun GlobalSearchScreen(
                                     }
                                     IconButton(onClick = { onToggleFavorite(target) }) {
                                         AppIcon(
-                                            AppIcons.Favorite,
+                                            if (target.favoriteKey() in favorites) AppIcons.FavoriteFilled
+                                                else AppIcons.Favorite,
                                             if (target.favoriteKey() in favorites)
                                                 "Удалить из избранного" else "В избранное",
                                             tint = if (target.favoriteKey() in favorites)
