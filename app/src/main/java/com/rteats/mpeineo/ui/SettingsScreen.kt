@@ -395,17 +395,7 @@ internal fun SettingsScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
-                if (mailState.configured) {
-                    SettingsAction(
-                        "Выйти из ОСЭП",
-                        "Удалить локальную сессию ОСЭП и сохранённые письма",
-                        AppIcons.Logout,
-                        onClick = {
-                            mailViewModel.logout()
-                            notificationsEnabled = false
-                        },
-                    )
-                } else {
+                if (!mailState.configured) {
                     Text("Для уведомлений сначала войдите в ОСЭП через вкладку почты.",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
