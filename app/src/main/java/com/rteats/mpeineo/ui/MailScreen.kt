@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,6 +32,9 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonDefaults
@@ -89,6 +93,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import com.rteats.mpeineo.R
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -536,9 +541,8 @@ internal fun MailScreen(
 
 
 /**
- * Medium connected group at the start of the message list.
- * Folder controls share all flexible width; actions have fixed 48 dp hit targets.
- * Uses M3 connected shapes and checked state rather than a second top app bar.
+ * Medium-size Mail controls: exclusive folder choice and separate icon actions.
+ * On narrow layouts / large fonts, low-priority actions move to the trailing menu.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -549,70 +553,84 @@ internal fun MailFolderActionGroup(
     onRequestLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var overflowExpanded by remember { mutableStateOf(false) }
     val height = ButtonDefaults.MediumContainerHeight
-    val neutralColors = ToggleButtonDefaults.colors(
+    val colors = ToggleButtonDefaults.colors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
     )
-    val actionColors = ButtonDefaults.buttonColors(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    )
-    Row(
-        modifier = modifier.testTag("mail-folder-button-group"),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        listOf(
-            Triple(OwaMailFolder.INBOX, "Входящие", AppIcons.Mail),
-            Triple(OwaMailFolder.SENT, "Отправленные", AppIcons.Forward),
-        ).forEachIndexed { index, (folder, title, icon) ->
-            ToggleButton(
-                checked = selectedFolder == folder,
-                onCheckedChange = {
-                    if (selectedFolder != folder) onSelectFolder(folder)
-                },
-                modifier = Modifier.weight(if (folder == OwaMailFolder.SENT) 1.15f else 0.85f)
-                    .height(height)
-                    .semantics { role = Role.RadioButton }
-                    .testTag(if (folder == OwaMailFolder.INBOX)
-                        "mail-folder-inbox" else "mail-folder-sent"),
-                shapes = if (index == 0)
-                    ButtonGroupDefaults.connectedLeadingButtonShapes()
-                else ButtonGroupDefaults.connectedMiddleButtonShapes(),
-                colors = neutralColors,
-                contentPadding = PaddingValues(horizontal = 4.dp),
-            ) {
-                AppIcon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(3.dp))
-                Text(
-                    title, maxLines = 1, softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium,
-                )
+    BoxWithConstraints(modifier.testTag("mail-folder-button-group")) {
+        val collapseActions = maxWidth < 350.dp || LocalDensity.current.fontScale > 1.3f
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                Triple(OwaMailFolder.INBOX, "Входящие", AppIcons.Mail),
+                Triple(OwaMailFolder.SENT, "Отправленные", AppIcons.Forward),
+            ).forEachIndexed { index, (folder, title, icon) ->
+                ToggleButton(
+                    checked = selectedFolder == folder,
+                    onCheckedChange = {
+                        if (selectedFolder != folder) onSelectFolder(folder)
+                    },
+                    modifier = Modifier.weight(
+                        if (folder == OwaMailFolder.SENT) 1.15f else 0.85f,
+                    ).height(height)
+                        .semantics { role = Role.RadioButton }
+                        .testTag(if (folder == OwaMailFolder.INBOX)
+                            "mail-folder-inbox" else "mail-folder-sent"),
+                    shapes = if (index == 0)
+                        ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    else ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                    colors = colors,
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                ) {
+                    AppIcon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        title, maxLines = 1, softWrap = false,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
             }
-        }
-        Button(
-            onClick = onOpenPortal,
-            modifier = Modifier.width(48.dp).height(height)
-                .testTag("portal-header-ОСЭП"),
-            shape = ButtonGroupDefaults.connectedMiddleButtonShapes().shape,
-            colors = actionColors,
-            contentPadding = PaddingValues(0.dp),
-        ) {
-            AppIcon(AppIcons.OpenPortal, contentDescription = "Открыть ОСЭП",
-                modifier = Modifier.size(22.dp))
-        }
-        Button(
-            onClick = onRequestLogout,
-            modifier = Modifier.width(48.dp).height(height)
-                .testTag("mail-logout-open"),
-            shape = ButtonGroupDefaults.connectedTrailingButtonShapes().shape,
-            colors = actionColors,
-            contentPadding = PaddingValues(0.dp),
-        ) {
-            AppIcon(AppIcons.Logout, contentDescription = "Выйти из ОСЭП",
-                modifier = Modifier.size(22.dp))
+            if (collapseActions) {
+                Box {
+                    FilledTonalIconButton(
+                        onClick = { overflowExpanded = true },
+                        modifier = Modifier.size(48.dp).testTag("mail-actions-overflow"),
+                    ) {
+                        AppIcon(AppIcons.Overflow, contentDescription = "Действия почты")
+                    }
+                    DropdownMenu(
+                        expanded = overflowExpanded,
+                        onDismissRequest = { overflowExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Открыть ОСЭП") },
+                            onClick = { overflowExpanded = false; onOpenPortal() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Выйти из ОСЭП") },
+                            onClick = { overflowExpanded = false; onRequestLogout() },
+                        )
+                    }
+                }
+            } else {
+                FilledTonalIconButton(
+                    onClick = onOpenPortal,
+                    modifier = Modifier.size(48.dp).testTag("portal-header-ОСЭП"),
+                ) {
+                    AppIcon(AppIcons.OpenPortal, contentDescription = "Открыть ОСЭП")
+                }
+                FilledTonalIconButton(
+                    onClick = onRequestLogout,
+                    modifier = Modifier.size(48.dp).testTag("mail-logout-open"),
+                ) {
+                    AppIcon(AppIcons.Logout, contentDescription = "Выйти из ОСЭП")
+                }
+            }
         }
     }
 }
