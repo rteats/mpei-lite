@@ -268,8 +268,10 @@ internal fun SettingsScreen(
     }
 
     val settingsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
-        if (reselectRequest > 0) settingsListState.animateScrollToItem(0)
+        if (reselectRequest != lastReselect) settingsListState.animateScrollToItem(0)
+        lastReselect = reselectRequest
     }
     LazyColumn(
         state = settingsListState,
@@ -353,8 +355,7 @@ internal fun SettingsScreen(
                     Text("Интервал проверки",
                         modifier = Modifier.padding(start = 12.dp, top = 4.dp),
                         style = MaterialTheme.typography.labelLarge)
-                    // Compose Material Catalog's single-select FlowRow
-                    // using connected shapes and visible tonal segments.
+                    // Single-row connected selection with horizontal scroll at large font scales.
                     val intervals = listOf(15, 30, 60)
                     Row(
                         modifier = Modifier.fillMaxWidth()
@@ -363,7 +364,6 @@ internal fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(
                             ButtonGroupDefaults.ConnectedSpaceBetween,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         intervals.forEachIndexed { index, minutes ->
                             ToggleButton(
