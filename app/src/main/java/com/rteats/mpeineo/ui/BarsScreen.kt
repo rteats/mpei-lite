@@ -61,6 +61,11 @@ internal fun BarsScreen(
     LaunchedEffect(active) {
         if (active) auth.start()
     }
+    LaunchedEffect(login.forceLogin, data.disciplines.isEmpty()) {
+        if (login.forceLogin || data.disciplines.isEmpty()) {
+            onDetailOpenChange(false)
+        }
+    }
 
     Box(modifier.fillMaxSize().testTag("bars-screen")) {
         if (login.forceLogin || data.disciplines.isEmpty()) {
