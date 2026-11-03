@@ -499,7 +499,7 @@ internal fun MailScreen(
  * Folder controls share all flexible width; actions have fixed 48 dp hit targets.
  * Uses M3 connected shapes and checked state rather than a second top app bar.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailFolderActionGroup(
     selectedFolder: OwaMailFolder,
@@ -531,7 +531,7 @@ internal fun MailFolderActionGroup(
                 onCheckedChange = {
                     if (selectedFolder != folder) onSelectFolder(folder)
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(if (folder == OwaMailFolder.SENT) 1.15f else 0.85f)
                     .height(height)
                     .semantics { role = Role.RadioButton }
                     .testTag(if (folder == OwaMailFolder.INBOX)
@@ -540,10 +540,10 @@ internal fun MailFolderActionGroup(
                     ButtonGroupDefaults.connectedLeadingButtonShapes()
                 else ButtonGroupDefaults.connectedMiddleButtonShapes(),
                 colors = neutralColors,
-                contentPadding = PaddingValues(horizontal = 6.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp),
             ) {
-                AppIcon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
+                AppIcon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(3.dp))
                 Text(
                     title, maxLines = 1, softWrap = false,
                     overflow = TextOverflow.Ellipsis,
