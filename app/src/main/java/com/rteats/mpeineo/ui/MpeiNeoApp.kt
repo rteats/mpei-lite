@@ -3,9 +3,15 @@ package com.rteats.mpeineo.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -18,6 +24,7 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -160,86 +167,104 @@ fun MpeiNeoApp(
         openTab(AppTab.SCHEDULE)
     }
 
-    Scaffold(
-        modifier = Modifier.imePadding(),
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            if (!mailWebVisible && !detailOpen) {
-                if (currentTab == AppTab.MAIL) {
-                    MailSearchAppBar(
-                        mail = mailState,
-                        onOpen = { hit ->
-                            mailViewModel.switchMailbox(hit.folder)
-                            mailViewModel.open(hit.message)
+    val railVisible = navigationVisible && expandedWidth
+    Row(Modifier.fillMaxSize()) {
+        if (railVisible) {
+            NavigationRail(modifier = Modifier.testTag("main-navigation-rail")) {
+                primaryTabs.forEach { tab ->
+                    val selected = currentTab == tab
+                    NavigationRailItem(
+                        selected = selected,
+                        onClick = { openTab(tab) },
+                        icon = {
+                            MainNavigationIcon(
+                                tab = tab, selected = selected,
+                                unreadMail = mailState.configured && mailState.items.any { it.unread },
+                            )
                         },
-                        onOpenPortal = { mailWebVisible = true },
-                        onLogout = mailViewModel::logout,
-                    )
-                } else if (currentTab != AppTab.SCHEDULE) {
-                    TopAppBar(
-                        title = {
-                            Text(when (currentTab) {
-                                AppTab.SCHEDULE -> "Расписание"
-                                AppTab.MAIL -> "Почта"
-                                AppTab.MAPS -> "Карта"
-                                AppTab.SETTINGS -> "Настройки"
-                                AppTab.BARS -> "БАРС"
-                            })
-                        },
-                        modifier = Modifier.testTag("main-app-bar"),
+                        label = { Text(mainTabLabel(tab), maxLines = 1) },
+                        modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
                     )
                 }
             }
-        },
-        bottomBar = {
-            if (navigationVisible && !expandedWidth) {
-                ShortNavigationBar(
-                    modifier = Modifier.testTag("main-navigation-bar"),
-                    arrangement = if (compactWidth) ShortNavigationBarArrangement.EqualWeight
-                        else ShortNavigationBarArrangement.Centered,
-                ) {
-                    primaryTabs.forEach { tab ->
-                        val selected = currentTab == tab
-                        ShortNavigationBarItem(
-                            selected = selected,
-                            onClick = { openTab(tab) },
-                            icon = {
-                                MainNavigationIcon(
-                                    tab = tab, selected = selected,
-                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
-                                )
+        }
+        Scaffold(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .then(
+                    if (railVisible) {
+                        Modifier.consumeWindowInsets(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Start),
+                        )
+                    } else Modifier,
+                ),
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = if (railVisible) {
+                ScaffoldDefaults.contentWindowInsets.only(
+                    WindowInsetsSides.Top + WindowInsetsSides.End + WindowInsetsSides.Bottom,
+                )
+            } else ScaffoldDefaults.contentWindowInsets,
+            topBar = {
+                if (!mailWebVisible && !detailOpen) {
+                    if (currentTab == AppTab.MAIL) {
+                        MailSearchAppBar(
+                            mail = mailState,
+                            onOpen = { hit ->
+                                mailViewModel.switchMailbox(hit.folder)
+                                mailViewModel.open(hit.message)
                             },
-                            label = { Text(mainTabLabel(tab), maxLines = 1) },
-                            iconPosition = if (compactWidth) NavigationItemIconPosition.Top
-                                else NavigationItemIconPosition.Start,
-                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                            onOpenPortal = { mailWebVisible = true },
+                            onLogout = mailViewModel::logout,
+                        )
+                    } else if (currentTab != AppTab.SCHEDULE) {
+                        TopAppBar(
+                            title = {
+                                Text(when (currentTab) {
+                                    AppTab.SCHEDULE -> "Расписание"
+                                    AppTab.MAIL -> "Почта"
+                                    AppTab.MAPS -> "Карта"
+                                    AppTab.SETTINGS -> "Настройки"
+                                    AppTab.BARS -> "БАРС"
+                                })
+                            },
+                            modifier = Modifier.testTag("main-app-bar"),
                         )
                     }
                 }
-            }
-        },
-    ) { padding ->
-        Row(Modifier.fillMaxSize().padding(padding)) {
-            if (navigationVisible && expandedWidth) {
-                NavigationRail(modifier = Modifier.testTag("main-navigation-rail")) {
-                    primaryTabs.forEach { tab ->
-                        val selected = currentTab == tab
-                        NavigationRailItem(
-                            selected = selected,
-                            onClick = { openTab(tab) },
-                            icon = {
-                                MainNavigationIcon(
-                                    tab = tab, selected = selected,
-                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
-                                )
-                            },
-                            label = { Text(mainTabLabel(tab), maxLines = 1) },
-                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
-                        )
+            },
+            bottomBar = {
+                if (navigationVisible && !expandedWidth) {
+                    ShortNavigationBar(
+                        modifier = Modifier.testTag("main-navigation-bar"),
+                        arrangement = if (compactWidth) ShortNavigationBarArrangement.EqualWeight
+                            else ShortNavigationBarArrangement.Centered,
+                    ) {
+                        primaryTabs.forEach { tab ->
+                            val selected = currentTab == tab
+                            ShortNavigationBarItem(
+                                selected = selected,
+                                onClick = { openTab(tab) },
+                                icon = {
+                                    MainNavigationIcon(
+                                        tab = tab, selected = selected,
+                                        unreadMail = mailState.configured && mailState.items.any { it.unread },
+                                    )
+                                },
+                                label = { Text(mainTabLabel(tab), maxLines = 1) },
+                                iconPosition = if (compactWidth) NavigationItemIconPosition.Top
+                                    else NavigationItemIconPosition.Start,
+                                modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                            )
+                        }
                     }
                 }
-            }
-            Box(Modifier.weight(1f).fillMaxSize()) {
+            },
+        ) { padding ->
+            Box(
+                Modifier.fillMaxSize().padding(padding)
+                    .consumeWindowInsets(padding).imePadding(),
+            ) {
                 when (currentTab) {
                 AppTab.SCHEDULE -> ScheduleExplorerScreen(
                     state = scheduleState,
