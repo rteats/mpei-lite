@@ -87,9 +87,11 @@ internal fun ScheduleExplorerScreen(
         searching = false
     }
 
+    var agendaJumpRequest by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
         if (reselectRequest != lastReselect) {
+            agendaJumpRequest++
             searching = false
             focusManager.clearFocus()
             keyboard?.hide()
@@ -304,7 +306,7 @@ internal fun ScheduleExplorerScreen(
                         onViewedAgendaWeek = {},
                         onAgendaScrollingChanged = {},
                         onLocateRoom = {},
-                        todayJumpRequest = reselectRequest,
+                        todayJumpRequest = agendaJumpRequest,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
