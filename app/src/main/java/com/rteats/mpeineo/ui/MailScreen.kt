@@ -32,6 +32,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ListItem
@@ -45,7 +47,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -119,6 +120,7 @@ internal fun MailScreen(
     val state by viewModel.state.collectAsState()
     val loginState by loginViewModel.status.collectAsState()
     var showLoginPage by rememberSaveable { mutableStateOf(false) }
+    var confirmLogout by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
     LaunchedEffect(state.loginRequired) {
         if (!state.loginRequired) showLoginPage = false
@@ -191,6 +193,29 @@ internal fun MailScreen(
     }
     BackHandler(enabled = active && !showLoginPage && !state.composing && state.selected != null) {
         viewModel.closeMessage()
+    }
+
+    if (confirmLogout) {
+        AlertDialog(
+            onDismissRequest = { confirmLogout = false },
+            title = { Text("Выйти из ОСЭП?") },
+            text = {
+                Text("Сохранённые письма, сессия и данные для автоматического входа будут удалены.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmLogout = false
+                        showLoginPage = false
+                        viewModel.logout()
+                    },
+                    modifier = Modifier.testTag("mail-logout-confirm"),
+                ) { Text("Выйти") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmLogout = false }) { Text("Отмена") }
+            },
+        )
     }
 
     Scaffold(
@@ -318,60 +343,15 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                stickyHeader(key = "inbox-search") {
-                                    Surface(color = MaterialTheme.colorScheme.background) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth()
-                                                .padding(bottom = 6.dp),
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(
-                                                    ButtonGroupDefaults.ConnectedSpaceBetween,
-                                                ),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                listOf(
-                                                    OwaMailFolder.INBOX to "Входящие",
-                                                    OwaMailFolder.SENT to "Отправленные",
-                                                ).forEachIndexed { index, (folder, label) ->
-                                                    ToggleButton(
-                                                        checked = state.mailbox == folder,
-                                                        onCheckedChange = {
-                                                            if (state.mailbox != folder) {
-                                                                viewModel.switchMailbox(folder)
-                                                            }
-                                                        },
-                                                        modifier = Modifier.weight(1f)
-                                                            .semantics { role = Role.RadioButton }
-                                                            .testTag(if (folder == OwaMailFolder.INBOX)
-                                                                "mail-folder-inbox" else "mail-folder-sent"),
-                                                        shapes = if (index == 0)
-                                                            ButtonGroupDefaults.connectedLeadingButtonShapes()
-                                                        else ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                                                        colors = ToggleButtonDefaults.colors(
-                                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                            contentColor = MaterialTheme.colorScheme.onSurface,
-                                                        ),
-                                                    ) {
-                                                        Text(label, maxLines = 1)
-                                                    }
-                                                }
-                                                // A secondary portal action belongs with Mail's folder controls,
-                                                // not in its own mostly empty row above the mailbox.
-                                                FilledTonalIconButton(
-                                                    onClick = onOpenPortal,
-                                                    modifier = Modifier.size(48.dp)
-                                                        .testTag("portal-header-ОСЭП"),
-                                                ) {
-                                                    AppIcon(
-                                                        AppIcons.OpenPortal,
-                                                        contentDescription = "Открыть ОСЭП",
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                item(key = "mail-action-group") {
+                                    MailFolderActionGroup(
+                                        selectedFolder = state.mailbox,
+                                        onSelectFolder = viewModel::switchMailbox,
+                                        onOpenPortal = onOpenPortal,
+                                        onRequestLogout = { confirmLogout = true },
+                                        modifier = Modifier.fillMaxWidth()
+                                            .padding(bottom = 6.dp),
+                                    )
                                 }
                                 if (visibleMessages.isEmpty()) {
                                     item(key = "empty-inbox") {
@@ -509,6 +489,89 @@ internal fun MailScreen(
                 }
             }
         }
+        }
+    }
+}
+
+
+/**
+ * Medium connected group at the start of the message list.
+ * Folder controls share all flexible width; actions have fixed 48 dp hit targets.
+ * Uses M3 connected shapes and checked state rather than a second top app bar.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun MailFolderActionGroup(
+    selectedFolder: OwaMailFolder,
+    onSelectFolder: (OwaMailFolder) -> Unit,
+    onOpenPortal: () -> Unit,
+    onRequestLogout: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val height = ButtonDefaults.MediumContainerHeight
+    val neutralColors = ToggleButtonDefaults.colors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    )
+    val actionColors = ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    )
+    Row(
+        modifier = modifier.testTag("mail-folder-button-group"),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            Triple(OwaMailFolder.INBOX, "Входящие", AppIcons.Mail),
+            Triple(OwaMailFolder.SENT, "Отправленные", AppIcons.Forward),
+        ).forEachIndexed { index, (folder, title, icon) ->
+            ToggleButton(
+                checked = selectedFolder == folder,
+                onCheckedChange = {
+                    if (selectedFolder != folder) onSelectFolder(folder)
+                },
+                modifier = Modifier.weight(if (folder == OwaMailFolder.SENT) 1.15f else 0.85f)
+                    .height(height)
+                    .semantics { role = Role.RadioButton }
+                    .testTag(if (folder == OwaMailFolder.INBOX)
+                        "mail-folder-inbox" else "mail-folder-sent"),
+                shapes = if (index == 0)
+                    ButtonGroupDefaults.connectedLeadingButtonShapes()
+                else ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                colors = neutralColors,
+                contentPadding = PaddingValues(horizontal = 4.dp),
+            ) {
+                AppIcon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    title, maxLines = 1, softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+        Button(
+            onClick = onOpenPortal,
+            modifier = Modifier.width(48.dp).height(height)
+                .testTag("portal-header-ОСЭП"),
+            shape = ButtonGroupDefaults.connectedMiddleButtonShapes().shape,
+            colors = actionColors,
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            AppIcon(AppIcons.OpenPortal, contentDescription = "Открыть ОСЭП",
+                modifier = Modifier.size(22.dp))
+        }
+        Button(
+            onClick = onRequestLogout,
+            modifier = Modifier.width(48.dp).height(height)
+                .testTag("mail-logout-open"),
+            shape = ButtonGroupDefaults.connectedTrailingButtonShapes().shape,
+            colors = actionColors,
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            AppIcon(AppIcons.Logout, contentDescription = "Выйти из ОСЭП",
+                modifier = Modifier.size(22.dp))
         }
     }
 }

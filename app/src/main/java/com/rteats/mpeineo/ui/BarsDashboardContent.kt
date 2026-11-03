@@ -75,6 +75,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -149,6 +150,11 @@ internal fun BarsNativeDashboard(
   onSearch: () -> Unit = {},
 ) {
   var selectedDisciplineName by rememberSaveable { mutableStateOf<String?>(null) }
+  // A swipe-completed detail keeps a full-width horizontal offset until removal.
+  // Every new open must own fresh gesture/animation state, even for the same class.
+  var detailOpenSerial by rememberSaveable {
+    androidx.compose.runtime.mutableIntStateOf(0)
+  }
   var focusDisciplineName by remember { mutableStateOf<String?>(null) }
   var destinationFocusSerial by remember {
     androidx.compose.runtime.mutableIntStateOf(0)
@@ -158,6 +164,7 @@ internal fun BarsNativeDashboard(
     // BARS should highlight the destination.
     focusDisciplineName = if (fromLink) name else null
     if (fromLink) destinationFocusSerial++
+    detailOpenSerial++
     selectedDisciplineName = name
   }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
@@ -369,33 +376,35 @@ internal fun BarsNativeDashboard(
     ) {
       val expandedDiscipline = selectedDiscipline ?: retainedDiscipline
       if (expandedDiscipline != null) {
-        SwipeBackDetail(
-          onBack = ::closeDetail,
-          modifier = Modifier.testTag("bars-detail-swipe-back"),
-        ) {
-        Surface(
-          modifier = Modifier.fillMaxSize(),
-          color = MaterialTheme.colorScheme.background,
-        ) {
-          val planKey = autoScenarioKey(
-            expandedDiscipline,
-            account = state.profileName + "|" + state.profileGroup,
-            semester = state.semester,
-          )
-          DisciplineExpandedCard(
-            discipline = expandedDiscipline,
-            focusRequestId = destinationFocusSerial.takeIf {
-              focusDisciplineName == expandedDiscipline.disciplineName
-            },
-            changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
-            savedAutoScenario = autoScenarios[planKey],
-            onAutoScenarioChange = { encoded ->
-              autoScenarios = (autoScenarios + (planKey to encoded))
-                .toList().takeLast(32).toMap()
-            },
-            onCollapse = ::closeDetail,
-          )
-        }
+        key(detailOpenSerial) {
+          SwipeBackDetail(
+            onBack = ::closeDetail,
+            modifier = Modifier.testTag("bars-detail-swipe-back"),
+          ) {
+          Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+          ) {
+            val planKey = autoScenarioKey(
+              expandedDiscipline,
+              account = state.profileName + "|" + state.profileGroup,
+              semester = state.semester,
+            )
+            DisciplineExpandedCard(
+              discipline = expandedDiscipline,
+              focusRequestId = destinationFocusSerial.takeIf {
+                focusDisciplineName == expandedDiscipline.disciplineName
+              },
+              changes = state.gradeChanges[expandedDiscipline.disciplineName].orEmpty(),
+              savedAutoScenario = autoScenarios[planKey],
+              onAutoScenarioChange = { encoded ->
+                autoScenarios = (autoScenarios + (planKey to encoded))
+                  .toList().takeLast(32).toMap()
+              },
+              onCollapse = ::closeDetail,
+            )
+          }
+          }
         }
       }
     }
