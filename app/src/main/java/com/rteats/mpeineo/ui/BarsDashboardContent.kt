@@ -22,7 +22,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -217,14 +216,8 @@ internal fun BarsNativeDashboard(
     focusDisciplineName = null
   }
 
-  BackHandler(
-    enabled = active && selectedDiscipline != null && !state.browserVisible,
-  ) {
-    closeDetail()
-  }
-
-  // The overview stays mounted behind its detail so a right swipe exposes
-  // the actual previous page. The same BackSlideState drives touch and Back.
+  // The overview stays mounted behind its detail so the back gesture exposes
+  // the actual previous page. PredictiveBackDetail below owns Back for the detail.
   Box(modifier = Modifier.fillMaxSize()) {
       val refreshState = rememberPullToRefreshState()
       PullToRefreshBox(
@@ -383,8 +376,9 @@ internal fun BarsNativeDashboard(
       val expandedDiscipline = selectedDiscipline ?: retainedDiscipline
       if (expandedDiscipline != null) {
         key(detailOpenSerial) {
-          SwipeBackDetail(
+          PredictiveBackDetail(
             onBack = ::closeDetail,
+            enabled = active && selectedDiscipline != null && !state.browserVisible,
             modifier = Modifier.testTag("bars-detail-swipe-back"),
           ) {
           Surface(
