@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rteats.mpeineo.ui.BarsActivity
 import com.rteats.mpeineo.ui.BarsActivityType
@@ -54,6 +56,44 @@ class BarsTaskFlowUiTest {
         rule.onNodeWithTag("bars-auto-info").performClick()
         rule.onNodeWithTag("bars-auto-info-sheet").assertExists()
         rule.onNodeWithText("Как работает «Автомат»").assertExists()
+    }
+
+    @Test fun swipeBackAllowsReopeningAnotherDisciplineAndSameDiscipline() {
+        rule.setContent { MpeiNeoTheme {
+            BarsNativeDashboard(
+                state = BarsUiState(
+                    isLoading = false,
+                    profileName = "Студент",
+                    disciplines = listOf(
+                        sampleDiscipline(),
+                        sampleDiscipline().copy(disciplineName = "Математика"),
+                    ),
+                ),
+                active = true,
+                onDetailOpenChange = {},
+                openDisciplineName = null,
+                openDisciplineRequest = 0,
+                onOpenDisciplineConsumed = {},
+                showCachedRefreshErrors = false,
+                onRefresh = {},
+                onOpenBrowser = {},
+                onAcknowledgeGrades = {},
+                onRefreshSummary = {},
+            )
+        } }
+
+        rule.onNodeWithTag("bars-discipline-Физика").performClick()
+        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
+        rule.onNodeWithTag("bars-detail-swipe-back").performTouchInput { swipeRight() }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("bars-discipline-Математика").performClick()
+        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
+        rule.onNodeWithTag("bars-detail-swipe-back").performTouchInput { swipeRight() }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("bars-discipline-Физика").performClick()
+        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
     }
 
     private fun sampleDiscipline() = BarsDiscipline(
