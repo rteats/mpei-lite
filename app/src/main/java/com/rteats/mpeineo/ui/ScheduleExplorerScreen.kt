@@ -87,12 +87,14 @@ internal fun ScheduleExplorerScreen(
         searching = false
     }
 
+    var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
-        if (reselectRequest > 0) {
+        if (reselectRequest != lastReselect) {
             searching = false
             focusManager.clearFocus()
             keyboard?.hide()
         }
+        lastReselect = reselectRequest
     }
     BackHandler(searching) {
         focusManager.clearFocus()
