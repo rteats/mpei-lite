@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,6 +26,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
@@ -299,20 +307,34 @@ internal object BarsReportParser {
     }
 }
 
-/** In-view navigation, not a second app bar or a nested screen. */
+/** Report navigation is one exclusive view selector, not a set of data filters. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun BarsReportChooser(selected: String, onSelected: (String) -> Unit) {
+    val sections = BarsOverviewSection.entries
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
-        BarsOverviewSection.entries.forEach { section ->
-            FilterChip(
-                selected = selected == section.key,
-                onClick = { onSelected(section.key) },
-                label = { Text(section.title) },
-            )
+        sections.forEachIndexed { index, section ->
+            ToggleButton(
+                checked = selected == section.key,
+                onCheckedChange = {
+                    if (selected != section.key) onSelected(section.key)
+                },
+                modifier = Modifier.semantics { role = Role.RadioButton },
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    sections.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
+                colors = ToggleButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) { Text(section.title, maxLines = 1) }
         }
     }
 }
