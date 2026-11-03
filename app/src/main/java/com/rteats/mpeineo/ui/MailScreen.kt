@@ -8,7 +8,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,15 +31,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
-import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.Checkbox
@@ -50,6 +41,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.IconButton
@@ -82,9 +75,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
@@ -93,7 +83,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import com.rteats.mpeineo.R
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -120,7 +109,6 @@ internal fun MailScreen(
     loginViewModel: MailLoginViewModel,
     active: Boolean,
     onOpenPortal: () -> Unit = {},
-    searchRequest: Int = 0,
     reselectRequest: Int = 0,
     onFullScreenChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -128,18 +116,11 @@ internal fun MailScreen(
     val state by viewModel.state.collectAsState()
     val loginState by loginViewModel.status.collectAsState()
     var showLoginPage by rememberSaveable { mutableStateOf(false) }
-    var showSearch by remember { mutableStateOf(false) }
-    var confirmLogout by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(searchRequest) {
-        if (searchRequest > 0) showSearch = true
-    }
-    LaunchedEffect(showLoginPage, showSearch, state.selected, state.composing) {
-        onFullScreenChange(showLoginPage || showSearch ||
-            state.selected != null || state.composing)
+    LaunchedEffect(showLoginPage, state.selected, state.composing) {
+        onFullScreenChange(showLoginPage || state.selected != null || state.composing)
     }
     DisposableEffect(Unit) { onDispose { onFullScreenChange(false) } }
     BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
-    BackHandler(enabled = active && showSearch) { showSearch = false }
     LaunchedEffect(state.loginRequired) {
         if (!state.loginRequired) showLoginPage = false
     }
@@ -218,29 +199,6 @@ internal fun MailScreen(
         viewModel.closeMessage()
     }
 
-    if (confirmLogout) {
-        AlertDialog(
-            onDismissRequest = { confirmLogout = false },
-            title = { Text("Выйти из ОСЭП?") },
-            text = {
-                Text("Сохранённые письма, сессия и данные для автоматического входа будут удалены.")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmLogout = false
-                        showLoginPage = false
-                        viewModel.logout()
-                    },
-                    modifier = Modifier.testTag("mail-logout-confirm"),
-                ) { Text("Выйти") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmLogout = false }) { Text("Отмена") }
-            },
-        )
-    }
-
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
@@ -248,7 +206,7 @@ internal fun MailScreen(
         floatingActionButton = {
             if (active && state.configured && !state.loginRequired &&
                 state.selected == null && !state.composing &&
-                !showLoginPage && !showSearch) {
+                !showLoginPage) {
                 FloatingActionButton(
                     onClick = viewModel::startCompose,
                     modifier = Modifier.testTag("mail-compose-fab"),
@@ -350,6 +308,11 @@ internal fun MailScreen(
                     }
                 }
             } else {
+                MailFolderTabs(
+                    selectedFolder = state.mailbox,
+                    onSelectFolder = viewModel::switchMailbox,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 // Keep the Inbox mounted underneath a real sliding detail page,
                 // preserving scroll position during a cancelled rightward swipe.
                 Box(
@@ -378,16 +341,6 @@ internal fun MailScreen(
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                item(key = "mail-action-group") {
-                                    MailFolderActionGroup(
-                                        selectedFolder = state.mailbox,
-                                        onSelectFolder = viewModel::switchMailbox,
-                                        onOpenPortal = onOpenPortal,
-                                        onRequestLogout = { confirmLogout = true },
-                                        modifier = Modifier.fillMaxWidth()
-                                            .padding(bottom = 6.dp),
-                                    )
-                                }
                                 if (visibleMessages.isEmpty()) {
                                     item(key = "empty-inbox") {
                                         Box(
@@ -526,117 +479,47 @@ internal fun MailScreen(
         }
         }
     }
-    if (showSearch) {
-        MailSearchDialog(
-            mail = state,
-            onOpen = { hit ->
-                showSearch = false
-                viewModel.switchMailbox(hit.folder)
-                viewModel.open(hit.message)
-            },
-            onClose = { showSearch = false },
-        )
-    }
+
 }
 
 
 /**
- * Medium-size Mail controls: exclusive folder choice and separate icon actions.
- * On narrow layouts / large fonts, low-priority actions move to the trailing menu.
+ * Primary tabs select the current mail folder directly below the search app bar.
+ * The ViewModel remains the source of truth and keeps each folder's scroll state.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MailFolderActionGroup(
+internal fun MailFolderTabs(
     selectedFolder: OwaMailFolder,
     onSelectFolder: (OwaMailFolder) -> Unit,
-    onOpenPortal: () -> Unit,
-    onRequestLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var overflowExpanded by remember { mutableStateOf(false) }
-    val height = ButtonDefaults.MediumContainerHeight
-    val colors = ToggleButtonDefaults.colors(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+    val folders = listOf(
+        OwaMailFolder.INBOX to "Входящие",
+        OwaMailFolder.SENT to "Отправленные",
     )
-    BoxWithConstraints(modifier.testTag("mail-folder-button-group")) {
-        val collapseActions = maxWidth < 350.dp || LocalDensity.current.fontScale > 1.3f
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            listOf(
-                OwaMailFolder.INBOX to "Входящие",
-                OwaMailFolder.SENT to "Отправленные",
-            ).forEachIndexed { index, (folder, title) ->
-                ToggleButton(
-                    checked = selectedFolder == folder,
-                    onCheckedChange = {
-                        if (selectedFolder != folder) onSelectFolder(folder)
-                    },
-                    modifier = Modifier.weight(
-                        if (folder == OwaMailFolder.SENT) 1.15f else 0.85f,
-                    ).height(height)
-                        .semantics { role = Role.RadioButton }
-                        .testTag(if (folder == OwaMailFolder.INBOX)
-                            "mail-folder-inbox" else "mail-folder-sent"),
-                    shapes = if (index == 0)
-                        ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    else ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                    colors = colors,
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                ) {
-                    val selectedIcon = when (folder) {
-                        OwaMailFolder.INBOX -> if (selectedFolder == folder)
-                            AppIcons.InboxFilled else AppIcons.Inbox
-                        OwaMailFolder.SENT -> if (selectedFolder == folder)
-                            AppIcons.SentFilled else AppIcons.Sent
-                    }
-                    AppIcon(selectedIcon, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text(
-                        title, maxLines = 1, softWrap = false,
-                        style = MaterialTheme.typography.labelMedium,
+    PrimaryTabRow(
+        selectedTabIndex = if (selectedFolder == OwaMailFolder.INBOX) 0 else 1,
+        modifier = modifier.testTag("mail-folder-tabs"),
+    ) {
+        folders.forEach { (folder, title) ->
+            Tab(
+                selected = selectedFolder == folder,
+                onClick = {
+                    if (selectedFolder != folder) onSelectFolder(folder)
+                },
+                text = { Text(title, maxLines = 1) },
+                icon = {
+                    AppIcon(
+                        if (folder == OwaMailFolder.INBOX) AppIcons.Inbox else AppIcons.Sent,
+                        contentDescription = null,
                     )
-                }
-            }
-            if (collapseActions) {
-                Box {
-                    FilledTonalIconButton(
-                        onClick = { overflowExpanded = true },
-                        modifier = Modifier.size(48.dp).testTag("mail-actions-overflow"),
-                    ) {
-                        AppIcon(AppIcons.Overflow, contentDescription = "Действия почты")
-                    }
-                    DropdownMenu(
-                        expanded = overflowExpanded,
-                        onDismissRequest = { overflowExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Открыть ОСЭП") },
-                            onClick = { overflowExpanded = false; onOpenPortal() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Выйти из ОСЭП") },
-                            onClick = { overflowExpanded = false; onRequestLogout() },
-                        )
-                    }
-                }
-            } else {
-                FilledTonalIconButton(
-                    onClick = onOpenPortal,
-                    modifier = Modifier.size(48.dp).testTag("portal-header-ОСЭП"),
-                ) {
-                    AppIcon(AppIcons.OpenPortal, contentDescription = "Открыть ОСЭП")
-                }
-                FilledTonalIconButton(
-                    onClick = onRequestLogout,
-                    modifier = Modifier.size(48.dp).testTag("mail-logout-open"),
-                ) {
-                    AppIcon(AppIcons.Logout, contentDescription = "Выйти из ОСЭП")
-                }
-            }
+                },
+                modifier = Modifier.testTag(
+                    if (folder == OwaMailFolder.INBOX) "mail-folder-inbox"
+                    else "mail-folder-sent"
+                ),
+            )
         }
     }
 }

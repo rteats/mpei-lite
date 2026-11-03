@@ -7,13 +7,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rteats.mpeineo.data.OwaMailFolder
-import com.rteats.mpeineo.ui.MailFolderActionGroup
+import com.rteats.mpeineo.ui.MailFolderTabs
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,52 +25,35 @@ import org.junit.runner.RunWith
 class MailFolderActionGroupUiTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun narrowWidthRetainsBothActionsInOverflow() {
-        var web = 0
-        var signOut = 0
+    @Test fun primaryTabsFitCompactWidth() {
         rule.setContent { MpeiNeoTheme {
-            MailFolderActionGroup(
+            MailFolderTabs(
                 selectedFolder = OwaMailFolder.INBOX,
                 onSelectFolder = {},
-                onOpenPortal = { web++ },
-                onRequestLogout = { signOut++ },
                 modifier = Modifier.width(320.dp),
             )
         } }
-        rule.onNodeWithTag("mail-folder-inbox").assertIsDisplayed()
-        rule.onNodeWithTag("mail-folder-sent").assertIsDisplayed()
-        rule.onNodeWithTag("mail-actions-overflow").performClick()
-        rule.onNodeWithText("Открыть ОСЭП").performClick()
-        rule.onNodeWithTag("mail-actions-overflow").performClick()
-        rule.onNodeWithText("Выйти из ОСЭП").performClick()
-        rule.runOnIdle {
-            assertEquals(1, web)
-            assertEquals(1, signOut)
-        }
+        rule.onNodeWithTag("mail-folder-tabs").assertIsDisplayed()
+        rule.onNodeWithTag("mail-folder-inbox").assertIsDisplayed().assertIsSelected()
+        rule.onNodeWithTag("mail-folder-sent").assertIsDisplayed().assertIsNotSelected()
     }
 
-    @Test fun compactGroupExposesBothFoldersWebViewAndLogout() {
+    @Test fun selectingFolderUpdatesPrimaryTab() {
         var folder by mutableStateOf(OwaMailFolder.INBOX)
-        var webOpens = 0
-        var logoutRequests = 0
+        var changes = 0
         rule.setContent { MpeiNeoTheme {
-            MailFolderActionGroup(
+            MailFolderTabs(
                 selectedFolder = folder,
-                onSelectFolder = { folder = it },
-                onOpenPortal = { webOpens++ },
-                onRequestLogout = { logoutRequests++ },
+                onSelectFolder = { folder = it; changes++ },
             )
         } }
-
-        rule.onNodeWithTag("mail-folder-button-group").assertIsDisplayed()
-        rule.onNodeWithTag("mail-folder-inbox").assertIsDisplayed()
         rule.onNodeWithTag("mail-folder-sent").performClick()
-        rule.onNodeWithTag("portal-header-ОСЭП").performClick()
-        rule.onNodeWithTag("mail-logout-open").performClick()
+        rule.onNodeWithTag("mail-folder-sent").assertIsSelected()
+        rule.onNodeWithTag("mail-folder-inbox").assertIsNotSelected()
+        rule.onNodeWithTag("mail-folder-sent").performClick()
         rule.runOnIdle {
             assertEquals(OwaMailFolder.SENT, folder)
-            assertEquals(1, webOpens)
-            assertEquals(1, logoutRequests)
+            assertEquals(1, changes)
         }
     }
 }
