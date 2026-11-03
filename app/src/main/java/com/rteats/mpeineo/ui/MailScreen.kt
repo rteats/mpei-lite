@@ -167,8 +167,10 @@ internal fun MailScreen(
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
     val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
+    var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
-        if (reselectRequest > 0) scrollState.animateScrollToItem(0)
+        if (reselectRequest != lastReselect) scrollState.animateScrollToItem(0)
+        lastReselect = reselectRequest
     }
     // Compose list keys contain only stable, opaque IDs; never log or persist
     // those identifiers. Prioritize rows that are actually on screen.
