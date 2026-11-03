@@ -83,17 +83,17 @@ class BarsTaskFlowUiTest {
         } }
 
         rule.onNodeWithTag("bars-discipline-Физика").performClick()
-        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
         rule.onNodeWithTag("bars-detail-swipe-back").performTouchInput { swipeRight() }
         rule.waitForIdle()
 
         rule.onNodeWithTag("bars-discipline-Математика").performClick()
-        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
         rule.onNodeWithTag("bars-detail-swipe-back").performTouchInput { swipeRight() }
         rule.waitForIdle()
 
         rule.onNodeWithTag("bars-discipline-Физика").performClick()
-        rule.onNodeWithTag("bars-auto-goal-toggle").assertIsDisplayed()
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
     }
 
     private fun sampleDiscipline() = BarsDiscipline(
