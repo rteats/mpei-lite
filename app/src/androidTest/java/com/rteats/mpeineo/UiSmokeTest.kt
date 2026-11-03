@@ -35,6 +35,16 @@ class UiSmokeTest {
         composeRule.onNodeWithTag("schedule-target-query").assertIsDisplayed()
     }
 
+    @Test fun mailSearchOpensNativeMaterialResults() {
+        composeRule.onNodeWithTag("nav-mail").performClick()
+        composeRule.onNodeWithTag("mail-search-open").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("mail-search-results")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("mail-search-results").assertIsDisplayed()
+    }
+
     @Test fun mailBrowserDoesNotSwitchToMap() {
         composeRule.onNodeWithTag("nav-mail").performClick()
         composeRule.waitUntil(timeoutMillis = 30_000) {
@@ -51,7 +61,9 @@ class UiSmokeTest {
             composeRule.onNodeWithTag("portal-header-ОСЭП").performClick()
         }
         composeRule.onNodeWithTag("mail-webview").assertIsDisplayed()
-        composeRule.onNodeWithTag("nav-mail").assertIsSelected()
+        composeRule.onNodeWithTag("nav-mail").assertDoesNotExist()
         composeRule.onNodeWithTag("campus-map-screen").assertDoesNotExist()
+        composeRule.onNodeWithTag("browser-exit").performClick()
+        composeRule.onNodeWithTag("nav-mail").assertIsSelected()
     }
 }
