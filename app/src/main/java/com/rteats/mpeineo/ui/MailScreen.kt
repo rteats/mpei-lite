@@ -567,9 +567,9 @@ internal fun MailFolderActionGroup(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             listOf(
-                Triple(OwaMailFolder.INBOX, "Входящие", AppIcons.Mail),
-                Triple(OwaMailFolder.SENT, "Отправленные", AppIcons.Forward),
-            ).forEachIndexed { index, (folder, title, icon) ->
+                OwaMailFolder.INBOX to "Входящие",
+                OwaMailFolder.SENT to "Отправленные",
+            ).forEachIndexed { index, (folder, title) ->
                 ToggleButton(
                     checked = selectedFolder == folder,
                     onCheckedChange = {
@@ -587,7 +587,13 @@ internal fun MailFolderActionGroup(
                     colors = colors,
                     contentPadding = PaddingValues(horizontal = 4.dp),
                 ) {
-                    AppIcon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    val selectedIcon = when (folder) {
+                        OwaMailFolder.INBOX -> if (selectedFolder == folder)
+                            AppIcons.InboxFilled else AppIcons.Inbox
+                        OwaMailFolder.SENT -> if (selectedFolder == folder)
+                            AppIcons.SentFilled else AppIcons.Sent
+                    }
+                    AppIcon(selectedIcon, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(3.dp))
                     Text(
                         title, maxLines = 1, softWrap = false,
