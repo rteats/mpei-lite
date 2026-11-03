@@ -16,7 +16,6 @@ import androidx.compose.material3.ShortNavigationBarArrangement
 import androidx.compose.material3.NavigationItemIconPosition
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -87,7 +86,6 @@ fun MpeiNeoApp(
     val widthDp = LocalConfiguration.current.screenWidthDp
     val expandedWidth = widthDp >= 840
     val compactWidth = widthDp < 600
-    var mailSearchRequest by remember { mutableIntStateOf(0) }
     var reselectRequest by remember { mutableIntStateOf(0) }
     var barsDetailOpen by remember { mutableStateOf(false) }
     var mailFullScreenOpen by remember { mutableStateOf(false) }
@@ -166,28 +164,32 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (!mailWebVisible && !detailOpen && currentTab != AppTab.SCHEDULE) TopAppBar(
-                title = {
-                    Text(when (currentTab) {
-                        AppTab.SCHEDULE -> "Расписание"
-                        AppTab.MAIL -> "Почта"
-                        AppTab.MAPS -> "Карта"
-                        AppTab.SETTINGS -> "Настройки"
-                        AppTab.BARS -> "БАРС"
-                    })
-                },
-                actions = {
-                    if (currentTab == AppTab.MAIL) {
-                        IconButton(
-                            onClick = { mailSearchRequest++ },
-                            modifier = Modifier.testTag("mail-search-open"),
-                        ) {
-                            AppIcon(AppIcons.Search, contentDescription = "Поиск писем")
-                        }
-                    }
-                },
-                modifier = Modifier.testTag("main-app-bar"),
-            )
+            if (!mailWebVisible && !detailOpen) {
+                if (currentTab == AppTab.MAIL) {
+                    MailSearchAppBar(
+                        mail = mailState,
+                        onOpen = { hit ->
+                            mailViewModel.switchMailbox(hit.folder)
+                            mailViewModel.open(hit.message)
+                        },
+                        onOpenPortal = { mailWebVisible = true },
+                        onLogout = mailViewModel::logout,
+                    )
+                } else if (currentTab != AppTab.SCHEDULE) {
+                    TopAppBar(
+                        title = {
+                            Text(when (currentTab) {
+                                AppTab.SCHEDULE -> "Расписание"
+                                AppTab.MAIL -> "Почта"
+                                AppTab.MAPS -> "Карта"
+                                AppTab.SETTINGS -> "Настройки"
+                                AppTab.BARS -> "БАРС"
+                            })
+                        },
+                        modifier = Modifier.testTag("main-app-bar"),
+                    )
+                }
+            }
         },
         bottomBar = {
             if (navigationVisible && !expandedWidth) {
@@ -257,7 +259,6 @@ fun MpeiNeoApp(
                         loginViewModel = mailLoginViewModel,
                         active = !mailWebVisible,
                         onOpenPortal = { mailWebVisible = true },
-                        searchRequest = mailSearchRequest,
                         reselectRequest = reselectRequest,
                         onFullScreenChange = { mailFullScreenOpen = it },
                         modifier = Modifier.fillMaxSize(),
