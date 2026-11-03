@@ -24,6 +24,10 @@ object AppIcons {
     @get:DrawableRes val ScheduleFilled: Int get() = R.drawable.ms_date_range_filled
     @get:DrawableRes val BarsFilled: Int get() = R.drawable.ms_account_balance_filled
     @get:DrawableRes val MailFilled: Int get() = R.drawable.ms_mail_filled
+    @get:DrawableRes val Inbox: Int get() = R.drawable.ms_inbox
+    @get:DrawableRes val InboxFilled: Int get() = R.drawable.ms_inbox_filled
+    @get:DrawableRes val Sent: Int get() = R.drawable.ms_send
+    @get:DrawableRes val SentFilled: Int get() = R.drawable.ms_send_filled
     @get:DrawableRes val SettingsFilled: Int get() = R.drawable.ms_settings_filled
     @get:DrawableRes val LocationFilled: Int get() = R.drawable.ms_location_on_filled
     @get:DrawableRes val FavoriteFilled: Int get() = R.drawable.ms_star_filled
