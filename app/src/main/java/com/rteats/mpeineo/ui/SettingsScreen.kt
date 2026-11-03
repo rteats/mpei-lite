@@ -28,7 +28,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -92,6 +93,7 @@ internal fun SettingsScreen(
     mailViewModel: MailViewModel,
     interfaceTheme: InterfaceTheme = InterfaceTheme.SYSTEM,
     onInterfaceThemeChange: (InterfaceTheme) -> Unit = {},
+    reselectRequest: Int = 0,
     navigationHaptics: Boolean = false,
     onNavigationHapticsChange: (Boolean) -> Unit = {},
     active: Boolean = true,
@@ -265,7 +267,12 @@ internal fun SettingsScreen(
         }
     }
 
+    val settingsListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(reselectRequest) {
+        if (reselectRequest > 0) settingsListState.animateScrollToItem(0)
+    }
     LazyColumn(
+        state = settingsListState,
         modifier = modifier.fillMaxSize().testTag("settings-overview"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -282,12 +289,12 @@ internal fun SettingsScreen(
                     modifier = Modifier.padding(start = 12.dp, top = 8.dp),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(
                         ButtonGroupDefaults.ConnectedSpaceBetween,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     val themes = listOf(
                         InterfaceTheme.SYSTEM to "Система",
@@ -349,9 +356,10 @@ internal fun SettingsScreen(
                     // Compose Material Catalog's single-select FlowRow
                     // using connected shapes and visible tonal segments.
                     val intervals = listOf(15, 30, 60)
-                    FlowRow(
+                    Row(
                         modifier = Modifier.fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(
                             ButtonGroupDefaults.ConnectedSpaceBetween,
                         ),
