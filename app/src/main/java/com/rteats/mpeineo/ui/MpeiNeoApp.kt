@@ -166,7 +166,7 @@ fun MpeiNeoApp(
         modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (!mailWebVisible && currentTab != AppTab.SCHEDULE) TopAppBar(
+            if (!mailWebVisible && !detailOpen && currentTab != AppTab.SCHEDULE) TopAppBar(
                 title = {
                     Text(when (currentTab) {
                         AppTab.SCHEDULE -> "Расписание"
@@ -176,46 +176,69 @@ fun MpeiNeoApp(
                         AppTab.BARS -> "БАРС"
                     })
                 },
+                actions = {
+                    if (currentTab == AppTab.MAIL) {
+                        IconButton(
+                            onClick = { mailSearchRequest++ },
+                            modifier = Modifier.testTag("mail-search-open"),
+                        ) {
+                            AppIcon(AppIcons.Search, contentDescription = "Поиск писем")
+                        }
+                    }
+                },
                 modifier = Modifier.testTag("main-app-bar"),
             )
         },
         bottomBar = {
-            NavigationBar(modifier = Modifier.testTag("main-navigation-bar")) {
-                primaryTabs.forEach { tab ->
-                    val label = when (tab) {
-                        AppTab.SCHEDULE -> "Расписание"
-                        AppTab.MAIL -> "Почта"
-                        AppTab.MAPS -> "Карта"
-                        AppTab.SETTINGS -> "Настройки"
-                        AppTab.BARS -> "БАРС"
+            if (navigationVisible && !expandedWidth) {
+                ShortNavigationBar(
+                    modifier = Modifier.testTag("main-navigation-bar"),
+                    arrangement = if (compactWidth) ShortNavigationBarArrangement.EqualWeight
+                        else ShortNavigationBarArrangement.Centered,
+                ) {
+                    primaryTabs.forEach { tab ->
+                        val selected = currentTab == tab
+                        ShortNavigationBarItem(
+                            selected = selected,
+                            onClick = { openTab(tab) },
+                            icon = {
+                                MainNavigationIcon(
+                                    tab = tab, selected = selected,
+                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
+                                )
+                            },
+                            label = { Text(mainTabLabel(tab), maxLines = 1) },
+                            iconPosition = if (compactWidth) NavigationItemIconPosition.Top
+                                else NavigationItemIconPosition.Start,
+                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                        )
                     }
-                    val icon = when (tab) {
-                        AppTab.SCHEDULE -> AppIcons.Schedule
-                        AppTab.MAIL -> AppIcons.Mail
-                        AppTab.MAPS -> AppIcons.Location
-                        AppTab.SETTINGS -> AppIcons.Settings
-                        AppTab.BARS -> AppIcons.Bars
-                    }
-                    NavigationBarItem(
-                        selected = currentTab == tab,
-                        onClick = { openTab(tab) },
-                        icon = {
-                            if (tab == AppTab.MAIL && mailState.configured &&
-                                mailState.items.any { it.unread }) {
-                                BadgedBox(badge = { Badge() }) {
-                                    AppIcon(icon, contentDescription = label)
-                                }
-                            } else AppIcon(icon, contentDescription = label)
-                        },
-                        label = null,
-                        modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
-                    )
                 }
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (currentTab) {
+        Row(Modifier.fillMaxSize().padding(padding)) {
+            if (navigationVisible && expandedWidth) {
+                NavigationRail(modifier = Modifier.testTag("main-navigation-rail")) {
+                    primaryTabs.forEach { tab ->
+                        val selected = currentTab == tab
+                        NavigationRailItem(
+                            selected = selected,
+                            onClick = { openTab(tab) },
+                            icon = {
+                                MainNavigationIcon(
+                                    tab = tab, selected = selected,
+                                    unreadMail = mailState.configured && mailState.items.any { it.unread },
+                                )
+                            },
+                            label = { Text(mainTabLabel(tab), maxLines = 1) },
+                            modifier = Modifier.testTag("nav-" + tab.name.lowercase()),
+                        )
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxSize()) {
+                when (currentTab) {
                 AppTab.SCHEDULE -> ScheduleExplorerScreen(
                     state = scheduleState,
                     onQueryChange = viewModel::updateSearchQuery,
@@ -273,7 +296,34 @@ fun MpeiNeoApp(
                     )
                     BarsScreen(viewModel = barsViewModel, modifier = Modifier.fillMaxSize())
                 }
+                }
             }
         }
+    }
+}
+
+private fun mainTabLabel(tab: AppTab): String = when (tab) {
+    AppTab.SCHEDULE -> "Пары"
+    AppTab.MAIL -> "Почта"
+    AppTab.BARS -> "БАРС"
+    AppTab.MAPS -> "Карта"
+    AppTab.SETTINGS -> "Настройки"
+}
+
+@Composable
+private fun MainNavigationIcon(tab: AppTab, selected: Boolean, unreadMail: Boolean) {
+    val icon = when (tab) {
+        AppTab.SCHEDULE -> if (selected) AppIcons.ScheduleFilled else AppIcons.Schedule
+        AppTab.MAIL -> if (selected) AppIcons.MailFilled else AppIcons.Mail
+        AppTab.BARS -> if (selected) AppIcons.BarsFilled else AppIcons.Bars
+        AppTab.MAPS -> if (selected) AppIcons.LocationFilled else AppIcons.Location
+        AppTab.SETTINGS -> if (selected) AppIcons.SettingsFilled else AppIcons.Settings
+    }
+    if (tab == AppTab.MAIL && unreadMail) {
+        BadgedBox(badge = { Badge() }) {
+            AppIcon(icon, contentDescription = null)
+        }
+    } else {
+        AppIcon(icon, contentDescription = null)
     }
 }
