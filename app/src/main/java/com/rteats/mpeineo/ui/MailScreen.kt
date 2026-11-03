@@ -195,10 +195,6 @@ internal fun MailScreen(
             }
         }
     }
-    BackHandler(enabled = active && !showLoginPage && !state.composing && state.selected != null) {
-        viewModel.closeMessage()
-    }
-
     Scaffold(
         modifier = modifier.testTag("mail-inbox"),
         containerColor = MaterialTheme.colorScheme.background,
@@ -398,8 +394,10 @@ internal fun MailScreen(
                     ) {
                         val detailState = if (state.selected != null) state else lastDetailState
                         if (detailState != null) {
-                            SwipeBackDetail(
+                            PredictiveBackDetail(
                                 onBack = viewModel::closeMessage,
+                                enabled = active && !showLoginPage && !state.composing &&
+                                    state.selected != null,
                                 modifier = Modifier.testTag("mail-detail-swipe-back"),
                             ) {
                                 Surface(
