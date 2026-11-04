@@ -13,11 +13,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.CancellationException
@@ -32,6 +34,11 @@ import kotlin.math.roundToInt
  * before invoking [onBack]; a cancelled one springs back to the origin. Back
  * without a gesture (button or three-button navigation) calls [onBack] at once
  * and leaves the exit animation to the surrounding overlay.
+ *
+ * The page follows the finger toward either edge, but SpatialScreenOverlay
+ * always exits to the right. A committed gesture therefore hides the page once
+ * it is off screen; otherwise a page parked off the left edge would be carried
+ * back across the screen by the overlay's exit and vanish when it ends.
  *
  * This is the only back handler for the detail: do not also register a
  * BackHandler for the same condition in a parent, because parent handlers
@@ -51,10 +58,16 @@ internal fun PredictiveBackDetail(
     val spring = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     var widthPx by remember { mutableIntStateOf(0) }
     var direction by remember { mutableFloatStateOf(1f) }
+    var dismissed by remember { mutableStateOf(false) }
     val slide = remember { Animatable(0f) }
 
     // A reopened detail always starts at rest, even if this composable was kept.
-    LaunchedEffect(enabled) { if (enabled) slide.snapTo(0f) }
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            slide.snapTo(0f)
+            dismissed = false
+        }
+    }
 
     PredictiveBackHandler(enabled = enabled) { progress ->
         var moved = false
@@ -64,16 +77,25 @@ internal fun PredictiveBackDetail(
                 direction = if (event.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
                 slide.snapTo(event.progress)
             }
-            if (moved) slide.animateTo(1f, spring)
-            latestBack()
         } catch (cancelled: CancellationException) {
+            // Gesture cancelled: spring back from wherever the finger left it. This
+            // coroutine is already cancelled, so the reset runs in the composition scope.
             scope.launch { slide.animateTo(0f, spring) }
+            throw cancelled
         }
+        // Gesture committed. Only a real gesture hides the page: Back without one
+        // keeps the overlay's own slide-out.
+        if (moved) {
+            slide.animateTo(1f, spring)
+            dismissed = true
+        }
+        latestBack()
     }
 
     Box(
         modifier = modifier.fillMaxSize()
             .onSizeChanged { widthPx = it.width }
+            .graphicsLayer { alpha = if (dismissed) 0f else 1f }
             .offset { IntOffset((direction * slide.value * widthPx).roundToInt(), 0) },
     ) { content() }
 }
