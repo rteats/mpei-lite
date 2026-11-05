@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
 import java.io.IOException
+import java.util.zip.GZIPInputStream
 import java.net.URL
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
@@ -37,6 +38,7 @@ internal object CampusAreaData {
     private const val ORIGIN_LAT = 55.7559
     private const val ORIGIN_LON = 37.70605
     private const val FILE_NAME = "lefortovo_osm_v2.json"
+    private const val BUNDLED_EXTRACT = "lefortovo_overpass.json.gz"
     private const val MAX_RESPONSE_BYTES = 32_000_000
     private const val REFRESH_INTERVAL_MS = 30L * 24 * 60 * 60 * 1000
     private const val FAILED_RETRY_DELAY_MS = 15L * 60 * 1000
@@ -357,12 +359,38 @@ internal object CampusAreaData {
                     }.getOrNull()
                 }
             cached?.takeIf { it.buildings.isNotEmpty() && coversLefortovo(it) }
+                ?: loadBundledExtract(context)
                 ?: runCatching {
                     context.assets.open("campus_osm.json").bufferedReader().use { reader ->
                         Gson().fromJson(reader, CampusGeometry::class.java)
                     }
                 }.getOrNull()
         }
+
+    /**
+     * CI packages the full Overpass snapshot as a compressed asset.
+     * Parse it once, atomically cache the existing compact geometry format,
+     * then use the cached version on later launches. Never require network.
+     */
+    private fun loadBundledExtract(context: Context): CampusGeometry? = runCatching {
+        val geometry = GZIPInputStream(context.assets.open(BUNDLED_EXTRACT))
+            .bufferedReader(Charsets.UTF_8).use { parseOverpass(it.readText()) }
+        require(coversLefortovo(geometry) && geometry.buildings.size >= 100 &&
+            geometry.roads.size >= 30 && geometry.pois.size >= 30) {
+            "Bundled map extract incomplete"
+        }
+        val destination = file(context)
+        val tmp = File(destination.parentFile, destination.name + ".tmp")
+        tmp.writeText(Gson().toJson(geometry))
+        if (!tmp.renameTo(destination)) {
+            tmp.copyTo(destination, overwrite = true)
+            tmp.delete()
+        }
+        geometry
+    }.getOrNull()
+
+    internal fun hasBundledExtract(context: Context): Boolean =
+        runCatching { context.assets.open(BUNDLED_EXTRACT).close(); true }.getOrDefault(false)
 
     internal fun refreshError(context: Context): String? = lastRefreshError
         ?: context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -372,7 +400,7 @@ internal object CampusAreaData {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (System.currentTimeMillis() < prefs.getLong(KEY_RETRY_AFTER, 0L)) return false
         val cached = file(context)
-        if (!cached.isFile) return true
+        if (!cached.isFile) return !hasBundledExtract(context)
         if (System.currentTimeMillis() - cached.lastModified() >= REFRESH_INTERVAL_MS) return true
         // Do not trust an older campus-only extract as a full Lefortovo map.
         return runCatching {
