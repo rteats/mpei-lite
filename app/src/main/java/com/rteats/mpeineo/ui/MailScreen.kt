@@ -306,11 +306,14 @@ internal fun MailScreen(
                     }
                 }
             } else {
-                MailFolderTabs(
-                    selectedFolder = state.mailbox,
-                    onSelectFolder = viewModel::switchMailbox,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                // Folder tabs are list-navigation controls, not message-detail chrome.
+                if (state.selected == null && !state.composing) {
+                    MailFolderTabs(
+                        selectedFolder = state.mailbox,
+                        onSelectFolder = viewModel::switchMailbox,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 // Keep the Inbox mounted underneath a real sliding detail page,
                 // preserving scroll position during a cancelled rightward swipe.
                 Box(
