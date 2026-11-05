@@ -25,7 +25,8 @@ def audit(root: Path = ROOT) -> list[str]:
     actual = {
         p.relative_to(root).as_posix() for p in (root / UI).rglob("*Screen.kt")
     }
-    actual.add(SHELL)
+    if (root / SHELL).is_file():
+        actual.add(SHELL)
     registered: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
