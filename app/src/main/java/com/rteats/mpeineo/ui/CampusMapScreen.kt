@@ -547,8 +547,11 @@ internal fun CampusMapScreen(
     val downloadStatus by CampusAreaData.downloadState.collectAsState()
     LaunchedEffect(active) {
         if (active) {
-            CampusAreaData.requestRefresh(context) { event ->
-                mapDiagnostics?.log("MAP_NET", event)
+            // Bundled full-area map requires no first-launch network access.
+            if (!CampusAreaData.hasBundledExtract(context)) {
+                CampusAreaData.requestRefresh(context) { event ->
+                    mapDiagnostics?.log("MAP_NET", event)
+                }
             }
         }
     }
