@@ -13,7 +13,7 @@ AREAS = {"components", "navigation", "color", "typography", "shape",
 KINDS = {"mandatory", "recommendation", "product"}
 METHODS = {"static", "instrumentation", "visual", "review"}
 IMPORT = re.compile(r"^\s*import\s+androidx\.compose\.material3\.([A-Za-z]\w*)\b", re.M)
-MATERIAL2 = re.compile(r"^\s*import\s+(?:androidx\.compose\.material\.|com\.google\.android\.material\.)", re.M)
+MATERIAL2 = re.compile(r"^\s*import\s+(?:androidx\.compose\.material\.(?!icons(?:\.|\b))|com\.google\.android\.material\.)", re.M)
 
 
 def audit(root: Path = ROOT) -> list[str]:
