@@ -53,9 +53,9 @@ internal fun ServiceStatus(
         contentColor = foreground,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.sm, vertical = AppSpacing.xs),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs),
         ) {
             Surface(
                 modifier = Modifier.size(36.dp),
