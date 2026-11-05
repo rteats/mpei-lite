@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-11-05",
+  "source_of_truth": "https://m3.material.io/get-started",
+  "areas": [
+    "components",
+    "navigation",
+    "color",
+    "typography",
+    "shape",
+    "motion",
+    "accessibility",
+    "adaptive",
+    "interaction",
+    "layout"
+  ],
+  "component_import_owners": {
+    "ShortNavigationBar": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "ShortNavigationBarItem": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "NavigationRail": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "NavigationRailItem": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "NavigationBar": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "NavigationBarItem": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt"
+    ],
+    "FloatingActionButton": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
+    ],
+    "MediumFloatingActionButton": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
+    ],
+    "SmallFloatingActionButton": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
+    ],
+    "LargeFloatingActionButton": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
+    ],
+    "ExtendedFloatingActionButton": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
+    ],
+    "PrimaryTabRow": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt",
+      "app/src/main/java/com/rteats/mpeineo/ui/PrimaryIconServiceTabs.kt"
+    ]
+  },
+  "rules": [
+    {
+      "id": "M3-COMP-001",
+      "area": "components",
+      "kind": "recommendation",
+      "statement": "Prefer official Compose Material 3 components and their default behavior; document deviations.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-NAV-001",
+      "area": "navigation",
+      "kind": "recommendation",
+      "statement": "Select primary navigation patterns appropriate to window size, destinations and hierarchy.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-COLOR-001",
+      "area": "color",
+      "kind": "recommendation",
+      "statement": "Use MaterialTheme color roles and correct matching on-colors for contrast.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-TYPE-001",
+      "area": "typography",
+      "kind": "recommendation",
+      "statement": "Use the Material 3 type scale and verify text scales without truncation.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-SHAPE-001",
+      "area": "shape",
+      "kind": "recommendation",
+      "statement": "Prefer MaterialTheme shapes and component defaults over arbitrary shape overrides.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-MOTION-001",
+      "area": "motion",
+      "kind": "recommendation",
+      "statement": "Match transition direction to navigation hierarchy; verify predictive-back behavior and animation continuity.",
+      "source": "https://developer.android.com/develop/ui/compose/animation",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-ACCESS-001",
+      "area": "accessibility",
+      "kind": "mandatory",
+      "statement": "All interactive controls must expose meaningful accessibility semantics and be usable with assistive technologies.",
+      "source": "https://developer.android.com/develop/ui/compose/accessibility/testing",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-ADAPT-001",
+      "area": "adaptive",
+      "kind": "recommendation",
+      "statement": "Validate compact and expanded layouts, large fonts, IME and system insets.",
+      "source": "https://developer.android.com/develop/ui/compose/designsystems/material3",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-INPUT-001",
+      "area": "interaction",
+      "kind": "recommendation",
+      "statement": "Preserve clear state and accessible interaction for search, tabs, selection and editing.",
+      "source": "https://m3.material.io/get-started",
+      "enforcement": "review",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "M3-LAYOUT-001",
+      "area": "layout",
+      "kind": "recommendation",
+      "statement": "Use documented component measurements and consistent responsive spacing rather than arbitrary dimensions.",
+      "source": "https://m3.material.io/get-started",
+      "enforcement": "visual",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "MPEI-NAV-001",
+      "area": "navigation",
+      "kind": "product",
+      "statement": "Settings belongs in a secondary destination rather than primary navigation.",
+      "source": "https://m3.material.io/components/navigation-bar/overview",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "MPEI-MAIL-001",
+      "area": "interaction",
+      "kind": "product",
+      "statement": "Message detail keeps primary navigation and search available and hides mailbox folder tabs.",
+      "source": "https://m3.material.io/components/search/overview",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "MPEI-MAIL-002",
+      "area": "components",
+      "kind": "product",
+      "statement": "The mail compose FAB uses the approved medium-size variant.",
+      "source": "https://m3.material.io/components/floating-action-button/overview",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    },
+    {
+      "id": "MPEI-BARS-001",
+      "area": "motion",
+      "kind": "product",
+      "statement": "BARS detail persists across entry and predictive-back transitions.",
+      "source": "https://developer.android.com/develop/ui/compose/animation",
+      "enforcement": "instrumentation",
+      "status": "implementation-review-required"
+    }
+  ]
+}

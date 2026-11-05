@@ -21,6 +21,7 @@ jobs:
       - name: Architecture and utility tests
         run: |
           python3 scripts/check_architecture.py
+          python3 scripts/check_material3.py
           python3 scripts/check_material3_screen_inventory.py
           python3 -m unittest discover -s scripts -p "test_*.py" -q
       - uses: actions/setup-java@v5
