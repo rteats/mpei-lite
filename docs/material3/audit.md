@@ -4,7 +4,7 @@
 
 ## Verified findings awaiting existing PRs
 
-| Area | Existing issue | Existing open PR | How to verify before marking reviewed |
+| Area | Existing issue | Linked remediation PR | How to verify before marking reviewed |
 | --- | --- | --- | --- |
 | BARS class detail | Enter/back transition may lose the detail screen | [#123](https://github.com/rteats/mpei-lite/pull/123) | Repeat predictive back and refresh during the animation; content remains mounted |
 | Primary shell | Settings destination and detail view navigation behavior | [#124](https://github.com/rteats/mpei-lite/pull/124) | Settings is secondary; mail detail/compose preserve nav; search remains usable on detail |
