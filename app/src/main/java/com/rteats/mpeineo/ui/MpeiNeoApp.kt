@@ -27,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -85,11 +86,12 @@ fun MpeiNeoApp(
     val mailState by mailViewModel.state.collectAsState()
     val interfacePrefs = remember(application) { InterfacePreferences(application) }
     var navigationHaptics by remember { mutableStateOf(interfacePrefs.navigationHaptics) }
+    var settingsReturnTab by rememberSaveable { mutableStateOf(AppTab.SCHEDULE) }
     var currentTab by rememberSaveable {
         mutableStateOf(if (initialMailTab) AppTab.MAIL else AppTab.SCHEDULE)
     }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
-    val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS, AppTab.SETTINGS)
+    val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS)
     val widthDp = LocalConfiguration.current.screenWidthDp
     val expandedWidth = widthDp >= 840
     val compactWidth = widthDp < 600
@@ -99,7 +101,9 @@ fun MpeiNeoApp(
     val detailOpen = currentTab == AppTab.MAIL &&
         (mailState.selected != null || mailState.composing || mailFullScreenOpen) ||
         currentTab == AppTab.BARS && barsDetailOpen
-    val navigationVisible = !mailWebVisible && !detailOpen
+    // Primary navigation is a persistent app shell, not a detail-page control.
+    // Shell navigation remains available even when an embedded portal is open.
+    val navigationVisible = true
 
     fun openTab(tab: AppTab) {
         if (tab == currentTab) {
@@ -108,6 +112,9 @@ fun MpeiNeoApp(
             return
         }
         if (mailWebVisible) mailWebVisible = false
+        if (tab == AppTab.SETTINGS && currentTab != AppTab.SETTINGS) {
+            settingsReturnTab = currentTab
+        }
         diagnostics.log("NAV", "tab=" + tab.name + " from=" + currentTab.name)
         currentTab = tab
     }
@@ -164,7 +171,7 @@ fun MpeiNeoApp(
     }
     BackHandler(enabled = currentTab != AppTab.SCHEDULE && !mailWebVisible &&
         !detailOpen) {
-        openTab(AppTab.SCHEDULE)
+        openTab(if (currentTab == AppTab.SETTINGS) settingsReturnTab else AppTab.SCHEDULE)
     }
 
     val railVisible = navigationVisible && expandedWidth
@@ -206,7 +213,8 @@ fun MpeiNeoApp(
                 )
             } else ScaffoldDefaults.contentWindowInsets,
             topBar = {
-                if (!mailWebVisible && !detailOpen) {
+                if (!mailWebVisible && !(currentTab == AppTab.MAIL &&
+                        (mailState.composing || mailFullScreenOpen))) {
                     if (currentTab == AppTab.MAIL) {
                         MailSearchAppBar(
                             mail = mailState,
@@ -216,6 +224,7 @@ fun MpeiNeoApp(
                             },
                             onOpenPortal = { mailWebVisible = true },
                             onLogout = mailViewModel::logout,
+                            onSettings = { openTab(AppTab.SETTINGS) },
                         )
                     } else if (currentTab != AppTab.SCHEDULE) {
                         TopAppBar(
@@ -227,6 +236,22 @@ fun MpeiNeoApp(
                                     AppTab.SETTINGS -> "Настройки"
                                     AppTab.BARS -> "БАРС"
                                 })
+                            },
+                            navigationIcon = {
+                                if (currentTab == AppTab.SETTINGS) {
+                                    IconButton(onClick = { openTab(settingsReturnTab) },
+                                        modifier = Modifier.testTag("settings-back")) {
+                                        AppIcon(AppIcons.Back, contentDescription = "Назад")
+                                    }
+                                }
+                            },
+                            actions = {
+                                if (currentTab != AppTab.SETTINGS) {
+                                    IconButton(onClick = { openTab(AppTab.SETTINGS) },
+                                        modifier = Modifier.testTag("open-settings")) {
+                                        AppIcon(AppIcons.Settings, contentDescription = "Настройки")
+                                    }
+                                }
                             },
                             modifier = Modifier.testTag("main-app-bar"),
                         )
@@ -275,6 +300,7 @@ fun MpeiNeoApp(
                     onEnsureWeek = viewModel::ensureAgendaWeek,
                     onRefreshWeek = viewModel::refreshAgendaWeek,
                     onRetryWeek = viewModel::retryAgendaWeek,
+                    onSettings = { openTab(AppTab.SETTINGS) },
                     reselectRequest = reselectRequest,
                     modifier = Modifier.fillMaxSize(),
                 )

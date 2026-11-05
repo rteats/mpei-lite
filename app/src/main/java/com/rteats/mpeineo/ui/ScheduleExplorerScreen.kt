@@ -69,6 +69,7 @@ internal fun ScheduleExplorerScreen(
     onEnsureWeek: (Int) -> Unit,
     onRefreshWeek: (Int) -> Unit,
     onRetryWeek: (Int) -> Unit,
+    onSettings: () -> Unit = {},
     reselectRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
@@ -274,37 +275,46 @@ internal fun ScheduleExplorerScreen(
                 item(key = "end-space") { Spacer(Modifier.height(24.dp)) }
             }
         } else {
-            Surface(
-                onClick = { searching = true },
+            Row(
                 modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()
                     .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                    .testTag("schedule-search-open"),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                Surface(
+                    onClick = { searching = true },
+                    modifier = Modifier.weight(1f).testTag("schedule-search-open"),
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
-                    AppIcon(AppIcons.Search, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            state.selected?.name ?: "Найти расписание",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (state.selected == null) FontWeight.Normal
-                                else FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        state.selected?.type?.displayName?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        AppIcon(AppIcons.Search, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                state.selected?.name ?: "Найти расписание",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (state.selected == null) FontWeight.Normal
+                                    else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            state.selected?.type?.displayName?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.testTag("schedule-open-settings"),
+                ) { AppIcon(AppIcons.Settings, contentDescription = "Настройки") }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 agendaStateHolder.SaveableStateProvider("schedule-agenda") {
