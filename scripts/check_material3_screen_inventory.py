@@ -41,10 +41,10 @@ def audit(root: Path = ROOT) -> list[str]:
             issues.append(f"Screen no longer exists or is out of inventory scope: {path}")
         if entry.get("status") not in ALLOWED_STATES:
             issues.append(f"{path}: unknown review status")
-        prs = entry.get("open_prs")
+        prs = entry.get("linked_prs")
         evidence = entry.get("review_evidence")
         if not isinstance(prs, list) or not all(isinstance(n, int) and n > 0 for n in prs):
-            issues.append(f"{path}: open_prs must contain positive PR numbers")
+            issues.append(f"{path}: linked_prs must contain positive PR numbers")
         if not isinstance(evidence, list) or not all(isinstance(e, str) for e in evidence):
             issues.append(f"{path}: review_evidence must be a list of links")
         if entry.get("status") == "pending-fix" and not prs:
