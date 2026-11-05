@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -137,4 +139,36 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+}
+
+
+// Release builds package a validated, compressed full-area OSM snapshot.
+// Tie prefetch to asset merging so main CI's existing assembleRollingRelease
+// automatically fetches it. Debug builds retain the small campus fallback.
+val prefetchLefortovoMap = tasks.register<Exec>("prefetchLefortovoMap") {
+    group = "build"
+    description = "Fetch full Lefortovo OSM data for offline release assets"
+    commandLine(
+        "python3",
+        rootProject.file("scripts/prefetch_lefortovo.py").absolutePath,
+        "--output",
+        project.file("src/main/assets/lefortovo_overpass.json.gz").absolutePath,
+    )
+}
+tasks.matching { it.name == "mergeRollingReleaseAssets" }.configureEach {
+    dependsOn(prefetchLefortovoMap)
+}
+
+tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
+    doLast {
+        val apk = layout.buildDirectory.file(
+            "outputs/apk/rolling/release/app-rolling-release.apk",
+        ).get().asFile
+        check(apk.isFile) { "Rolling release APK missing: ${apk.absolutePath}" }
+        ZipFile(apk).use { zipped ->
+            check(zipped.getEntry("assets/lefortovo_overpass.json.gz") != null) {
+                "Rolling release APK is missing the bundled Lefortovo OSM asset"
+            }
+        }
+    }
 }

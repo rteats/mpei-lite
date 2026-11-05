@@ -10,3 +10,6 @@
 .cxx/
 
 ci/release-debug.keystore
+
+# Generated at release build time; never commit a nondeterministic map download.
+/app/src/main/assets/lefortovo_overpass.json.gz
