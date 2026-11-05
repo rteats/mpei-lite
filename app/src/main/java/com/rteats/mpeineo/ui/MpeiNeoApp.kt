@@ -226,7 +226,7 @@ fun MpeiNeoApp(
                             onLogout = mailViewModel::logout,
                             onSettings = { openTab(AppTab.SETTINGS) },
                         )
-                    } else {
+                    } else if (currentTab != AppTab.SCHEDULE) {
                         TopAppBar(
                             title = {
                                 Text(when (currentTab) {
@@ -300,6 +300,7 @@ fun MpeiNeoApp(
                     onEnsureWeek = viewModel::ensureAgendaWeek,
                     onRefreshWeek = viewModel::refreshAgendaWeek,
                     onRetryWeek = viewModel::retryAgendaWeek,
+                    onSettings = { openTab(AppTab.SETTINGS) },
                     reselectRequest = reselectRequest,
                     modifier = Modifier.fillMaxSize(),
                 )
