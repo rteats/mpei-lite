@@ -155,6 +155,8 @@ internal fun BarsNativeDashboard(
   var detailOpenSerial by rememberSaveable {
     androidx.compose.runtime.mutableIntStateOf(0)
   }
+  // The gesture owns the completed slide; avoid animating the overlay a second time.
+  var dismissedByGesture by remember { mutableStateOf(false) }
   var focusDisciplineName by remember { mutableStateOf<String?>(null) }
   var destinationFocusSerial by remember {
     androidx.compose.runtime.mutableIntStateOf(0)
@@ -165,6 +167,7 @@ internal fun BarsNativeDashboard(
     focusDisciplineName = if (fromLink) name else null
     if (fromLink) destinationFocusSerial++
     detailOpenSerial++
+    dismissedByGesture = false
     selectedDisciplineName = name
   }
   var selectedSection by rememberSaveable { mutableStateOf("subjects") }
@@ -207,7 +210,8 @@ internal fun BarsNativeDashboard(
   }
 
   androidx.compose.runtime.SideEffect {
-    onDetailOpenChange(selectedDiscipline != null)
+    // Keep the detail route stable while grades refresh or are temporarily absent.
+    onDetailOpenChange(selectedDisciplineName != null)
   }
 
   fun closeDetail() {
@@ -370,7 +374,8 @@ internal fun BarsNativeDashboard(
         }
       }
     SpatialScreenOverlay(
-      visible = selectedDiscipline != null,
+      visible = selectedDisciplineName != null,
+      skipExitAnimation = dismissedByGesture,
       modifier = Modifier.testTag("bars-discipline-slide-layer"),
     ) {
       val expandedDiscipline = selectedDiscipline ?: retainedDiscipline
@@ -378,7 +383,8 @@ internal fun BarsNativeDashboard(
         key(detailOpenSerial) {
           PredictiveBackDetail(
             onBack = ::closeDetail,
-            enabled = active && selectedDiscipline != null && !state.browserVisible,
+            onGestureCommit = { dismissedByGesture = true },
+            enabled = active && selectedDisciplineName != null && !state.browserVisible,
             modifier = Modifier.testTag("bars-detail-swipe-back"),
           ) {
           Surface(
