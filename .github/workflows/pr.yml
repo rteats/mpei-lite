@@ -3,12 +3,13 @@ name: PR lint and tests
 on:
   pull_request:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number }}
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,10 +36,9 @@ jobs:
           "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.6.0"
           cache-read-only: true
       - name: Run lint and unit tests
-        run: gradle --no-daemon lintRollingDebug testRollingDebugUnitTest
+        run: bash ./gradlew --no-daemon lintDebug testDebugUnitTest
       - name: Save reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -67,7 +67,6 @@ jobs:
           "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.6.0"
           cache-read-only: true
       - name: Enable KVM acceleration
         run: |
@@ -81,7 +80,9 @@ jobs:
           target: google_apis
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: gradle --no-daemon connectedRollingDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.rteats.mpeineo.ui.Material3AccessibilityUiTest,com.rteats.mpeineo.BarsTaskFlowUiTest
+          script: |
+            bash ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.rteats.mpeineo.ui.Material3AccessibilityUiTest,com.rteats.mpeineo.BarsTaskFlowUiTest
+            python3 scripts/check_android_test_report.py
       - name: Upload instrumented test reports
         if: always()
         uses: actions/upload-artifact@v4
