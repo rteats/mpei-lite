@@ -155,3 +155,17 @@ val prefetchLefortovoMap = tasks.register<Exec>("prefetchLefortovoMap") {
 tasks.matching { it.name == "mergeRollingReleaseAssets" }.configureEach {
     dependsOn(prefetchLefortovoMap)
 }
+
+tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
+    doLast {
+        val apk = layout.buildDirectory.file(
+            "outputs/apk/rolling/release/app-rolling-release.apk",
+        ).get().asFile
+        check(apk.isFile) { "Rolling release APK missing: ${apk.absolutePath}" }
+        java.util.zip.ZipFile(apk).use { zipped ->
+            check(zipped.getEntry("assets/lefortovo_overpass.json.gz") != null) {
+                "Rolling release APK is missing the bundled Lefortovo OSM asset"
+            }
+        }
+    }
+}
