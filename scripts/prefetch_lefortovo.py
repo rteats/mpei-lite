@@ -30,7 +30,7 @@ def build_query(source):
         query = query.replace("$" + key, value.group(1))
     # Overpass regular expressions can include literal end anchors.
     # Reject unresolved Kotlin variables rather than every dollar sign.
-    if re.search(r"\\$[A-Z][A-Z0-9_]*", query):
+    if re.search(r"\$[A-Z][A-Z0-9_]*", query):
         raise ValueError("Unexpanded query interpolation")
     return query.strip()
 
