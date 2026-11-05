@@ -1,6 +1,7 @@
 package com.rteats.mpeineo.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 internal fun SpatialScreenOverlay(
     visible: Boolean,
     modifier: Modifier = Modifier,
+    skipExitAnimation: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val spring = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
@@ -36,7 +38,7 @@ internal fun SpatialScreenOverlay(
             initialOffsetX = { fullWidth -> fullWidth },
             animationSpec = spring,
         ),
-        exit = slideOutHorizontally(
+        exit = if (skipExitAnimation) ExitTransition.None else slideOutHorizontally(
             targetOffsetX = { fullWidth -> fullWidth },
             animationSpec = spring,
         ),

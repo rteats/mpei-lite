@@ -1,6 +1,9 @@
 package com.rteats.mpeineo
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -97,6 +100,39 @@ class BarsTaskFlowUiTest {
 
         rule.onNodeWithTag("bars-discipline-Физика").performClick()
         rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
+    }
+
+    @Test fun detailRemainsMountedWhileDisciplineDataRefreshes() {
+        var uiState by mutableStateOf(BarsUiState(
+            isLoading = false,
+            profileName = "Студент",
+            disciplines = listOf(sampleDiscipline()),
+        ))
+        rule.setContent { MpeiNeoTheme {
+            BarsNativeDashboard(
+                state = uiState,
+                active = true,
+                onDetailOpenChange = {},
+                openDisciplineName = null,
+                openDisciplineRequest = 0,
+                onOpenDisciplineConsumed = {},
+                showCachedRefreshErrors = false,
+                onRefresh = {},
+                onOpenBrowser = {},
+                onAcknowledgeGrades = {},
+                onRefreshSummary = {},
+            )
+        } }
+        rule.onNodeWithTag("bars-discipline-Физика").performClick()
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
+        rule.runOnUiThread { uiState = uiState.copy(disciplines = emptyList(), isLoading = true) }
+        rule.waitForIdle()
+        // Refresh should not pop a detail the user did not dismiss.
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
+        rule.runOnUiThread { uiState = uiState.copy(disciplines = listOf(sampleDiscipline()), isLoading = false) }
+        rule.waitForIdle()
+        pressBack()
+        rule.onNodeWithTag("bars-discipline-Физика").assertIsDisplayed()
     }
 
     private fun sampleDiscipline() = BarsDiscipline(

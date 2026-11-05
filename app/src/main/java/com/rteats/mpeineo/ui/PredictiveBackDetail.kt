@@ -42,11 +42,13 @@ import kotlin.math.roundToInt
 @Composable
 internal fun PredictiveBackDetail(
     onBack: () -> Unit,
+    onGestureCommit: () -> Unit = {},
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val latestBack by rememberUpdatedState(onBack)
+    val latestGestureCommit by rememberUpdatedState(onGestureCommit)
     val scope = rememberCoroutineScope()
     val spring = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     var widthPx by remember { mutableIntStateOf(0) }
@@ -64,7 +66,10 @@ internal fun PredictiveBackDetail(
                 direction = if (event.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
                 slide.snapTo(event.progress)
             }
-            if (moved) slide.animateTo(1f, spring)
+            if (moved) {
+                slide.animateTo(1f, spring)
+                latestGestureCommit()
+            }
             latestBack()
         } catch (cancelled: CancellationException) {
             scope.launch { slide.animateTo(0f, spring) }
