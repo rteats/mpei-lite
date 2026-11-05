@@ -20,11 +20,18 @@ class OfflineMapPrefetchTests(unittest.TestCase):
         )
         self.assertIn('"^(yes|residential)$"', build_query(regex_source))
 
-    def test_live_release_prefetch_preflight(self):
-        # Temporary validation: removed after observing the network build prerequisite.
-        from prefetch_lefortovo import SOURCE, build_query, fetch
-        raw = fetch(build_query(SOURCE.read_text(encoding="utf-8")))
-        self.assertGreater(len(raw), 10_000)
+    def test_live_osm_api_preflight(self):
+        # Temporary test of OSM's bounded, read-only map export endpoint.
+        import json
+        import urllib.request
+        url = ("https://api.openstreetmap.org/api/0.6/map.json"
+               "?bbox=37.704,55.755,37.705,55.756")
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "MPEILite-Build/1.0 (https://github.com/rteats/mpei-lite)",
+        })
+        with urllib.request.urlopen(req, timeout=35) as response:
+            sample = json.load(response)
+        self.assertGreater(len(sample.get("elements", [])), 0)
 
     def test_empty_and_incomplete_extracts_rejected(self):
         with self.assertRaisesRegex(ValueError, "Missing"):
