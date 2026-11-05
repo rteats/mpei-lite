@@ -165,7 +165,9 @@ abstract class PrefetchLefortovoMapTask : DefaultTask() {
 
     @TaskAction
     fun fetch() {
-        val destination = outputDirectory.file("lefortovo_overpass.json.gz").get().asFile
+        // AAPT treats *.gz specially and strips the suffix. Use a neutral name
+        // so the APK stores the original gzip stream for Android to inflate.
+        val destination = outputDirectory.file("lefortovo_overpass.osmdata").get().asFile
         destination.parentFile.mkdirs()
         execOperations.exec {
             commandLine(
@@ -202,7 +204,7 @@ tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
         ZipFile(apk).use { zipped ->
             val mapAssets = zipped.entries().asSequence()
                 .map { it.name }.filter { it.contains("lefortovo") }.toList()
-            check(zipped.getEntry("assets/lefortovo_overpass.json.gz") != null) {
+            check(zipped.getEntry("assets/lefortovo_overpass.osmdata") != null) {
                 "Rolling release APK is missing the bundled Lefortovo OSM asset; found $mapAssets"
             }
         }
