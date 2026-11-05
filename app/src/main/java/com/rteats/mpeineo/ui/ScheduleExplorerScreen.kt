@@ -131,7 +131,14 @@ internal fun ScheduleExplorerScreen(
                     }
                 },
                 label = { Text("Поиск расписания") },
-                placeholder = { Text("Группа, преподаватель, аудитория…") },
+                placeholder = {
+                    Text(
+                        "Группа, преподаватель или аудитория",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
