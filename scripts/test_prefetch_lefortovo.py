@@ -14,6 +14,12 @@ class OfflineMapPrefetchTests(unittest.TestCase):
         self.assertIn("55.746344,37.696083,55.767230,37.720361",
                       build_query(source))
 
+    def test_live_release_prefetch_preflight(self):
+        # Temporary validation: removed after observing the network build prerequisite.
+        from prefetch_lefortovo import SOURCE, build_query, fetch
+        raw = fetch(build_query(SOURCE.read_text(encoding="utf-8")))
+        self.assertGreater(len(raw), 10_000)
+
     def test_empty_and_incomplete_extracts_rejected(self):
         with self.assertRaisesRegex(ValueError, "Missing"):
             validate({})
