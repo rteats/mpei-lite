@@ -1,4 +1,12 @@
 import java.util.zip.ZipFile
+import javax.inject.Inject
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
 
 plugins {
     id("com.android.application")
@@ -142,21 +150,47 @@ dependencies {
 }
 
 
-// Release builds package a validated, compressed full-area OSM snapshot.
-// Tie prefetch to asset merging so main CI's existing assembleRollingRelease
-// automatically fetches it. Debug builds retain the small campus fallback.
-val prefetchLefortovoMap = tasks.register<Exec>("prefetchLefortovoMap") {
-    group = "build"
-    description = "Fetch full Lefortovo OSM data for offline release assets"
-    commandLine(
-        "python3",
-        rootProject.file("scripts/prefetch_lefortovo.py").absolutePath,
-        "--output",
-        project.file("src/main/assets/lefortovo_overpass.json.gz").absolutePath,
-    )
+// The Android Gradle Plugin must know the *generated asset directory* during
+// variant configuration. Writing a file into src/main/assets during mergeAssets
+// is too late: the merger's inputs have already been snapshotted.
+abstract class PrefetchLefortovoMapTask : DefaultTask() {
+    @get:InputFile
+    abstract val scriptFile: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun fetch() {
+        val destination = outputDirectory.file("lefortovo_overpass.json.gz").get().asFile
+        destination.parentFile.mkdirs()
+        execOperations.exec {
+            commandLine(
+                "python3",
+                scriptFile.get().asFile.absolutePath,
+                "--output",
+                destination.absolutePath,
+            )
+        }
+    }
 }
-tasks.matching { it.name == "mergeRollingReleaseAssets" }.configureEach {
-    dependsOn(prefetchLefortovoMap)
+
+// Only release variants get the map snapshot. Registering the directory via
+// the Android Components API wires asset merging to task generation correctly.
+val prefetchLefortovoMap = tasks.register<PrefetchLefortovoMapTask>("prefetchLefortovoMap") {
+    group = "build"
+    description = "Generate a full Lefortovo map source for offline release APKs"
+    scriptFile.set(rootProject.layout.projectDirectory.file("scripts/prefetch_lefortovo.py"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/lefortovoAssets"))
+}
+androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(
+        prefetchLefortovoMap,
+        PrefetchLefortovoMapTask::outputDirectory,
+    )
 }
 
 tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
@@ -166,8 +200,10 @@ tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
         ).get().asFile
         check(apk.isFile) { "Rolling release APK missing: ${apk.absolutePath}" }
         ZipFile(apk).use { zipped ->
+            val mapAssets = zipped.entries().asSequence()
+                .map { it.name }.filter { it.contains("lefortovo") }.toList()
             check(zipped.getEntry("assets/lefortovo_overpass.json.gz") != null) {
-                "Rolling release APK is missing the bundled Lefortovo OSM asset"
+                "Rolling release APK is missing the bundled Lefortovo OSM asset; found $mapAssets"
             }
         }
     }
