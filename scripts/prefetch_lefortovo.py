@@ -183,7 +183,7 @@ def fetch_previous_release():
         if len(data) > 100_000_000:
             raise ValueError("Previous APK exceeds 100 MB")
         with zipfile.ZipFile(io.BytesIO(data)) as apk:
-            compressed = apk.read("assets/lefortovo_overpass.json.gz")
+            compressed = apk.read("assets/lefortovo_overpass.osmdata")
         raw = gzip.decompress(compressed)
         if len(raw) > MAX_BYTES:
             raise ValueError("Previous extracted OSM payload exceeds 32 MB")
