@@ -79,7 +79,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: gradle --no-daemon connectedRollingDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.rteats.mpeineo.ui.Material3AccessibilityUiTest
+          script: gradle --no-daemon connectedRollingDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.rteats.mpeineo.ui.Material3AccessibilityUiTest,com.rteats.mpeineo.BarsTaskFlowUiTest
       - name: Upload instrumented test reports
         if: always()
         uses: actions/upload-artifact@v4
