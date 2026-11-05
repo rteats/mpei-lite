@@ -102,7 +102,8 @@ fun MpeiNeoApp(
         (mailState.selected != null || mailState.composing || mailFullScreenOpen) ||
         currentTab == AppTab.BARS && barsDetailOpen
     // Primary navigation is a persistent app shell, not a detail-page control.
-    val navigationVisible = !mailWebVisible
+    // Shell navigation remains available even when an embedded portal is open.
+    val navigationVisible = true
 
     fun openTab(tab: AppTab) {
         if (tab == currentTab) {
