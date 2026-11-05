@@ -30,7 +30,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.MediumFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -203,11 +204,12 @@ internal fun MailScreen(
             if (active && state.configured && !state.loginRequired &&
                 state.selected == null && !state.composing &&
                 !showLoginPage) {
-                FloatingActionButton(
+                MediumFloatingActionButton(
                     onClick = viewModel::startCompose,
                     modifier = Modifier.testTag("mail-compose-fab"),
                 ) {
-                    AppIcon(AppIcons.Edit, contentDescription = "Написать письмо")
+                    AppIcon(AppIcons.Edit, contentDescription = "Написать письмо",
+                        modifier = Modifier.size(FloatingActionButtonDefaults.MediumIconSize))
                 }
             }
         },
@@ -304,11 +306,14 @@ internal fun MailScreen(
                     }
                 }
             } else {
-                MailFolderTabs(
-                    selectedFolder = state.mailbox,
-                    onSelectFolder = viewModel::switchMailbox,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                // Folder tabs are list-navigation controls, not message-detail chrome.
+                if (state.selected == null && !state.composing) {
+                    MailFolderTabs(
+                        selectedFolder = state.mailbox,
+                        onSelectFolder = viewModel::switchMailbox,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 // Keep the Inbox mounted underneath a real sliding detail page,
                 // preserving scroll position during a cancelled rightward swipe.
                 Box(
@@ -506,12 +511,17 @@ internal fun MailFolderTabs(
                 onClick = {
                     if (selectedFolder != folder) onSelectFolder(folder)
                 },
-                text = { Text(title, maxLines = 1) },
-                icon = {
-                    AppIcon(
-                        if (folder == OwaMailFolder.INBOX) AppIcons.Inbox else AppIcons.Sent,
-                        contentDescription = null,
-                    )
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppIcon(
+                            if (folder == OwaMailFolder.INBOX) AppIcons.Inbox else AppIcons.Sent,
+                            contentDescription = null,
+                        )
+                        Text(title, maxLines = 1)
+                    }
                 },
                 modifier = Modifier.testTag(
                     if (folder == OwaMailFolder.INBOX) "mail-folder-inbox"
