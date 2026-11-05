@@ -37,7 +37,7 @@ def audit(root: Path = ROOT) -> list[str]:
             errors.append(f"Invalid component owner specification: {name}")
             continue
         for path in paths:
-            if not isinstance(path, str) or not path.startswith(str(PRODUCTION) + "/"):
+            if not isinstance(path, str) or not path.startswith(PRODUCTION.as_posix() + "/"):
                 errors.append(f"Invalid production owner path for {name}: {path}")
             elif not (root / path).is_file():
                 errors.append(f"Owner missing for {name}: {path}")

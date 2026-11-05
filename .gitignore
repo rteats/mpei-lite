@@ -6,10 +6,13 @@
 /build/
 **/build/
 /captures/
+__pycache__/
+*.pyc
 .externalNativeBuild/
 .cxx/
 
 ci/release-debug.keystore
+/local-signing.properties
 
 # Generated at release build time; never commit a nondeterministic map download.
 /app/src/main/assets/lefortovo_overpass.json.gz

@@ -29,7 +29,6 @@ jobs:
           "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.6.0"
           cache-cleanup: on-success
           gradle-home-cache-excludes: |
             caches/keyrings
@@ -45,21 +44,39 @@ jobs:
           echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "Build version: $VERSION_NAME (Europe/Moscow); Android code: $CODE"
-      - name: Prepare existing signing key
+      - name: Prepare app signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.MPEI_STABLE_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.MPEI_STABLE_PASSWORD }}
         run: |
-          base64 --decode ci/mpei-neo-dev.p12.b64 > "$RUNNER_TEMP/mpei-neo-dev.p12"
-          echo "ANDROID_DEV_KEYSTORE_FILE=$RUNNER_TEMP/mpei-neo-dev.p12" >> "$GITHUB_ENV"
-          echo "ANDROID_DEV_KEYSTORE_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
-          echo "ANDROID_DEV_KEY_ALIAS=mpei-neo-dev" >> "$GITHUB_ENV"
-          echo "ANDROID_DEV_KEY_PASSWORD=mpei-neo-dev" >> "$GITHUB_ENV"
-          echo "ANDROID_DEV_KEYSTORE_TYPE=PKCS12" >> "$GITHUB_ENV"
+          test -n "$KEYSTORE_B64" && test -n "$KEY_PASSWORD" || {
+            echo '::error::Set MPEI_STABLE_KEYSTORE_B64 and MPEI_STABLE_PASSWORD repository secrets'
+            exit 1
+          }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/mpei-lite-stable.p12"
+          {
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/mpei-lite-stable.p12"
+            printf 'storeType=PKCS12\n'
+            printf 'storePassword=%s\n' "$KEY_PASSWORD"
+            printf 'keyAlias=mpei-lite-stable-2026\n'
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            printf 'versionCode=%s\n' "$VERSION_CODE"
+            printf 'versionName=%s\n' "$VERSION_NAME"
+          } > local-signing.properties
+          chmod 600 local-signing.properties "$RUNNER_TEMP/mpei-lite-stable.p12"
       - name: Build signed APK
         run: |
-          gradle --no-daemon assembleRollingRelease \
+          bash ./gradlew --no-daemon assembleRelease \
             -POPTIMIZE_RELEASE=true \
             -PVERSION_CODE="$VERSION_CODE" \
             -PVERSION_NAME="$VERSION_NAME"
-          cp app/build/outputs/apk/rolling/release/app-rolling-release.apk MPEI-Lite.apk
+          cp app/build/outputs/apk/release/app-release.apk MPEI-Lite.apk
+      - name: Verify package and signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging MPEI-Lite.apk |
+            grep -F "package: name='com.rteats.mpeilite' versionCode='$VERSION_CODE'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs MPEI-Lite.apk |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: f76a491b227107f9d2b1a371140a5aed8601b8669a23fb2bc61a4104f47dbe3b'
       - name: Write checked update manifest
         run: |
           SHA256="$(sha256sum MPEI-Lite.apk | cut -d ' ' -f1)"
@@ -91,23 +108,11 @@ jobs:
             versionCode: ${{ env.VERSION_CODE }}
             versionName: ${{ env.VERSION_NAME }}
             commit: ${{ github.sha }}
-            Package: com.rteats.mpeineo.dev, signed with the former Dev key.
+            Package: com.rteats.mpeilite, signed with the MPEI Lite key.
             Diagnostics can be exported from Settings.
           files: |
             MPEI-Lite.apk
             update.json
-      - name: Retire previous releases and tags
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq '.[] | select(.tag_name != "latest") | [.id, .tag_name] | @tsv' |
-          while IFS=$'\t' read -r id tag; do
-            [ -n "$id" ] || continue
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
-          done
       - name: Save build failure reports
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,16 +1,5 @@
-# Development signing key
+# Signing
 
-`mpei-neo-dev.p12.b64` is intentionally a **public, disposable development key**.
+All builds use the `com.rteats.mpeilite` application ID. The private signing key is not committed to Git. Android Studio reads the ignored `local-signing.properties`; the `main` GitHub Actions workflow reads the same key from repository secrets `MPEI_STABLE_KEYSTORE_B64` and `MPEI_STABLE_PASSWORD`. PR emulator builds use the runner's temporary debug key on a clean emulator.
 
-It signs only the `com.rteats.mpeineo.dev` application ID used by automated dev builds.
-It must never be used for the stable `com.rteats.mpeineo` package.
-
-The key is committed so every CI dev build has the same signature and can update the
-previous dev build in-place. Anyone can sign an APK with this development identity, so
-dev builds must not be treated as trusted production artifacts.
-
-Keystore settings used by CI:
-
-- type: PKCS12
-- alias: `mpei-neo-dev`
-- store/key password: `mpei-neo-dev`
+See [Signing and retained app data](../docs/signing-and-data.md) for backup, upload, and version-code instructions. The old public `.dev` key was removed from the working tree; copies in Git history must never be used for this package.

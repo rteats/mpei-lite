@@ -10,3 +10,5 @@ the signed Android APK and updates the rolling `latest` release.
 Versions use Moscow local time: `YYYY.MM.DD.N`.
 
 [Latest APK](https://github.com/rteats/mpei-lite/releases/download/latest/MPEI-Lite.apk)
+
+For the Android Studio, device, and PR development loop, see [Development workflow](docs/development-workflow.md).

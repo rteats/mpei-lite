@@ -1,0 +1,11 @@
+# Copy to local-signing.properties (ignored by Git) and fill in the new
+# keystore that signs com.rteats.mpeilite.
+# Use forward slashes in Windows paths. Never commit the filled-in file.
+storeFile=C:/path/to/stable-2026.p12
+storeType=PKCS12
+storePassword=CHANGE_ME
+keyAlias=CHANGE_ME
+keyPassword=CHANGE_ME
+# Must be >= the versionCode currently installed on the phone.
+versionCode=84
+versionName=local.84
