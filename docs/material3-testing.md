@@ -23,3 +23,13 @@ The repository uses Android Gradle Plugin 9.4.1. Google's newer built-in Compose
 - Manual: TalkBack focus order and actions, physical keyboard, touch targets, orientation and split screen.
 
 Tests should stay deterministic: mock remote BARS and mail dependencies where possible, avoid authenticated accounts, and save diagnostics for failures.
+
+
+## Integration regression run
+
+The emulator workflow also runs `BarsTaskFlowUiTest`, including the BARS detail
+open / Back / reopen regression merged through PR #123. The test suite is
+selected by an explicit two-class instrumentation filter so both the Material 3
+accessibility checks and the BARS detail tests run in the same API 35 emulator.
+These tests validate dispatcher Back, not a real touch-driven predictive
+gesture; physical gesture cancellation still requires device QA.
