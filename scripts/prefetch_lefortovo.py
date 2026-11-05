@@ -51,6 +51,119 @@ def validate(payload):
     return buildings, roads, pois
 
 
+
+POI_KEYS = (
+    "amenity", "shop", "tourism", "office", "craft", "healthcare",
+    "historic", "public_transport", "railway", "leisure", "man_made",
+)
+MAP_KEYS = POI_KEYS + ("building", "highway", "landuse", "natural")
+
+
+def fetch_osm_map():
+    """Use the read-only OSM API for a bounded extract when Overpass is overloaded.
+
+    OSM /map.json returns ways referencing node IDs; convert those nodes to
+    Overpass-style way.geometry so Android's existing parser needs no changes.
+    The requested area is small. Subdivide only if the API's 50k-node limit
+    is hit; never retry an HTTP 429/509 rate limit.
+    """
+    src = SOURCE.read_text(encoding="utf-8")
+    values = []
+    for key in ("WEST", "SOUTH", "EAST", "NORTH"):
+        match = re.search(r"internal const val " + key + r" = ([0-9.]+)", src)
+        if match is None:
+            raise ValueError("Missing OSM bbox coordinate " + key)
+        values.append(float(match.group(1)))
+    west, south, east, north = values
+    elements = {}
+
+    def tile(left, bottom, right, top, depth=0):
+        coords = ",".join(str(x) for x in (left, bottom, right, top))
+        url = "https://api.openstreetmap.org/api/0.6/map.json?" + urllib.parse.urlencode({"bbox": coords})
+        request = urllib.request.Request(url, headers={
+            "User-Agent": "MPEILite-Build/1.0 (https://github.com/rteats/mpei-lite)",
+            "Accept": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=50) as response:
+                raw = response.read(MAX_BYTES + 1)
+            if len(raw) > MAX_BYTES:
+                raise ValueError("OSM tile response exceeds 32 MB")
+            data = json.loads(raw)
+            if not isinstance(data.get("elements"), list):
+                raise ValueError("OSM tile lacks elements")
+        except Exception as error:
+            import urllib.error
+            oversized = (isinstance(error, urllib.error.HTTPError) and error.code == 400) or (
+                isinstance(error, ValueError) and "exceeds 32 MB" in str(error)
+            )
+            if not oversized or depth >= 3:
+                raise
+            mid_lon = (left + right) / 2
+            mid_lat = (bottom + top) / 2
+            for sub in ((left, bottom, mid_lon, mid_lat),
+                        (mid_lon, bottom, right, mid_lat),
+                        (left, mid_lat, mid_lon, top),
+                        (mid_lon, mid_lat, right, top)):
+                tile(*sub, depth=depth + 1)
+            return
+        for item in data["elements"]:
+            kind = item.get("type")
+            identifier = item.get("id")
+            if kind in ("node", "way", "relation") and identifier is not None:
+                elements[(kind, identifier)] = item
+        print("OSM API tile", coords, "elements", len(data["elements"]))
+
+    tile(west, south, east, north)
+    nodes = {ident: e for (kind, ident), e in elements.items() if kind == "node"}
+    records = []
+    for (kind, ident), element in elements.items():
+        tags = element.get("tags") or {}
+        if not any(k in tags for k in MAP_KEYS):
+            continue
+        if kind == "node":
+            lat, lon = element.get("lat"), element.get("lon")
+            if lat is not None and lon is not None and south <= lat <= north and west <= lon <= east:
+                records.append({
+                    "type": "node", "id": ident, "lat": lat, "lon": lon, "tags": tags,
+                })
+        elif kind == "way":
+            geometry = []
+            for ref in element.get("nodes", []):
+                node = nodes.get(ref)
+                if node is not None and "lat" in node and "lon" in node:
+                    geometry.append({"lat": node["lat"], "lon": node["lon"]})
+            if len(geometry) >= 2:
+                records.append({
+                    "type": "way", "id": ident, "tags": tags, "geometry": geometry,
+                })
+        elif kind == "relation" and any(k in tags for k in POI_KEYS):
+            locations = []
+            for member in element.get("members", []):
+                if member.get("type") == "node":
+                    node = nodes.get(member.get("ref"))
+                    if node and "lat" in node and "lon" in node:
+                        locations.append(node)
+                elif member.get("type") == "way":
+                    way = elements.get(("way", member.get("ref"))) or {}
+                    for ref in way.get("nodes", [])[:40]:
+                        node = nodes.get(ref)
+                        if node and "lat" in node and "lon" in node:
+                            locations.append(node)
+            if locations:
+                lat = sum(n["lat"] for n in locations) / len(locations)
+                lon = sum(n["lon"] for n in locations) / len(locations)
+                if south <= lat <= north and west <= lon <= east:
+                    records.append({
+                        "type": "relation", "id": ident, "tags": tags,
+                        "center": {"lat": lat, "lon": lon},
+                    })
+    result = {"elements": records}
+    counts = validate(result)
+    print("OSM map validated: buildings=%d roads=%d pois=%d" % counts)
+    return json.dumps(result, separators=(",", ":")).encode("utf-8")
+
+
 def fetch(query):
     encoded = urllib.parse.urlencode({"data": query}).encode("utf-8")
     failures = []
