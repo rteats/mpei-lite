@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -162,7 +164,7 @@ tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
             "outputs/apk/rolling/release/app-rolling-release.apk",
         ).get().asFile
         check(apk.isFile) { "Rolling release APK missing: ${apk.absolutePath}" }
-        java.util.zip.ZipFile(apk).use { zipped ->
+        ZipFile(apk).use { zipped ->
             check(zipped.getEntry("assets/lefortovo_overpass.json.gz") != null) {
                 "Rolling release APK is missing the bundled Lefortovo OSM asset"
             }
