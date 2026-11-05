@@ -165,6 +165,10 @@ def fetch_osm_map():
 
 
 def fetch(query):
+    try:
+        return fetch_osm_map()
+    except Exception as error:
+        print("OSM API export unavailable, trying Overpass mirrors:", error)
     encoded = urllib.parse.urlencode({"data": query}).encode("utf-8")
     failures = []
     for endpoint in ENDPOINTS:
