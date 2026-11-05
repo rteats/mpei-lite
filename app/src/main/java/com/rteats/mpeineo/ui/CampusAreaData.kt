@@ -38,7 +38,9 @@ internal object CampusAreaData {
     private const val ORIGIN_LAT = 55.7559
     private const val ORIGIN_LON = 37.70605
     private const val FILE_NAME = "lefortovo_osm_v2.json"
-    private const val BUNDLED_EXTRACT = "lefortovo_overpass.json.gz"
+    // Non-.gz extension is intentional: Android's asset packager transparently
+    // strips .gz and uncompresses the file. Preserve gzip bytes for GZIPInputStream.
+    private const val BUNDLED_EXTRACT = "lefortovo_overpass.osmdata"
     private const val MAX_RESPONSE_BYTES = 32_000_000
     private const val REFRESH_INTERVAL_MS = 30L * 24 * 60 * 60 * 1000
     private const val FAILED_RETRY_DELAY_MS = 15L * 60 * 1000
