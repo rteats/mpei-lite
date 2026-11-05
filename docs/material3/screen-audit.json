@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "created_on": "2026-11-05",
+  "status_meanings": {
+    "not-reviewed": "A review is required; no compliance assertion.",
+    "pending-fix": "A previously identified issue is addressed by a separate open PR; unverified until it merges and tests pass.",
+    "reviewed": "A human checked the guideline and attached evidence; still subject to future upstream changes."
+  },
+  "screens": [
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/BarsScreen.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        123
+      ],
+      "notes": "BARS class-detail persistence and predictive-back transition are under review.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/CampusMapScreen.kt",
+      "status": "not-reviewed",
+      "open_prs": [],
+      "notes": "Review map gestures, touch targets, app-bar and keyboard behavior at window-size breakpoints.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/GlobalSearchScreen.kt",
+      "status": "not-reviewed",
+      "open_prs": [],
+      "notes": "Review search expansion, keyboard focus, result navigation and empty/error states.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/MailComposeScreen.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        124
+      ],
+      "notes": "Primary navigation visibility during composition is addressed in a separate open PR.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        124,
+        125
+      ],
+      "notes": "Mail detail navigation/search, mailbox tab placement and FAB size are addressed in open PRs.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/ScheduleExplorerScreen.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        126
+      ],
+      "notes": "Search placeholder text/line count is addressed in a separate open PR.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/ScheduleScreen.kt",
+      "status": "not-reviewed",
+      "open_prs": [],
+      "notes": "Review schedule cards, typography, loading state and adaptive layout.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/SettingsScreen.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        124
+      ],
+      "notes": "Settings destination placement is addressed by the navigation shell PR.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/WebPortalScreen.kt",
+      "status": "not-reviewed",
+      "open_prs": [],
+      "notes": "Review portal WebView escape navigation, input and surface boundaries.",
+      "review_evidence": []
+    },
+    {
+      "path": "app/src/main/java/com/rteats/mpeineo/ui/MpeiNeoApp.kt",
+      "status": "pending-fix",
+      "open_prs": [
+        124
+      ],
+      "notes": "Shell navigation and top app bar visibility decisions are addressed in an open PR.",
+      "review_evidence": []
+    }
+  ]
+}
