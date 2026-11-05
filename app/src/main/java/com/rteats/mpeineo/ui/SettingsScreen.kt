@@ -276,8 +276,8 @@ internal fun SettingsScreen(
     LazyColumn(
         state = settingsListState,
         modifier = modifier.fillMaxSize().testTag("settings-overview"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 92.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = AppSpacing.screenHorizontal, end = AppSpacing.screenHorizontal, top = AppSpacing.md, bottom = 92.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         item {
             SettingsExpansion(

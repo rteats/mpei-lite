@@ -79,8 +79,8 @@ internal fun MailComposeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("mail-compose"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 112.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = AppSpacing.screenHorizontal, end = AppSpacing.screenHorizontal, top = AppSpacing.sm, bottom = 112.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         item(key = "compose-actions") {
             Row(
@@ -217,7 +217,7 @@ internal fun MailComposeScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
                 ) {
                     ContainedLoadingIndicator(modifier = Modifier.size(32.dp))
                     Text(
