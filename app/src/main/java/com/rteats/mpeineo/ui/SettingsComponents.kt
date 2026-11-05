@@ -77,9 +77,9 @@ internal fun SettingsExpansion(
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand)
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                    .padding(horizontal = AppSpacing.md, vertical = AppSpacing.md),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium,
@@ -98,7 +98,7 @@ internal fun SettingsExpansion(
             }
             SpatialExpansion(expanded = expanded) {
                 Column(
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    modifier = Modifier.padding(start = AppSpacing.sm, end = AppSpacing.sm, bottom = AppSpacing.sm),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
