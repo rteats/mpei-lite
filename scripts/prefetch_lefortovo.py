@@ -8,6 +8,7 @@ import io
 import zipfile
 from pathlib import Path
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -95,7 +96,6 @@ def fetch_osm_map():
             if not isinstance(data.get("elements"), list):
                 raise ValueError("OSM tile lacks elements")
         except Exception as error:
-            import urllib.error
             oversized = (isinstance(error, urllib.error.HTTPError) and error.code == 400) or (
                 isinstance(error, ValueError) and "exceeds 32 MB" in str(error)
             )
