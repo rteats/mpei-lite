@@ -4,6 +4,8 @@ import argparse
 import gzip
 import hashlib
 import json
+import io
+import zipfile
 from pathlib import Path
 import re
 import urllib.parse
@@ -164,7 +166,37 @@ def fetch_osm_map():
     return json.dumps(result, separators=(",", ":")).encode("utf-8")
 
 
+
+def fetch_previous_release():
+    """Reuse a validated asset from our last APK instead of requerying public OSM servers.
+
+    The first release containing an extract will populate the next release's
+    local source. A missing or old release safely falls back to bounded export.
+    """
+    url = "https://github.com/rteats/mpei-lite/releases/download/latest/MPEI-Lite.apk"
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "MPEILite-Build/1.0 (https://github.com/rteats/mpei-lite)",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=50) as response:
+            data = response.read(100_000_001)
+        if len(data) > 100_000_000:
+            raise ValueError("Previous APK exceeds 100 MB")
+        with zipfile.ZipFile(io.BytesIO(data)) as apk:
+            compressed = apk.read("assets/lefortovo_overpass.json.gz")
+        raw = gzip.decompress(compressed)
+        if len(raw) > MAX_BYTES:
+            raise ValueError("Previous extracted OSM payload exceeds 32 MB")
+        print("Using verified OSM snapshot from last Dev APK:", validate(json.loads(raw)))
+        return raw
+    except Exception as error:
+        print("Previous release has no reusable map:", type(error).__name__, error)
+        return None
+
 def fetch(query):
+    previous = fetch_previous_release()
+    if previous is not None:
+        return previous
     try:
         return fetch_osm_map()
     except Exception as error:
