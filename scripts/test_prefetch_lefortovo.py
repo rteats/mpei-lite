@@ -13,6 +13,12 @@ class OfflineMapPrefetchTests(unittest.TestCase):
         )
         self.assertIn("55.746344,37.696083,55.767230,37.720361",
                       build_query(source))
+        # A regex end-anchor is part of Overpass QL, not Kotlin interpolation.
+        regex_source = source.replace(
+            'way["building"]($SOUTH,$WEST,$NORTH,$EAST);',
+            'way["building"~"^(yes|residential)$"]($SOUTH,$WEST,$NORTH,$EAST);',
+        )
+        self.assertIn('"^(yes|residential)$"', build_query(regex_source))
 
     def test_live_release_prefetch_preflight(self):
         # Temporary validation: removed after observing the network build prerequisite.
