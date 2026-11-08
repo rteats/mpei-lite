@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -43,7 +45,12 @@ import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.IconButton
@@ -71,6 +78,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -80,7 +89,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import android.graphics.Bitmap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
 import androidx.compose.ui.platform.LocalConfiguration
@@ -103,6 +119,17 @@ import java.util.Date
 internal fun mailNoticeInSnackbar(note: String?): Boolean =
     note == "Письмо отправлено" || note?.startsWith("Сохранено:") == true
 
+/** Message detail retains the shell search bar; login and composer occupy it. */
+internal fun mailHidesShellSearchBar(
+    loginPageOpen: Boolean,
+    messageOpen: Boolean,
+    composing: Boolean,
+): Boolean = when {
+    loginPageOpen || composing -> true
+    messageOpen -> false
+    else -> false
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MailScreen(
@@ -118,7 +145,11 @@ internal fun MailScreen(
     val loginState by loginViewModel.status.collectAsState()
     var showLoginPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(showLoginPage, state.selected, state.composing) {
-        onFullScreenChange(showLoginPage || state.selected != null || state.composing)
+        onFullScreenChange(mailHidesShellSearchBar(
+            loginPageOpen = showLoginPage,
+            messageOpen = state.selected != null,
+            composing = state.composing,
+        ))
     }
     DisposableEffect(Unit) { onDispose { onFullScreenChange(false) } }
     BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
@@ -153,7 +184,12 @@ internal fun MailScreen(
     val context = LocalContext.current
     val inboxScrollState = rememberLazyListState()
     val sentScrollState = rememberLazyListState()
-    val scrollState = if (state.mailbox == OwaMailFolder.SENT) sentScrollState else inboxScrollState
+    val otherScrollStates = remember { mutableStateMapOf<OwaMailFolder, LazyListState>() }
+    val scrollState = when (state.mailbox) {
+        OwaMailFolder.INBOX -> inboxScrollState
+        OwaMailFolder.SENT -> sentScrollState
+        else -> otherScrollStates.getOrPut(state.mailbox) { LazyListState() }
+    }
     var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
         if (reselectRequest != lastReselect) scrollState.animateScrollToItem(0)
@@ -173,14 +209,32 @@ internal fun MailScreen(
             }.distinctUntilChanged().collect(viewModel::updateVisibleSentUids)
         }
     }
-    val folderItems = if (state.mailbox == OwaMailFolder.SENT) state.sentItems else state.items
-    val folderLoading = if (state.mailbox == OwaMailFolder.SENT) state.sentLoading else state.loading
-    val folderLoadingMore = if (state.mailbox == OwaMailFolder.SENT)
-        state.sentLoadingMore else state.loadingMore
-    val folderHasMore = if (state.mailbox == OwaMailFolder.SENT)
-        state.sentHasMore else state.hasMore
-    val folderMoreError = if (state.mailbox == OwaMailFolder.SENT)
-        state.sentMoreError else state.moreError
+    val otherPage = state.otherPages[state.mailbox] ?: OtherMailPage()
+    val folderItems = when (state.mailbox) {
+        OwaMailFolder.INBOX -> state.items
+        OwaMailFolder.SENT -> state.sentItems
+        else -> otherPage.items
+    }
+    val folderLoading = when (state.mailbox) {
+        OwaMailFolder.INBOX -> state.loading
+        OwaMailFolder.SENT -> state.sentLoading
+        else -> otherPage.loading
+    }
+    val folderLoadingMore = when (state.mailbox) {
+        OwaMailFolder.INBOX -> state.loadingMore
+        OwaMailFolder.SENT -> state.sentLoadingMore
+        else -> otherPage.loadingMore
+    }
+    val folderHasMore = when (state.mailbox) {
+        OwaMailFolder.INBOX -> state.hasMore
+        OwaMailFolder.SENT -> state.sentHasMore
+        else -> otherPage.hasMore
+    }
+    val folderMoreError = when (state.mailbox) {
+        OwaMailFolder.INBOX -> state.moreError
+        OwaMailFolder.SENT -> state.sentMoreError
+        else -> otherPage.moreError
+    }
     val visibleMessages = folderItems
     // Full-screen search handles cached Inbox and Sent results in one place.
     LaunchedEffect(scrollState, folderItems.size, folderHasMore,
@@ -286,9 +340,12 @@ internal fun MailScreen(
 
             if (!state.configured) {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier.fillMaxSize()
+                        .then(if (state.loading) Modifier.padding(24.dp) else Modifier),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                    verticalArrangement = Arrangement.spacedBy(
+                        12.dp, if (state.loading) Alignment.CenterVertically else Alignment.Top,
+                    ),
                 ) {
                     if (state.loading) {
                         ContainedLoadingIndicator()
@@ -306,16 +363,18 @@ internal fun MailScreen(
                     }
                 }
             } else {
-                // Folder tabs are list-navigation controls, not message-detail chrome.
-                if (state.selected == null && !state.composing) {
+                // Keep the full parent mailbox mounted behind message detail.
+                // The overlay hides folder tabs until predictive Back previews it.
+                if (!state.composing) {
                     MailFolderTabs(
                         selectedFolder = state.mailbox,
                         onSelectFolder = viewModel::switchMailbox,
+                        availableFolders = state.availableFolders,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                // Keep the Inbox mounted underneath a real sliding detail page,
-                // preserving scroll position during a cancelled rightward swipe.
+                // Keep the mailbox mounted underneath the detail preview,
+                // preserving scroll position during a cancelled back gesture.
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -348,11 +407,10 @@ internal fun MailScreen(
                                             modifier = Modifier.fillMaxWidth().padding(32.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            if (folderLoading) ContainedLoadingIndicator()
-                                            else Text(
+                                            if (!folderLoading) Text(
                                                 if (state.mailbox == OwaMailFolder.SENT)
                                                     "Отправленных писем нет."
-                                                else "Писем нет. Потяните вниз для обновления.",
+                                                else "В папке «${state.mailbox.title}» писем нет. Потяните вниз для обновления.",
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
@@ -364,7 +422,9 @@ internal fun MailScreen(
                                 ) { item ->
                                     MailInboxRow(
                                         summary = item,
-                                        isSent = state.mailbox == OwaMailFolder.SENT,
+                                        isSent = state.mailbox == OwaMailFolder.SENT ||
+                                            state.mailbox == OwaMailFolder.DRAFTS,
+                                        photoLoader = viewModel::senderPhoto,
                                         onClick = {
                                             (context.applicationContext as? com.rteats.mpeineo.MpeiNeoApplication)
                                                 ?.container?.uiFrameProfiler?.markInteraction("MAIL_OPEN")
@@ -393,38 +453,35 @@ internal fun MailScreen(
                                 }
                             }
                         }
-                    SpatialScreenOverlay(
-                        visible = state.selected != null,
-                        modifier = Modifier.testTag("mail-message-slide-layer"),
-                    ) {
-                        val detailState = if (state.selected != null) state else lastDetailState
-                        if (detailState != null) {
-                            PredictiveBackDetail(
-                                onBack = viewModel::closeMessage,
-                                enabled = active && !showLoginPage && !state.composing &&
-                                    state.selected != null,
-                                modifier = Modifier.testTag("mail-detail-swipe-back"),
-                            ) {
-                                Surface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    color = MaterialTheme.colorScheme.background,
-                                ) {
-                                    MailMessage(
-                                        state = detailState,
-                                        isSent = detailState.mailbox == OwaMailFolder.SENT,
-                                        onDownload = viewModel::download,
-                                        onOpenLocal = { attachment, uri ->
-                                            if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
-                                                viewModel.localOpenFailed()
-                                            }
-                                        },
-                                        onBack = { viewModel.closeMessage() },
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
+                }
+            }
+        }
+        MailDetailOverlay(
+            visible = state.configured && state.selected != null,
+            enabled = active && !showLoginPage && !state.composing,
+            onBack = viewModel::closeMessage,
+            modifier = Modifier.testTag("mail-message-slide-layer"),
+        ) {
+            val detailState = if (state.selected != null) state else lastDetailState
+            if (detailState != null) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    MailMessage(
+                        state = detailState,
+                        isSent = detailState.mailbox == OwaMailFolder.SENT ||
+                            detailState.mailbox == OwaMailFolder.DRAFTS,
+                        photoLoader = viewModel::senderPhoto,
+                        onDownload = viewModel::download,
+                        onOpenLocal = { attachment, uri ->
+                            if (!MailAttachmentOpener.open(context, uri, attachment.mimeType)) {
+                                viewModel.localOpenFailed()
                             }
-                        }
-                    }
+                        },
+                        onBack = viewModel::closeMessage,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -495,41 +552,53 @@ internal fun MailScreen(
 internal fun MailFolderTabs(
     selectedFolder: OwaMailFolder,
     onSelectFolder: (OwaMailFolder) -> Unit,
+    availableFolders: List<OwaMailFolder> = OwaMailFolder.defaults,
     modifier: Modifier = Modifier,
 ) {
-    val folders = listOf(
-        OwaMailFolder.INBOX to "Входящие",
-        OwaMailFolder.SENT to "Отправленные",
-    )
-    PrimaryTabRow(
-        selectedTabIndex = if (selectedFolder == OwaMailFolder.INBOX) 0 else 1,
-        modifier = modifier.testTag("mail-folder-tabs"),
-    ) {
-        folders.forEach { (folder, title) ->
+    val folders = availableFolders.distinctBy { it.name }
+        .ifEmpty { OwaMailFolder.defaults }
+    val selectedIndex = folders.indexOf(selectedFolder).coerceAtLeast(0)
+    val tabs: @Composable () -> Unit = {
+        folders.forEach { folder ->
             Tab(
                 selected = selectedFolder == folder,
                 onClick = {
                     if (selectedFolder != folder) onSelectFolder(folder)
                 },
-                text = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                icon = {
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text(folder.title) } },
+                        state = rememberTooltipState(),
                     ) {
-                        AppIcon(
-                            if (folder == OwaMailFolder.INBOX) AppIcons.Inbox else AppIcons.Sent,
-                            contentDescription = null,
-                        )
-                        Text(title, maxLines = 1)
+                        AppIcon(mailFolderIcon(folder), contentDescription = null)
                     }
                 },
-                modifier = Modifier.testTag(
-                    if (folder == OwaMailFolder.INBOX) "mail-folder-inbox"
-                    else "mail-folder-sent"
-                ),
+                modifier = Modifier
+                    .semantics { contentDescription = folder.title }
+                    .testTag("mail-folder-${folder.name.lowercase()}"),
             )
         }
     }
+    BoxWithConstraints(modifier = modifier.testTag("mail-folder-tabs")) {
+        if (64.dp * folders.size <= maxWidth) {
+            PrimaryTabRow(selectedTabIndex = selectedIndex, tabs = tabs)
+        } else {
+            PrimaryScrollableTabRow(selectedTabIndex = selectedIndex,
+                edgePadding = 0.dp, tabs = tabs)
+        }
+    }
+}
+
+private fun mailFolderIcon(folder: OwaMailFolder): Int = when (folder) {
+    OwaMailFolder.INBOX -> AppIcons.Inbox
+    OwaMailFolder.SENT -> AppIcons.Sent
+    OwaMailFolder.DRAFTS -> AppIcons.Drafts
+    OwaMailFolder.DELETED -> AppIcons.DeletedMail
+    OwaMailFolder.JUNK -> AppIcons.JunkMail
+    OwaMailFolder.NOTES -> AppIcons.Notes
+    else -> if (folder.title.equals("Archive", true) ||
+        folder.title.equals("Архив", true)) AppIcons.Archive else AppIcons.Folder
 }
 
 
@@ -541,6 +610,7 @@ internal fun MailFolderTabs(
 private fun MailInboxRow(
     summary: MailSummary,
     isSent: Boolean,
+    photoLoader: suspend (String) -> Bitmap?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -593,7 +663,8 @@ private fun MailInboxRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             },
-            leadingContent = { MailSenderAvatar(correspondent, summary.unread) },
+            leadingContent = { MailSenderAvatar(correspondent, summary.unread,
+                if (isSent) null else summary.senderEmail, photoLoader) },
             modifier = Modifier.fillMaxWidth(),
             colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         )
@@ -601,9 +672,17 @@ private fun MailInboxRow(
 }
 
 @Composable
-private fun MailSenderAvatar(sender: String, unread: Boolean) {
+private fun MailSenderAvatar(
+    sender: String,
+    unread: Boolean,
+    email: String? = null,
+    photoLoader: suspend (String) -> Bitmap? = { null },
+) {
+    val photo by produceState<Bitmap?>(initialValue = null, key1 = email) {
+        value = email?.let { photoLoader(it) }
+    }
     Surface(
-        modifier = Modifier.size(46.dp),
+        modifier = Modifier.size(46.dp).clip(CircleShape),
         shape = CircleShape,
         color = if (unread) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -611,7 +690,12 @@ private fun MailSenderAvatar(sender: String, unread: Boolean) {
             else MaterialTheme.colorScheme.onSurface,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
+            if (photo != null) Image(
+                bitmap = photo!!.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            ) else Text(
                 sender.trim().take(1).uppercase().ifBlank { "@" },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -625,6 +709,7 @@ private fun MailSenderAvatar(sender: String, unread: Boolean) {
 private fun MailMessage(
     state: MailUiState,
     isSent: Boolean,
+    photoLoader: suspend (String) -> Bitmap? = { null },
     onDownload: (com.rteats.mpeineo.data.MailAttachment) -> Unit,
     onOpenLocal: (com.rteats.mpeineo.data.MailAttachment, Uri) -> Unit,
     onBack: () -> Unit,
@@ -667,7 +752,9 @@ private fun MailMessage(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                MailSenderAvatar(correspondent, unread = false)
+                MailSenderAvatar(correspondent, unread = false,
+                    email = if (isSent) null else detail.senderEmail,
+                    photoLoader = photoLoader)
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),

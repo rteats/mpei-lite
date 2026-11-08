@@ -28,6 +28,12 @@ object AppIcons {
     @get:DrawableRes val InboxFilled: Int get() = R.drawable.ms_inbox_filled
     @get:DrawableRes val Sent: Int get() = R.drawable.ms_send
     @get:DrawableRes val SentFilled: Int get() = R.drawable.ms_send_filled
+    @get:DrawableRes val Drafts: Int get() = R.drawable.ms_drafts
+    @get:DrawableRes val DeletedMail: Int get() = R.drawable.ms_delete
+    @get:DrawableRes val JunkMail: Int get() = R.drawable.ms_report
+    @get:DrawableRes val Notes: Int get() = R.drawable.ms_sticky_note_2
+    @get:DrawableRes val Folder: Int get() = R.drawable.ms_folder
+    @get:DrawableRes val Archive: Int get() = R.drawable.ms_archive
     @get:DrawableRes val SettingsFilled: Int get() = R.drawable.ms_settings_filled
     @get:DrawableRes val LocationFilled: Int get() = R.drawable.ms_location_on_filled
     @get:DrawableRes val FavoriteFilled: Int get() = R.drawable.ms_star_filled

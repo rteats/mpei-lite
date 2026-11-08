@@ -86,10 +86,10 @@ fun MpeiNeoApp(
     val mailState by mailViewModel.state.collectAsState()
     val interfacePrefs = remember(application) { InterfacePreferences(application) }
     var navigationHaptics by remember { mutableStateOf(interfacePrefs.navigationHaptics) }
-    var settingsReturnTab by rememberSaveable { mutableStateOf(AppTab.SCHEDULE) }
     var currentTab by rememberSaveable {
         mutableStateOf(if (initialMailTab) AppTab.MAIL else AppTab.SCHEDULE)
     }
+    var settingsVisible by rememberSaveable { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
     val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS)
     val widthDp = LocalConfiguration.current.screenWidthDp
@@ -106,17 +106,28 @@ fun MpeiNeoApp(
     val navigationVisible = true
 
     fun openTab(tab: AppTab) {
+        if (tab == AppTab.SETTINGS) {
+            settingsVisible = true
+            diagnostics.log("NAV", "settings from=" + currentTab.name)
+            return
+        }
+        if (settingsVisible) settingsVisible = false
         if (tab == currentTab) {
             reselectRequest++
             diagnostics.log("NAV", "reselect=" + tab.name)
             return
         }
         if (mailWebVisible) mailWebVisible = false
-        if (tab == AppTab.SETTINGS && currentTab != AppTab.SETTINGS) {
-            settingsReturnTab = currentTab
-        }
         diagnostics.log("NAV", "tab=" + tab.name + " from=" + currentTab.name)
         currentTab = tab
+    }
+
+    // Saved state from the former Settings tab migrates to the overlay model.
+    LaunchedEffect(Unit) {
+        if (currentTab == AppTab.SETTINGS) {
+            currentTab = AppTab.SCHEDULE
+            settingsVisible = true
+        }
     }
 
     fun closeMailBrowser() {
@@ -166,15 +177,16 @@ fun MpeiNeoApp(
     }
     LaunchedEffect(currentTab) { application.container.uiFrameProfiler.markScreen(currentTab.name) }
 
-    BackHandler(enabled = currentTab == AppTab.MAIL && mailWebVisible) {
+    BackHandler(enabled = !settingsVisible && currentTab == AppTab.MAIL && mailWebVisible) {
         closeMailBrowser()
     }
-    BackHandler(enabled = currentTab != AppTab.SCHEDULE && !mailWebVisible &&
+    BackHandler(enabled = !settingsVisible && currentTab != AppTab.SCHEDULE && !mailWebVisible &&
         !detailOpen) {
-        openTab(if (currentTab == AppTab.SETTINGS) settingsReturnTab else AppTab.SCHEDULE)
+        openTab(AppTab.SCHEDULE)
     }
 
     val railVisible = navigationVisible && expandedWidth
+    Box(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxSize()) {
         if (railVisible) {
             NavigationRail(modifier = Modifier.testTag("main-navigation-rail")) {
@@ -237,20 +249,10 @@ fun MpeiNeoApp(
                                     AppTab.BARS -> "БАРС"
                                 })
                             },
-                            navigationIcon = {
-                                if (currentTab == AppTab.SETTINGS) {
-                                    IconButton(onClick = { openTab(settingsReturnTab) },
-                                        modifier = Modifier.testTag("settings-back")) {
-                                        AppIcon(AppIcons.Back, contentDescription = "Назад")
-                                    }
-                                }
-                            },
                             actions = {
-                                if (currentTab != AppTab.SETTINGS) {
-                                    IconButton(onClick = { openTab(AppTab.SETTINGS) },
-                                        modifier = Modifier.testTag("open-settings")) {
-                                        AppIcon(AppIcons.Settings, contentDescription = "Настройки")
-                                    }
+                                IconButton(onClick = { openTab(AppTab.SETTINGS) },
+                                    modifier = Modifier.testTag("open-settings")) {
+                                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
                                 }
                             },
                             modifier = Modifier.testTag("main-app-bar"),
@@ -308,7 +310,7 @@ fun MpeiNeoApp(
                     MailScreen(
                         viewModel = mailViewModel,
                         loginViewModel = mailLoginViewModel,
-                        active = !mailWebVisible,
+                        active = !mailWebVisible && !settingsVisible,
                         onOpenPortal = { mailWebVisible = true },
                         reselectRequest = reselectRequest,
                         onFullScreenChange = { mailFullScreenOpen = it },
@@ -328,7 +330,52 @@ fun MpeiNeoApp(
                     active = true,
                     modifier = Modifier.fillMaxSize(),
                 )
-                AppTab.SETTINGS -> SettingsScreen(
+                AppTab.SETTINGS -> Unit
+                AppTab.BARS -> {
+                    val barsViewModel: BarsViewModel = composeViewModel(
+                        factory = BarsViewModel.factory(
+                            diagnostics,
+                            BarsNetworkDiagnostics(application, diagnostics),
+                            BarsSnapshotStore(application),
+                        ),
+                    )
+                    BarsScreen(
+                        viewModel = barsViewModel,
+                        active = !settingsVisible,
+                        reselectRequest = reselectRequest,
+                        onDetailOpenChange = { barsDetailOpen = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                }
+            }
+        }
+    }
+    DetailScreenOverlay(
+        visible = settingsVisible,
+        enabled = settingsVisible,
+        onBack = { settingsVisible = false },
+        modifier = Modifier.testTag("settings-overlay"),
+        swipeTag = "settings-swipe-back",
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = { Text("Настройки") },
+                    navigationIcon = {
+                        IconButton(onClick = { settingsVisible = false },
+                            modifier = Modifier.testTag("settings-back")) {
+                            AppIcon(AppIcons.Back, contentDescription = "Назад")
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)
+                .consumeWindowInsets(padding).imePadding()) {
+                SettingsScreen(
                     updateViewModel = updateViewModel,
                     mailViewModel = mailViewModel,
                     interfaceTheme = interfaceTheme,
@@ -340,26 +387,12 @@ fun MpeiNeoApp(
                         navigationHaptics = it
                         diagnostics.log("UI_PREF", "navigation_haptics=" + it)
                     },
+                    active = settingsVisible,
                     modifier = Modifier.fillMaxSize(),
                 )
-                AppTab.BARS -> {
-                    val barsViewModel: BarsViewModel = composeViewModel(
-                        factory = BarsViewModel.factory(
-                            diagnostics,
-                            BarsNetworkDiagnostics(application, diagnostics),
-                            BarsSnapshotStore(application),
-                        ),
-                    )
-                    BarsScreen(
-                        viewModel = barsViewModel,
-                        reselectRequest = reselectRequest,
-                        onDetailOpenChange = { barsDetailOpen = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                }
             }
         }
+    }
     }
 }
 

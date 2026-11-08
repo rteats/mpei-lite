@@ -1,6 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -8,41 +7,43 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExpandedFullScreenSearchBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopSearchBar
+import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -54,11 +55,13 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
+import kotlinx.coroutines.launch
 
 /**
- * Search is a destination inside the schedule service, not an overlay WebView.
- * The expensive agenda is not composed while search results are visible.
+ * The schedule uses the same Material 3 search expansion as mail. The agenda
+ * stays mounted behind the full-screen results so it is ready on collapse.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ScheduleExplorerScreen(
     state: MainUiState,
@@ -73,20 +76,36 @@ internal fun ScheduleExplorerScreen(
     reselectRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    var searching by rememberSaveable { mutableStateOf(false) }
+    val searchBar = rememberSearchBarState()
+    val searchText = rememberTextFieldState(initialText = state.searchQuery)
+    val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val focus = remember { FocusRequester() }
     val agendaStateHolder = rememberSaveableStateHolder()
     val query = state.searchQuery.trim()
     val favorites = remember(state.favorites) { state.favorites.map { it.type to it.id }.toSet() }
+    val expanded = searchBar.currentValue == SearchBarValue.Expanded
+
+    LaunchedEffect(searchText.text) {
+        val text = searchText.text.toString()
+        if (text != state.searchQuery) onQueryChange(text)
+    }
+
+    fun closeSearch() {
+        focusManager.clearFocus()
+        keyboard?.hide()
+        scope.launch { searchBar.animateToCollapsed() }
+    }
 
     fun openTarget(target: ScheduleTarget) {
         focusManager.clearFocus()
         keyboard?.hide()
-        onSelectTarget(target)
-        onQueryChange("")
-        searching = false
+        scope.launch {
+            searchBar.animateToCollapsed()
+            onSelectTarget(target)
+            searchText.setTextAndPlaceCursorAtEnd("")
+            onQueryChange("")
+        }
     }
 
     var agendaJumpRequest by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -94,61 +113,88 @@ internal fun ScheduleExplorerScreen(
     LaunchedEffect(reselectRequest) {
         if (reselectRequest != lastReselect) {
             agendaJumpRequest++
-            searching = false
-            focusManager.clearFocus()
-            keyboard?.hide()
+            closeSearch()
         }
         lastReselect = reselectRequest
     }
-    BackHandler(searching) {
-        focusManager.clearFocus()
-        keyboard?.hide()
-        searching = false
+
+    val searchInput: @Composable () -> Unit = {
+        SearchBarDefaults.InputField(
+            textFieldState = searchText,
+            searchBarState = searchBar,
+            onSearch = {
+                focusManager.clearFocus()
+                keyboard?.hide()
+            },
+            placeholder = {
+                Text(
+                    if (expanded) "Группа, преподаватель или аудитория"
+                    else state.selected?.let { "${it.name} · ${it.type.displayName}" }
+                        ?: "Найти расписание",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            leadingIcon = {
+                if (expanded) {
+                    IconButton(onClick = ::closeSearch) {
+                        AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
+                    }
+                } else AppIcon(AppIcons.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (expanded) {
+                    if (searchText.text.isNotEmpty()) {
+                        IconButton(onClick = {
+                            searchText.setTextAndPlaceCursorAtEnd("")
+                        }) { AppIcon(AppIcons.Close, contentDescription = "Очистить запрос") }
+                    }
+                } else {
+                    IconButton(
+                        onClick = onSettings,
+                        modifier = Modifier.testTag("schedule-open-settings"),
+                    ) { AppIcon(AppIcons.Settings, contentDescription = "Настройки") }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            // Keep the last query for reopening search, while the collapsed
+            // field continues to identify the timetable currently on screen.
+            outputTransformation = if (!expanded && state.selected != null &&
+                searchText.text.isNotEmpty()) {
+                val label = "${state.selected.name} · ${state.selected.type.displayName}"
+                OutputTransformation { replace(0, length, label) }
+            } else null,
+            modifier = Modifier.testTag("schedule-target-query"),
+        )
     }
 
-    Column(
+    Box(
         modifier = modifier.fillMaxSize().testTag("schedule-explorer"),
     ) {
-        if (searching) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = onQueryChange,
-                modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()
-                    .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .focusRequester(focus).testTag("schedule-target-query"),
-                leadingIcon = {
-                    IconButton(onClick = {
-                        focusManager.clearFocus()
-                        keyboard?.hide()
-                        searching = false
-                    }) { AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск") }
-                },
-                trailingIcon = {
-                    if (state.searchQuery.isNotBlank()) {
-                        IconButton(onClick = { onQueryChange("") }) {
-                            AppIcon(AppIcons.Close, contentDescription = "Очистить запрос")
-                        }
-                    }
-                },
-                label = { Text("Поиск расписания") },
-                placeholder = {
-                    Text(
-                        "Группа, преподаватель или аудитория",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    focusManager.clearFocus()
-                    keyboard?.hide()
-                }),
-                shape = RoundedCornerShape(24.dp),
+        Column(Modifier.fillMaxSize()) {
+            TopSearchBar(
+                state = searchBar,
+                inputField = searchInput,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                modifier = Modifier.fillMaxWidth().testTag("schedule-search-open"),
             )
-            LaunchedEffect(searching) { focus.requestFocus() }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                agendaStateHolder.SaveableStateProvider("schedule-agenda") {
+                    ScheduleScreen(
+                        state = state,
+                        onEnsureAgendaWeek = onEnsureWeek,
+                        onRefreshAgendaWeek = onRefreshWeek,
+                        onRetryAgendaWeek = onRetryWeek,
+                        onViewedAgendaWeek = {},
+                        onAgendaScrollingChanged = {},
+                        onLocateRoom = {},
+                        todayJumpRequest = agendaJumpRequest,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        ExpandedFullScreenSearchBar(state = searchBar, inputField = searchInput) {
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -273,63 +319,6 @@ internal fun ScheduleExplorerScreen(
                     }
                 }
                 item(key = "end-space") { Spacer(Modifier.height(24.dp)) }
-            }
-        } else {
-            Row(
-                modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()
-                    .align(Alignment.CenterHorizontally)
-                    .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Surface(
-                    onClick = { searching = true },
-                    modifier = Modifier.weight(1f).testTag("schedule-search-open"),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        AppIcon(AppIcons.Search, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                state.selected?.name ?: "Найти расписание",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (state.selected == null) FontWeight.Normal
-                                    else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            state.selected?.type?.displayName?.let {
-                                Text(it, style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-                IconButton(
-                    onClick = onSettings,
-                    modifier = Modifier.testTag("schedule-open-settings"),
-                ) { AppIcon(AppIcons.Settings, contentDescription = "Настройки") }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                agendaStateHolder.SaveableStateProvider("schedule-agenda") {
-                    ScheduleScreen(
-                        state = state,
-                        onEnsureAgendaWeek = onEnsureWeek,
-                        onRefreshAgendaWeek = onRefreshWeek,
-                        onRetryAgendaWeek = onRetryWeek,
-                        onViewedAgendaWeek = {},
-                        onAgendaScrollingChanged = {},
-                        onLocateRoom = {},
-                        todayJumpRequest = agendaJumpRequest,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
             }
         }
     }

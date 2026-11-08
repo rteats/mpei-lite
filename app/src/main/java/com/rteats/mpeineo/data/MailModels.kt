@@ -11,6 +11,8 @@ data class MailSummary(
     val hasAttachment: Boolean,
     val owaConversationId: String? = null,
     val recipients: List<String>? = null,
+    val owaItemId: String? = null,
+    val senderEmail: String? = null,
 )
 data class MailInboxSnapshot(val uidValidity: Long, val messages: List<MailSummary>)
 data class MailAttachment(
@@ -25,6 +27,7 @@ data class MailThreadMessage(
     val subject: String,
     val sentAt: Long,
     val body: String,
+    val senderEmail: String? = null,
 )
 
 data class MailDetail(
@@ -36,5 +39,6 @@ data class MailDetail(
     val attachments: List<MailAttachment>,
     val threadMessages: List<MailThreadMessage> = emptyList(),
     val recipients: List<String>? = null,
+    val senderEmail: String? = null,
 )
 

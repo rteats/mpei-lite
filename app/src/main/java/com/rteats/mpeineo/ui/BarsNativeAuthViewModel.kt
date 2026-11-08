@@ -27,10 +27,26 @@ internal data class BarsNativeStatus(
     val step: BarsNativeStep = BarsNativeStep.IDLE,
     val forceLogin: Boolean = false,
     val busySending: Boolean = false,
+    val codeSent: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
     val savedLoginAvailable: Boolean = false,
 )
+
+internal fun barsCodeSendActionLabel(status: BarsNativeStatus): String = when {
+    status.busySending -> "Отправляем код…"
+    status.codeSent -> "Отправить код ещё раз"
+    else -> "Повторить отправку кода"
+}
+
+/** Enter the challenge before requesting delivery so a second tap cannot race the first send. */
+internal fun enterBarsCodeChallenge(
+    status: MutableStateFlow<BarsNativeStatus>,
+    requestCode: () -> Unit,
+) {
+    status.update { it.copy(step = BarsNativeStep.CODE, codeSent = false) }
+    requestCode()
+}
 
 internal class BarsNativeAuthViewModel(
     private val bars: BarsViewModel,
@@ -129,12 +145,14 @@ internal class BarsNativeAuthViewModel(
         }
         pendingSave = if (rememberLogin) SavedLoginCredentials(account.trim(), password) else null
         pendingForget = !rememberLogin
-        _status.update { it.copy(step = BarsNativeStep.SUBMITTING, error = null) }
+        _status.update { it.copy(step = BarsNativeStep.SUBMITTING,
+            codeSent = false, error = null, notice = null) }
         viewModelScope.launch {
             runCatching { http.credentials(account.trim(), password) }.onSuccess { result ->
                 when (result) {
-                    is BarsCredentialResult.NeedsCode ->
-                        _status.update { it.copy(step = BarsNativeStep.CODE) }
+                    is BarsCredentialResult.NeedsCode -> {
+                        enterBarsCodeChallenge(_status, ::sendCode)
+                    }
                     is BarsCredentialResult.Complete -> publish(result.page)
                 }
             }.onFailure {
@@ -149,14 +167,22 @@ internal class BarsNativeAuthViewModel(
 
     fun sendCode() {
         if (_status.value.step != BarsNativeStep.CODE || _status.value.busySending) return
-        _status.update { it.copy(busySending = true, error = null) }
+        _status.update { it.copy(busySending = true, error = null, notice = null) }
         viewModelScope.launch {
             runCatching { http.requestCode() }.onSuccess {
-                _status.update { it.copy(busySending = false, notice = "Код подтверждения запрошен.") }
+                _status.update { current ->
+                    if (current.step == BarsNativeStep.CODE) current.copy(
+                        busySending = false, codeSent = true,
+                        notice = "Код отправлен в MAX.",
+                    ) else current
+                }
             }.onFailure {
                 diagnostics.log("BARS_NATIVE", "send_code=failed type=" + it.javaClass.simpleName)
-                _status.update { it.copy(busySending = false,
-                    error = "Не удалось отправить код.") }
+                _status.update { current ->
+                    if (current.step == BarsNativeStep.CODE) current.copy(
+                        busySending = false, error = "Не удалось отправить код.",
+                    ) else current
+                }
             }
         }
     }

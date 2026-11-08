@@ -3,9 +3,10 @@ package com.rteats.mpeineo.ui
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -18,18 +19,44 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+
+private val predictiveBackEasing = CubicBezierEasing(0.1f, 0.1f, 0f, 1f)
+
+internal data class PredictiveBackSurfaceFrame(
+    val scale: Float,
+    val translationXPx: Float,
+    val cornerRadiusDp: Float,
+)
+
+/** Android's full-screen back preview: 90% scale and an 8dp edge gap. */
+internal fun predictiveBackSurfaceFrame(
+    progress: Float,
+    widthPx: Int,
+    density: Float,
+    direction: Float,
+): PredictiveBackSurfaceFrame {
+    val eased = predictiveBackEasing.transform(progress.coerceIn(0f, 1f))
+    val maxShiftPx = (widthPx * 0.05f - 8f * density).coerceAtLeast(0f)
+    return PredictiveBackSurfaceFrame(
+        scale = 1f - 0.1f * eased,
+        translationXPx = direction * maxShiftPx * eased,
+        cornerRadiusDp = 28f * eased,
+    )
+}
 
 /**
  * Detail page driven by the system back gesture.
  *
- * The page follows the predictive-back progress, exposing the already-mounted
- * parent list. A committed gesture completes the slide with a spatial spring
- * before invoking [onBack]; a cancelled one springs back to the origin. Back
+ * The page scales and shifts with predictive-back progress, exposing the
+ * already-mounted parent. A committed gesture fades the detail away before
+ * invoking [onBack]; a cancelled one springs back to full size. Back
  * without a gesture (button or three-button navigation) calls [onBack] at once
  * and leaves the exit animation to the surrounding overlay.
  *
@@ -51,34 +78,57 @@ internal fun PredictiveBackDetail(
     val latestGestureCommit by rememberUpdatedState(onGestureCommit)
     val scope = rememberCoroutineScope()
     val spring = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val density = LocalDensity.current.density
     var widthPx by remember { mutableIntStateOf(0) }
     var direction by remember { mutableFloatStateOf(1f) }
-    val slide = remember { Animatable(0f) }
+    val progress = remember { Animatable(0f) }
+    val opacity = remember { Animatable(1f) }
 
     // A reopened detail always starts at rest, even if this composable was kept.
-    LaunchedEffect(enabled) { if (enabled) slide.snapTo(0f) }
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            progress.snapTo(0f)
+            opacity.snapTo(1f)
+        }
+    }
 
-    PredictiveBackHandler(enabled = enabled) { progress ->
+    PredictiveBackHandler(enabled = enabled) { backEvents ->
         var moved = false
         try {
-            progress.collect { event ->
+            backEvents.collect { event ->
                 moved = true
                 direction = if (event.swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
-                slide.snapTo(event.progress)
+                progress.snapTo(event.progress)
             }
             if (moved) {
-                slide.animateTo(1f, spring)
+                coroutineScope {
+                    launch { progress.animateTo(1f, spring) }
+                    launch { opacity.animateTo(0f, spring) }
+                }
                 latestGestureCommit()
             }
             latestBack()
         } catch (cancelled: CancellationException) {
-            scope.launch { slide.animateTo(0f, spring) }
+            scope.launch {
+                coroutineScope {
+                    launch { progress.animateTo(0f, spring) }
+                    launch { opacity.animateTo(1f, spring) }
+                }
+            }
         }
     }
 
+    val frame = predictiveBackSurfaceFrame(progress.value, widthPx, density, direction)
     Box(
         modifier = modifier.fillMaxSize()
             .onSizeChanged { widthPx = it.width }
-            .offset { IntOffset((direction * slide.value * widthPx).roundToInt(), 0) },
+            .graphicsLayer {
+                scaleX = frame.scale
+                scaleY = frame.scale
+                translationX = frame.translationXPx
+                alpha = opacity.value
+                shape = RoundedCornerShape(frame.cornerRadiusDp.dp)
+                clip = progress.value > 0f
+            },
     ) { content() }
 }
