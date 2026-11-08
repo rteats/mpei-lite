@@ -10,6 +10,8 @@ import android.provider.MediaStore
 import android.content.ContentValues
 import android.util.Base64
 import android.text.Html
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import kotlinx.coroutines.CancellationException
@@ -37,10 +39,6 @@ import org.json.JSONObject
  */
 internal data class SavedMailAttachment(val name: String, val uri: Uri)
 
-enum class OwaMailFolder(val distinguishedId: String) {
-    INBOX("inbox"), SENT("sentitems"),
-}
-
 class OwaMailRepository(
     private val context: Context,
     private val diagnostics: DiagnosticLog,
@@ -55,10 +53,118 @@ class OwaMailRepository(
     private val attachmentLocations = MailAttachmentLocalStore(context)
     private val accountPrefs = context.getSharedPreferences("owa_mail_account_v1", Context.MODE_PRIVATE)
     @Volatile private var activeAccount: String? = null
+    private val photoCache = mutableMapOf<String, Bitmap?>()
+
+    /** OWA's persona endpoint returns a tiny GIF when a sender has no photo. */
+    suspend fun senderPhoto(email: String): Bitmap? {
+        if (!email.contains('@') || email.length > 320) return null
+        val account = activeAccount ?: return null
+        val key = "$account:${email.trim().lowercase()}"
+        synchronized(photoCache) {
+            if (photoCache.containsKey(key)) return photoCache[key]
+        }
+        val cookies = withContext(Dispatchers.Main) {
+            CookieManager.getInstance().getCookie(OWA_URL).orEmpty()
+        }
+        if (cookies.isBlank()) return null
+        val bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                val path = OWA_URL + "service.svc/s/GetPersonaPhoto?UA=0&email=" +
+                    java.net.URLEncoder.encode(email, "UTF-8") + "&size=HR96x96"
+                val connection = URL(path).openConnection() as HttpURLConnection
+                try {
+                    connection.instanceFollowRedirects = false
+                    connection.connectTimeout = 8000
+                    connection.readTimeout = 12000
+                    connection.setRequestProperty("Cookie", cookies)
+                    connection.setRequestProperty("Accept", "image/jpeg,image/png")
+                    connection.setRequestProperty("Referer", OWA_URL)
+                    if (connection.responseCode != 200 ||
+                        connection.contentType?.substringBefore(';') !in
+                            setOf("image/jpeg", "image/png") ||
+                        connection.contentLength > 256_000) return@runCatching null
+                    val bytes = connection.inputStream.use { input ->
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (output.size() <= 256_000) {
+                            val count = input.read(buffer, 0,
+                                minOf(buffer.size, 256_001 - output.size()))
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        output.toByteArray()
+                    }
+                    if (bytes.size > 256_000) return@runCatching null
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+        }
+        synchronized(photoCache) {
+            if (photoCache.size >= 150) photoCache.clear()
+            photoCache[key] = bitmap
+        }
+        return bitmap
+    }
+
+    /** Personal folder IDs are never persisted across an account switch. */
+    suspend fun availableFolders(): List<OwaMailFolder> = try {
+        val discovered = try {
+            discoverFolders(includeHiddenFlag = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Older OWA builds may reject the extended property shape.
+            discoverFolders(includeHiddenFlag = false)
+        }
+        (OwaMailFolder.defaults + discovered).distinctBy { it.name }.also { folders ->
+            (activeAccount ?: cachedAccountKey())?.let { account ->
+                withContext(Dispatchers.IO) { cache.saveOwaFolders(account, folders) }
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        diagnostics.log("OWA_MAIL", "folder_discovery_failed type=${failure.javaClass.simpleName}")
+        cachedFolders()
+    }
+
+    private suspend fun discoverFolders(includeHiddenFlag: Boolean): List<OwaMailFolder> {
+        val found = mutableListOf<OwaMailFolder>()
+        var offset = 0
+        repeat(5) {
+            val response = service("FindFolder", "FindFolder",
+                OwaMailFolders.findFolderRequest(offset, includeHiddenFlag))
+            val messages = response.optJSONObject("Body")?.optJSONObject("ResponseMessages")
+                ?.optJSONArray("Items") ?: throw ServiceFailure("missing_folder_response")
+            val first = messages.optJSONObject(0)
+                ?: throw ServiceFailure("missing_folder_page")
+            verifyResponse(first)
+            val root = first.optJSONObject("RootFolder")
+                ?: throw ServiceFailure("missing_folder_root")
+            found += OwaMailFolders.parseFolders(response)
+            val rows = root.optJSONArray("Folders")?.length() ?: 0
+            if (root.optBoolean("IncludesLastItemInRange", rows < 100) || rows == 0)
+                return found
+            val next = root.optInt("IndexedPagingOffset", offset + rows)
+            if (next <= offset) return found
+            offset = next
+        }
+        return found
+    }
 
     fun cachedInbox(): List<MailSummary> =
         accountPrefs.getString("last_account", null)?.let { cache.inbox(it)?.messages }
             .orEmpty().filter { it.owaConversationId != null }
+
+    fun cachedFolders(): List<OwaMailFolder> =
+        cachedAccountKey()?.let(cache::owaFolders)
+            ?.takeIf { it.isNotEmpty() } ?: OwaMailFolder.defaults
+
+    fun cachedFolder(folder: OwaMailFolder): List<MailSummary> =
+        cachedAccountKey()?.let { cache.owaFolder(it, folder) }
+            .orEmpty().filter { it.owaConversationId != null || it.owaItemId != null }
 
     internal fun cachedDraft(): MailDraftSnapshot? =
         cachedAccountKey()?.let(cache::draft)
@@ -91,6 +197,7 @@ class OwaMailRepository(
     suspend fun signOut() {
         val previous = accountPrefs.getString("last_account", null)
         activeAccount = null
+        synchronized(photoCache) { photoCache.clear() }
         withContext(Dispatchers.IO) { attachmentLocations.clear() }
         accountPrefs.edit().remove("last_account").apply()
         if (previous != null) withContext(Dispatchers.IO) { cache.clear(previous) }
@@ -176,11 +283,37 @@ class OwaMailRepository(
         val started = SystemClock.elapsedRealtime()
         return try {
             val account = authenticatedAccount()
+            if (folder.itemList) {
+                val result = service("FindItem", "Browse_All",
+                    OwaMailFolders.findItemRequest(folder, offset, maxConversations),
+                    actionId = "-35")
+                val responseBody = result.optJSONObject("Body")
+                    ?: throw ServiceFailure("missing_body")
+                verifyResponse(responseBody)
+                val responses = responseBody.optJSONObject("ResponseMessages")
+                    ?.optJSONArray("Items") ?: throw ServiceFailure("missing_items")
+                for (i in 0 until responses.length())
+                    responses.optJSONObject(i)?.let(::verifyResponse)
+                val items = OwaMailFolders.parseItems(result, OWA_UID_VALIDITY,
+                    ::stableId, ::parseDate)
+                activeAccount = account
+                accountPrefs.edit().putString("last_account", account).apply()
+                withContext(Dispatchers.IO) {
+                    cache.saveOwaFolderPage(account, folder, items, offset)
+                }
+                diagnostics.log("OWA_MAIL",
+                    "folder_success folder=" + folder.name + " refreshId=" + refreshId +
+                        " offset=" + offset + " items=" + items.size +
+                        " durationMs=" + (SystemClock.elapsedRealtime() - started))
+                return items
+            }
             val body = JSONObject()
                 .put("__type", "FindConversationRequest:#Exchange")
                 .put("ParentFolderId", JSONObject()
                     .put("__type", "TargetFolderId:#Exchange")
-                    .put("BaseFolderId", JSONObject()
+                    .put("BaseFolderId", folder.folderId?.let {
+                        JSONObject().put("__type", "FolderId:#Exchange").put("Id", it)
+                    } ?: JSONObject()
                         .put("__type", "DistinguishedFolderId:#Exchange")
                         .put("Id", folder.distinguishedId)))
                 .put("ConversationShape", JSONObject()
@@ -218,7 +351,7 @@ class OwaMailRepository(
                     sender = senders?.optString(0).orEmpty(),
                     subject = item.optString("ConversationTopic"),
                     sentAt = parseDate(item.optString("LastDeliveryTime")),
-                    unread = folder == OwaMailFolder.INBOX &&
+                    unread = folder != OwaMailFolder.SENT &&
                         item.optInt("UnreadCount", 0) > 0,
                     hasAttachment = item.optBoolean("HasAttachments"),
                     owaConversationId = id,
@@ -232,8 +365,10 @@ class OwaMailRepository(
             withContext(Dispatchers.IO) {
                 if (folder == OwaMailFolder.SENT) {
                     cache.saveOwaSentPage(account, items, offset)
-                } else {
+                } else if (folder == OwaMailFolder.INBOX) {
                     cache.saveOwaPage(account, items, offset)
+                } else {
+                    cache.saveOwaFolderPage(account, folder, items, offset)
                 }
             }
             diagnostics.log("OWA_MAIL",
@@ -387,6 +522,62 @@ class OwaMailRepository(
     }
 
     suspend fun message(summary: MailSummary): MailDetail {
+        summary.owaItemId?.takeIf { it.isNotBlank() }?.let { itemId ->
+            val body = JSONObject()
+                .put("__type", "GetItemRequest:#Exchange")
+                .put("ItemIds", JSONArray().put(JSONObject()
+                    .put("__type", "ItemId:#Exchange").put("Id", itemId)))
+                .put("ItemShape", JSONObject()
+                    .put("__type", "ItemResponseShape:#Exchange")
+                    .put("BaseShape", "IdOnly")
+                    .put("FilterHtmlContent", true)
+                    .put("BlockExternalImagesIfSenderUntrusted", true)
+                    .put("AddBlankTargetToLinks", true)
+                    .put("ClientSupportsIrm", true)
+                    .put("MaximumBodySize", 2097152)
+                    .put("MaximumRecipientsToReturn", 10))
+            val response = service("GetItem", "GetMailItem", body, actionId = "-37")
+                .optJSONObject("Body")?.optJSONObject("ResponseMessages")
+                ?.optJSONArray("Items")?.optJSONObject(0)
+                ?: throw ServiceFailure("missing_item_response")
+            verifyResponse(response)
+            val item = response.optJSONArray("Items")?.optJSONObject(0)
+                ?: throw ServiceFailure("missing_item")
+            val rawBody = item.optJSONObject("NormalizedBody") ?: item.optJSONObject("Body")
+            val raw = rawBody?.optString("Value").orEmpty()
+            val plain = if (rawBody?.optString("BodyType").equals("HTML", true))
+                Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString().trim() else raw
+            val mailbox = item.optJSONObject("From")?.optJSONObject("Mailbox")
+                ?: item.optJSONObject("Sender")?.optJSONObject("Mailbox")
+            val email = mailbox?.optString("EmailAddress")?.takeIf { it.contains('@') }
+                ?: summary.senderEmail
+            val sender = mailbox?.optString("Name")?.takeIf { it.isNotBlank() }
+                ?: email ?: summary.sender
+            val attachments = buildList {
+                val files = item.optJSONArray("Attachments")
+                for (i in 0 until (files?.length() ?: 0)) {
+                    val file = files?.optJSONObject(i) ?: continue
+                    if (file.optBoolean("IsInline", false)) continue
+                    val id = file.optJSONObject("AttachmentId")?.optString("Id")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    add(MailAttachment(file.optString("Name").ifBlank { "attachment" },
+                        file.optString("ContentType"), file.optInt("Size"), listOf(0, 0, i), id))
+                }
+            }
+            val detail = MailDetail(
+                uid = summary.uid, sender = sender, subject = item.optString("Subject")
+                    .ifBlank { summary.subject },
+                sentAt = parseDate(item.optString("DateTimeReceived"))
+                    .takeIf { it > 0 } ?: summary.sentAt,
+                body = plain, attachments = attachments,
+                recipients = OwaSentRecipients.names(item).ifEmpty { summary.recipients },
+                senderEmail = email,
+            )
+            activeAccount?.let { account -> withContext(Dispatchers.IO) {
+                cache.saveMessage(account, summary.uid, summary.uidValidity, detail)
+            } }
+            return detail
+        }
         val id = summary.owaConversationId?.takeIf { it.isNotBlank() }
             ?: throw ServiceFailure("missing_conversation_id")
         val body = JSONObject()
@@ -441,6 +632,7 @@ class OwaMailRepository(
                     item.optString("Subject").ifBlank { summary.subject },
                     parseDate(item.optString("DateTimeReceived")).takeIf { it > 0 } ?: summary.sentAt,
                     plain,
+                    mailbox?.optString("EmailAddress")?.takeIf { it.contains('@') },
                 ))
                 val rawAttachments = item.optJSONArray("Attachments")
                 for (k in 0 until (rawAttachments?.length() ?: 0)) {
@@ -467,6 +659,7 @@ class OwaMailRepository(
             sentAt = recent.sentAt, body = recent.body,
             attachments = foundAttachments, threadMessages = ordered,
             recipients = latestRecipients,
+            senderEmail = recent.senderEmail,
         )
         activeAccount?.let { account ->
             withContext(Dispatchers.IO) {

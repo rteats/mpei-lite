@@ -2,7 +2,7 @@
 # Measure force-stopped Activity launch times. This is a TTID proxy, not TTFD.
 set -euo pipefail
 
-PACKAGE="${1:-com.rteats.mpeineo.dev}"
+PACKAGE="${1:-com.rteats.mpeilite}"
 RUNS="${2:-10}"
 if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || (( RUNS < 2 )); then
   echo "Usage: $0 [package] [runs >= 2]" >&2

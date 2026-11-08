@@ -48,6 +48,8 @@ internal data class MailUiState(
     val loading: Boolean = false,
     val items: List<MailSummary> = emptyList(),
     val mailbox: OwaMailFolder = OwaMailFolder.INBOX,
+    val availableFolders: List<OwaMailFolder> = OwaMailFolder.defaults,
+    val otherPages: Map<OwaMailFolder, OtherMailPage> = emptyMap(),
     val sentItems: List<MailSummary> = emptyList(),
     val sentLoaded: Boolean = false,
     val sentLoading: Boolean = false,
@@ -75,6 +77,23 @@ internal data class MailUiState(
     val activeRecipientField: RecipientField? = null,
     val recipientSuggestions: List<OwaRecipientSuggestion> = emptyList(),
     val recipientSearching: Boolean = false,
+)
+
+internal data class OtherMailPage(
+    val items: List<MailSummary> = emptyList(),
+    val loaded: Boolean = false,
+    val loading: Boolean = false,
+    val loadingMore: Boolean = false,
+    val hasMore: Boolean = false,
+    val nextOffset: Int = 0,
+    val moreError: Boolean = false,
+)
+
+private data class CachedMailFolders(
+    val inbox: List<MailSummary>,
+    val sent: List<MailSummary>,
+    val folders: List<OwaMailFolder>,
+    val other: Map<OwaMailFolder, List<MailSummary>>,
 )
 
 /** Preserve OWA's server-provided newest-first order and avoid duplicate rows
@@ -126,6 +145,7 @@ internal class MailViewModel(
     private var pendingNotification: Pair<Long, Long>? = null
     private var sentRecipientJob: Job? = null
     private var sentVisible = false
+    suspend fun senderPhoto(email: String) = owaMailRepository.senderPhoto(email)
     private var visibleSentUids = emptySet<Long>()
     private val compose = MailComposeController(
         _state = _state,
@@ -207,8 +227,13 @@ internal class MailViewModel(
         val accountAtStart = owaMailRepository.cachedAccountKey()
         val versionAtStart = sessionVersion
         viewModelScope.launch {
-            val (cachedInbox, cachedSent) = withContext(Dispatchers.IO) {
-                owaMailRepository.cachedInbox() to owaMailRepository.cachedSent()
+            val (cachedInbox, cachedSent, cachedFolders, cachedOther) = withContext(Dispatchers.IO) {
+                val folders = owaMailRepository.cachedFolders()
+                CachedMailFolders(
+                    owaMailRepository.cachedInbox(), owaMailRepository.cachedSent(), folders,
+                    folders.filter { it != OwaMailFolder.INBOX && it != OwaMailFolder.SENT }
+                        .associateWith(owaMailRepository::cachedFolder),
+                )
             }
             if (versionAtStart != sessionVersion ||
                 accountAtStart != owaMailRepository.cachedAccountKey()) return@launch
@@ -216,14 +241,22 @@ internal class MailViewModel(
                 // Do not overwrite a page delivered by a concurrent refresh/worker.
                 val inbox = if (current.items.isEmpty()) cachedInbox else current.items
                 val sent = if (current.sentItems.isEmpty()) cachedSent else current.sentItems
+                val folders = if (current.availableFolders == OwaMailFolder.defaults)
+                    cachedFolders else current.availableFolders
+                val pages = cachedOther.filterKeys { it in folders }.mapValues { (_, items) ->
+                    OtherMailPage(items = items, loaded = items.isNotEmpty(),
+                        hasMore = items.size >= MAIL_PAGE_SIZE, nextOffset = items.size)
+                }
                 current.copy(
-                    configured = current.configured || inbox.isNotEmpty(),
+                    configured = current.configured || accountAtStart != null,
                     items = inbox,
                     hasMore = current.hasMore || inbox.size >= MAIL_PAGE_SIZE,
                     nextPageOffset = maxOf(current.nextPageOffset, inbox.size),
                     sentItems = sent,
                     sentHasMore = current.sentHasMore || sent.size >= MAIL_PAGE_SIZE,
                     sentNextPageOffset = maxOf(current.sentNextPageOffset, sent.size),
+                    availableFolders = folders,
+                    otherPages = pages + current.otherPages,
                 )
             }
         }
@@ -308,6 +341,10 @@ internal class MailViewModel(
             refreshSent()
             return
         }
+        if (_state.value.mailbox != OwaMailFolder.INBOX) {
+            refreshOther(_state.value.mailbox)
+            return
+        }
         if (_state.value.loading || _state.value.loadingMore) return
         val version = sessionVersion
         val id = ++refreshSequence
@@ -344,6 +381,20 @@ internal class MailViewModel(
                         moreError = false,
                     )
                 }
+                viewModelScope.launch {
+                    val folders = owaMailRepository.availableFolders()
+                    if (version == sessionVersion) _state.update { current ->
+                        val validSelection = current.mailbox in folders
+                        current.copy(
+                            availableFolders = folders,
+                            mailbox = if (validSelection) current.mailbox else OwaMailFolder.INBOX,
+                            otherPages = current.otherPages.filterKeys { it in folders },
+                            selected = if (validSelection) current.selected else null,
+                            message = if (validSelection) current.message else null,
+                            loadingMessage = validSelection && current.loadingMessage,
+                        )
+                    }
+                }
                 pendingNotification?.let { target ->
                     pendingNotification = null
                     items.firstOrNull { it.uid == target.first && it.uidValidity == target.second }
@@ -376,6 +427,10 @@ internal class MailViewModel(
     fun loadMore() {
         if (_state.value.mailbox == OwaMailFolder.SENT) {
             loadMoreSent()
+            return
+        }
+        if (_state.value.mailbox != OwaMailFolder.INBOX) {
+            loadMoreOther(_state.value.mailbox)
             return
         }
         val old = _state.value
@@ -422,7 +477,80 @@ internal class MailViewModel(
         if (_state.value.mailbox == folder) return
         _state.update { it.copy(mailbox = folder, selected = null, message = null,
             loadingMessage = false, error = null, notice = null) }
-        if (folder == OwaMailFolder.SENT && !_state.value.sentLoaded) refreshSent()
+        if (folder == OwaMailFolder.SENT) refreshSent()
+        if (folder != OwaMailFolder.INBOX && folder != OwaMailFolder.SENT)
+            refreshOther(folder)
+    }
+
+    private fun refreshOther(folder: OwaMailFolder) {
+        val old = _state.value.otherPages[folder] ?: OtherMailPage()
+        if (old.loading || old.loadingMore) return
+        val version = sessionVersion
+        _state.update { it.copy(otherPages = it.otherPages +
+            (folder to old.copy(loading = true, moreError = false)), error = null) }
+        viewModelScope.launch {
+            try {
+                val incoming = owaMailRepository.inbox(
+                    maxConversations = MAIL_PAGE_SIZE, folder = folder)
+                if (version != sessionVersion) return@launch
+                _state.update { state ->
+                    val previous = state.otherPages[folder] ?: OtherMailPage()
+                    val page = refreshedMailPage(incoming, previous.items,
+                        previous.nextOffset, previous.hasMore, MAIL_PAGE_SIZE,
+                        ::mergeOwaInboxPages)
+                    state.copy(otherPages = state.otherPages + (folder to previous.copy(
+                        items = page.messages, loaded = true, loading = false,
+                        hasMore = page.hasMore, nextOffset = page.nextOffset,
+                        moreError = false)), loginRequired = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (version != sessionVersion) return@launch
+                repository.logState("OWA folder refresh failed type=${failure.javaClass.simpleName}")
+                _state.update { state ->
+                    val previous = state.otherPages[folder] ?: OtherMailPage()
+                    state.copy(otherPages = state.otherPages +
+                        (folder to previous.copy(loading = false)),
+                        loginRequired = failure is OwaMailRepository.LoginRequired,
+                        error = "Не удалось обновить папку «${folder.title}».")
+                }
+            }
+        }
+    }
+
+    private fun loadMoreOther(folder: OwaMailFolder) {
+        val old = _state.value.otherPages[folder] ?: return
+        if (old.loading || old.loadingMore || !old.hasMore) return
+        val version = sessionVersion
+        val offset = old.nextOffset
+        _state.update { it.copy(otherPages = it.otherPages +
+            (folder to old.copy(loadingMore = true, moreError = false))) }
+        viewModelScope.launch {
+            try {
+                val incoming = owaMailRepository.inbox(
+                    maxConversations = MAIL_PAGE_SIZE, offset = offset, folder = folder)
+                if (version != sessionVersion) return@launch
+                _state.update { state ->
+                    val previous = state.otherPages[folder] ?: OtherMailPage()
+                    if (previous.nextOffset != offset) return@update state
+                    val page = appendedMailPage(previous.items, incoming, offset,
+                        MAIL_PAGE_SIZE, ::mergeOwaInboxPages)
+                    state.copy(otherPages = state.otherPages + (folder to previous.copy(
+                        items = page.messages, hasMore = page.hasMore,
+                        nextOffset = page.nextOffset, loadingMore = false,
+                        moreError = false)))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (version == sessionVersion) _state.update { state ->
+                    val previous = state.otherPages[folder] ?: OtherMailPage()
+                    state.copy(otherPages = state.otherPages +
+                        (folder to previous.copy(loadingMore = false, moreError = true)))
+                }
+            }
+        }
     }
 
     private fun refreshSent() {
@@ -550,11 +678,28 @@ internal class MailViewModel(
                     if (current.selected?.uid != summary.uid ||
                         current.selected?.uidValidity != summary.uidValidity) current
                     else current.copy(message = detail, loadingMessage = false,
+                        items = if (current.mailbox == OwaMailFolder.INBOX &&
+                            detail.senderEmail != null) current.items.map { row ->
+                                if (row.uid == summary.uid)
+                                    row.copy(senderEmail = detail.senderEmail) else row
+                            } else current.items,
                         sentItems = if (current.mailbox == OwaMailFolder.SENT &&
                             !detail.recipients.isNullOrEmpty()) current.sentItems.map { row ->
                                 if (row.uid == summary.uid) row.copy(recipients = detail.recipients)
                                 else row
                             } else current.sentItems,
+                        otherPages = if (current.mailbox != OwaMailFolder.INBOX &&
+                            current.mailbox != OwaMailFolder.SENT &&
+                            detail.senderEmail != null) {
+                            val folder = current.mailbox
+                            val page = current.otherPages[folder]
+                            if (page == null) current.otherPages else
+                                current.otherPages + (folder to page.copy(
+                                    items = page.items.map { row ->
+                                        if (row.uid == summary.uid)
+                                            row.copy(senderEmail = detail.senderEmail) else row
+                                    }))
+                        } else current.otherPages,
                         notice = null, localAttachmentUris = emptyMap())
                 }
                 refreshLocalAttachmentUris(summary, detail, version)

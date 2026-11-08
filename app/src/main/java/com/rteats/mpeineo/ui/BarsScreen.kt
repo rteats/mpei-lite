@@ -1,21 +1,12 @@
 package com.rteats.mpeineo.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.MpeiNeoApplication
 import androidx.compose.ui.unit.dp
@@ -128,16 +118,15 @@ private fun BarsCredentialsForm(
     var code by remember { mutableStateOf("") }
     var rememberLogin by remember { mutableStateOf(true) }
 
-    Column(
-        Modifier.widthIn(max = 560.dp).fillMaxWidth().fillMaxHeight()
-            .verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    UniversityLoginLayout(
+        title = "Вход в БАРС",
+        subtitle = "Используйте логин и пароль учётной записи МЭИ.",
+        modifier = Modifier.fillMaxHeight(),
     ) {
-        Text("Вход в БАРС", style = MaterialTheme.typography.headlineSmall)
-        Text("Прямое соединение с bars.mpei.ru",
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        status.notice?.let { Text(it) }
+        if (status.step != BarsNativeStep.LOGIN) {
+            status.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            status.notice?.let { Text(it) }
+        }
         when (status.step) {
             BarsNativeStep.IDLE, BarsNativeStep.OPENING, BarsNativeStep.SUBMITTING,
             BarsNativeStep.REFRESHING -> Box(
@@ -151,54 +140,40 @@ private fun BarsCredentialsForm(
                 TextButton(onClick = onRetry) { Text("Войти заново") }
             }
             BarsNativeStep.LOGIN -> {
-                OutlinedTextField(
-                    value = account, onValueChange = { account = it },
-                    label = { Text("Логин") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("bars-native-account"),
+                UniversityCredentialFields(
+                    account = account, onAccountChange = { account = it },
+                    password = password, onPasswordChange = { password = it },
+                    rememberLogin = rememberLogin,
+                    onRememberLoginChange = { rememberLogin = it },
+                    securityNote = "Пароль защищён Android Keystore. Для БАРС также потребуется код подтверждения.",
+                    busy = false,
+                    savedLoginAvailable = status.savedLoginAvailable,
+                    onRetrySavedLogin = onRetrySavedLogin,
+                    onForgetSavedLogin = onForgetSavedLogin,
+                    onSubmit = {
+                        if (account.isNotBlank() && password.isNotBlank()) {
+                            val submitted = password
+                            password = ""
+                            onLogin(account, submitted, rememberLogin)
+                        }
+                    },
+                    secondaryLabel = "Начать заново",
+                    onSecondaryAction = onRetry,
+                    tags = UniversityLoginTags(
+                        account = "bars-native-account",
+                        password = "bars-native-password",
+                        remember = "bars-remember-login",
+                        retrySaved = "bars-retry-saved-login",
+                        forgetSaved = "bars-forget-saved-login",
+                        submit = "bars-native-login",
+                        secondary = "bars-start-again",
+                    ),
+                    error = status.error,
+                    notice = status.notice,
                 )
-                OutlinedTextField(
-                    value = password, onValueChange = { password = it },
-                    label = { Text("Пароль") }, singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().testTag("bars-native-password"),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = rememberLogin,
-                        onCheckedChange = { rememberLogin = it },
-                        modifier = Modifier.testTag("bars-remember-login"),
-                    )
-                    Text(
-                        "Запомнить вход на устройстве",
-                        modifier = Modifier.clickable { rememberLogin = !rememberLogin },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                Text(
-                    "Пароль защищён Android Keystore. Код подтверждения может потребоваться снова.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (status.savedLoginAvailable) {
-                    TextButton(onClick = onRetrySavedLogin) {
-                        Text("Войти с сохранёнными данными")
-                    }
-                    TextButton(onClick = onForgetSavedLogin) {
-                        Text("Забыть сохранённый пароль")
-                    }
-                }
-                Button(onClick = {
-                    val submitted = password
-                    password = ""
-                    onLogin(account, submitted, rememberLogin)
-                }, enabled = account.isNotBlank() && password.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth().testTag("bars-native-login"),
-                ) { Text("Войти") }
-                TextButton(onClick = onRetry) { Text("Начать заново") }
             }
             BarsNativeStep.CODE -> {
-                Text("Введите код подтверждения из выбранного способа получения.")
+                Text("Введите код подтверждения из сообщения MAX.")
                 OutlinedTextField(
                     value = code, onValueChange = { code = it },
                     label = { Text("Код подтверждения") }, singleLine = true,
@@ -213,7 +188,7 @@ private fun BarsCredentialsForm(
                     modifier = Modifier.fillMaxWidth().testTag("bars-native-confirm"),
                 ) { Text("Подтвердить") }
                 TextButton(onClick = onRequestCode, enabled = !status.busySending) {
-                    Text(if (status.busySending) "Отправка…" else "Отправить код ещё раз")
+                    Text(barsCodeSendActionLabel(status))
                 }
             }
         }

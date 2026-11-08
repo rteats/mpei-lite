@@ -51,6 +51,9 @@
     "PrimaryTabRow": [
       "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt",
       "app/src/main/java/com/rteats/mpeineo/ui/PrimaryIconServiceTabs.kt"
+    ],
+    "PrimaryScrollableTabRow": [
+      "app/src/main/java/com/rteats/mpeineo/ui/MailScreen.kt"
     ]
   },
   "rules": [

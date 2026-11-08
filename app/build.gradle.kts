@@ -1,4 +1,5 @@
 import java.util.zip.ZipFile
+import java.util.Properties
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
@@ -13,66 +14,70 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull() ?: 1
-val appVersionName = providers.gradleProperty("VERSION_NAME").orNull ?: "2026.10.31.0"
 // R8 remains an explicit release build property; CI controls the production setting.
 val optimizeRelease = providers.gradleProperty("OPTIMIZE_RELEASE").orNull == "true"
-
-val devStoreFile = providers.environmentVariable("ANDROID_DEV_KEYSTORE_FILE").orNull
-val devStorePassword = providers.environmentVariable("ANDROID_DEV_KEYSTORE_PASSWORD").orNull
-val devKeyAlias = providers.environmentVariable("ANDROID_DEV_KEY_ALIAS").orNull
-val devKeyPassword = providers.environmentVariable("ANDROID_DEV_KEY_PASSWORD").orNull
-val devStoreType = providers.environmentVariable("ANDROID_DEV_KEYSTORE_TYPE").orNull ?: "PKCS12"
-val devSigningReady = listOf(
-    devStoreFile,
-    devStorePassword,
-    devKeyAlias,
-    devKeyPassword,
-).all { !it.isNullOrBlank() }
+// Local and CI builds use the same private key, supplied through this ignored file.
+val localSigningFile = rootProject.file("local-signing.properties")
+val localSigning = Properties().apply {
+    if (localSigningFile.isFile) {
+        localSigningFile.inputStream().use(::load)
+    }
+}
+val appSigningReady = listOf(
+    "storeFile", "storePassword", "keyAlias", "keyPassword", "versionCode",
+).all { !localSigning.getProperty(it).isNullOrBlank() }
+val localVersionCode = if (appSigningReady) {
+    localSigning.getProperty("versionCode").toIntOrNull()
+        ?: error("local-signing.properties: versionCode must be an integer")
+} else null
+if (localSigningFile.isFile && !appSigningReady) {
+    error("local-signing.properties is incomplete; see local-signing.properties.example")
+}
+val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull?.toIntOrNull()
+    ?: localVersionCode ?: 1
+val appVersionName = providers.gradleProperty("VERSION_NAME").orNull
+    ?: localSigning.getProperty("versionName", "local.$appVersionCode")
 
 android {
     namespace = "com.rteats.mpeineo"
     compileSdk { version = release(37) { minorApiLevel = 0 } }
 
     defaultConfig {
-        applicationId = "com.rteats.mpeineo"
+        applicationId = "com.rteats.mpeilite"
         minSdk = 26
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["appLabel"] = "MPEI Lite"
+        buildConfigField("String", "UPDATE_CHANNEL", "\"rolling\"")
     }
 
     signingConfigs {
-        if (devSigningReady) {
-            create("ciDev") {
-                storeFile = rootProject.file(devStoreFile!!)
-                storePassword = devStorePassword
-                keyAlias = devKeyAlias
-                keyPassword = devKeyPassword
-                storeType = devStoreType
+        if (appSigningReady) {
+            create("appKey") {
+                storeFile = file(localSigning.getProperty("storeFile"))
+                check(storeFile!!.isFile) { "App signing keystore not found: $storeFile" }
+                storeType = localSigning.getProperty("storeType", "PKCS12")
+                storePassword = localSigning.getProperty("storePassword")
+                keyAlias = localSigning.getProperty("keyAlias")
+                keyPassword = localSigning.getProperty("keyPassword")
             }
         }
 
 
-    }
-
-    flavorDimensions += "channel"
-    productFlavors {
-        create("rolling") {
-            dimension = "channel"
-            // Keep the former Dev application ID and signing identity.
-            applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "MPEI Lite"
-            buildConfigField("String", "UPDATE_CHANNEL", "\"rolling\"")
-            if (devSigningReady) {
-                signingConfig = signingConfigs.getByName("ciDev")
-            }
-        }
     }
 
     buildTypes {
+        debug {
+            if (appSigningReady) {
+                signingConfig = signingConfigs.getByName("appKey")
+            }
+        }
         release {
+            if (appSigningReady) {
+                signingConfig = signingConfigs.getByName("appKey")
+            }
             isMinifyEnabled = optimizeRelease
             isShrinkResources = optimizeRelease
             proguardFiles(
@@ -195,17 +200,17 @@ androidComponents.onVariants(androidComponents.selector().withBuildType("release
     )
 }
 
-tasks.matching { it.name == "assembleRollingRelease" }.configureEach {
+tasks.matching { it.name == "assembleRelease" }.configureEach {
     doLast {
         val apk = layout.buildDirectory.file(
-            "outputs/apk/rolling/release/app-rolling-release.apk",
+            "outputs/apk/release/app-release.apk",
         ).get().asFile
-        check(apk.isFile) { "Rolling release APK missing: ${apk.absolutePath}" }
+        check(apk.isFile) { "Release APK missing: ${apk.absolutePath}" }
         ZipFile(apk).use { zipped ->
             val mapAssets = zipped.entries().asSequence()
                 .map { it.name }.filter { it.contains("lefortovo") }.toList()
             check(zipped.getEntry("assets/lefortovo_overpass.osmdata") != null) {
-                "Rolling release APK is missing the bundled Lefortovo OSM asset; found $mapAssets"
+                "Release APK is missing the bundled Lefortovo OSM asset; found $mapAssets"
             }
         }
     }

@@ -73,6 +73,37 @@ internal class MailCache(private val context: Context) {
         }
     }
 
+    /** Each discovered folder has an account-scoped encrypted page and a stable cache key. */
+    @Synchronized fun owaFolder(username: String, folder: OwaMailFolder): List<MailSummary> =
+        read(file(username, owaFolderKey(folder)), CachedInbox::class.java)
+            ?.items?.take(MAX_OWA_HEADERS).orEmpty()
+
+    @Synchronized fun saveOwaFolderPage(
+        username: String, folder: OwaMailFolder, page: List<MailSummary>, offset: Int,
+    ) {
+        synchronized(sharedOwaCacheLock) {
+            val old = owaFolder(username, folder)
+            val merged = (if (offset == 0) page + old else old + page)
+                .distinctBy { it.uidValidity to it.uid }.take(MAX_OWA_HEADERS)
+            write(file(username, owaFolderKey(folder)), CachedInbox(0x4F5741L, merged))
+        }
+    }
+
+    @Synchronized fun owaFolders(username: String): List<OwaMailFolder> =
+        read(file(username, "folders"), CachedFolders::class.java)
+            ?.items?.filter { it.name.isNotBlank() &&
+                (it.folderId != null || it.distinguishedId.isNotBlank()) }
+            ?.distinctBy { it.name }?.take(100).orEmpty()
+
+    @Synchronized fun saveOwaFolders(username: String, folders: List<OwaMailFolder>) {
+        write(file(username, "folders"), CachedFolders(folders.distinctBy { it.name }.take(100)))
+    }
+
+    private fun owaFolderKey(folder: OwaMailFolder): String = "folder_" +
+        MessageDigest.getInstance("SHA-256")
+            .digest(folder.name.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
     @Synchronized fun updateSentRecipients(username: String, updates: Map<Long, List<String>>) {
         if (updates.isEmpty()) return
         synchronized(sharedOwaCacheLock) {
@@ -212,6 +243,7 @@ internal class MailCache(private val context: Context) {
     }
 
     private data class CachedInbox(val validity: Long, val items: List<MailSummary>)
+    private data class CachedFolders(val items: List<OwaMailFolder>)
     private data class CachedBody(val validity: Long, val detail: MailDetail)
     private data class CachedDraft(val mail: OutgoingMail, val files: List<CachedDraftFile>)
     private data class CachedDraftFile(val uri: String, val name: String,
