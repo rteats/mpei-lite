@@ -560,24 +560,22 @@ internal fun MailFolderTabs(
     val selectedIndex = folders.indexOf(selectedFolder).coerceAtLeast(0)
     val tabs: @Composable () -> Unit = {
         folders.forEach { folder ->
-            Tab(
-                selected = selectedFolder == folder,
-                onClick = {
-                    if (selectedFolder != folder) onSelectFolder(folder)
-                },
-                icon = {
-                    TooltipBox(
-                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { PlainTooltip { Text(folder.title) } },
-                        state = rememberTooltipState(),
-                    ) {
-                        AppIcon(mailFolderIcon(folder), contentDescription = null)
-                    }
-                },
-                modifier = Modifier
-                    .semantics { contentDescription = folder.title }
-                    .testTag("mail-folder-${folder.name.lowercase()}"),
-            )
+            TooltipBox(
+                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                tooltip = { PlainTooltip { Text(folder.title) } },
+                state = rememberTooltipState(),
+            ) {
+                Tab(
+                    selected = selectedFolder == folder,
+                    onClick = {
+                        if (selectedFolder != folder) onSelectFolder(folder)
+                    },
+                    icon = { AppIcon(mailFolderIcon(folder), contentDescription = null) },
+                    modifier = Modifier
+                        .semantics { contentDescription = folder.title }
+                        .testTag("mail-folder-${folder.name.lowercase()}"),
+                )
+            }
         }
     }
     BoxWithConstraints(modifier = modifier.testTag("mail-folder-tabs")) {
