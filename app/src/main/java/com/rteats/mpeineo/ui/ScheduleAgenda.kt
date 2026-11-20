@@ -1,83 +1,67 @@
 package com.rteats.mpeineo.ui
 
-import com.rteats.mpeineo.AppIcon
-import com.rteats.mpeineo.AppIcons
-
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LoadingIndicator
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.State
-import androidx.compose.ui.platform.LocalContext
-import com.rteats.mpeineo.MpeiNeoApplication
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.rteats.mpeineo.model.ScheduleDay
-import java.time.LocalDate
-import java.time.LocalDateTime
+import androidx.compose.ui.zIndex
+import com.rteats.mpeineo.AppIcon
+import com.rteats.mpeineo.AppIcons
+import com.rteats.mpeineo.model.Lesson
+import com.rteats.mpeineo.model.ScheduleWeek
 import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
-/** Global search focus is a one-shot request anchored to a cached lesson. */
 internal data class ScheduleLessonFocus(
     val requestId: Int,
     val weekOffset: Int,
@@ -87,545 +71,264 @@ internal data class ScheduleLessonFocus(
     val place: String? = null,
 )
 
-/**
- * The vertical agenda is an infinite sequence of bounded, seven-day pages.
- * Normal scrolling remains native LazyColumn scrolling. Only a deliberate
- * overscroll at Monday/Sunday changes week; no horizontal day pager exists.
- */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
+internal data class TimetableSlot(val date: LocalDate, val lessons: List<Lesson>)
+
+private val weekdayFormat = DateTimeFormatter.ofPattern("EEE", Locale.forLanguageTag("ru"))
+private val fullDateFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.forLanguageTag("ru"))
+private val timeFormat = DateTimeFormatter.ofPattern("H:mm")
+
+internal enum class TimetableLessonType(@get:DrawableRes val icon: Int) {
+    LECTURE(AppIcons.Education),
+    PRACTICE(AppIcons.Edit),
+    LAB(AppIcons.Science),
+    OTHER(AppIcons.Quiz),
+}
+
+internal fun timetableLessonType(kind: String): TimetableLessonType {
+    val label = kind.trim().trimEnd('.').lowercase(Locale.ROOT)
+    return when {
+        label == "лк" || label.startsWith("лек") -> TimetableLessonType.LECTURE
+        label == "пр" || label == "пз" || label.startsWith("прак") || label.startsWith("сем") ->
+            TimetableLessonType.PRACTICE
+        label == "лб" || label.startsWith("лаб") -> TimetableLessonType.LAB
+        else -> TimetableLessonType.OTHER
+    }
+}
+
+internal fun TimetableLessonType.label(kind: String): String = when (this) {
+    TimetableLessonType.LECTURE -> "Лекция"
+    TimetableLessonType.PRACTICE ->
+        if (kind.trim().startsWith("сем", ignoreCase = true)) "Семинар" else "Практика"
+    TimetableLessonType.LAB -> "Лабораторная работа"
+    TimetableLessonType.OTHER -> kind.ifBlank { "Другое занятие" }
+}
+
 @Composable
 internal fun ScheduleAgenda(
-    state: MainUiState,
-    onEnsureWeek: (Int) -> Unit,
-    onRefreshWeek: (Int) -> Unit,
-    onRetryWeek: (Int) -> Unit,
-    onViewedWeek: (Int) -> Unit,
-    onScrollInProgressChanged: (Boolean) -> Unit,
-    onLocateRoom: (String) -> Unit,
-    todayJumpRequest: Int,
-    focusLesson: ScheduleLessonFocus? = null,
-    onFocusConsumed: (Int) -> Unit = {},
+    today: LocalDate,
+    weeks: Map<Int, ScheduleWeek>,
+    aliases: Map<String, String>,
+    listState: LazyListState,
+    onSlot: (TimetableSlot) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val clock = rememberMpeiNow()
-    val today = remember { LocalDate.now(mpeiTimeZone) }
-    val monday = remember(today) {
-        today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    }
-    val currentDayIndex = today.dayOfWeek.value - 1
-    val selectedId = state.selected?.id
-    val selectedType = state.selected?.type
-    var visibleWeek by rememberSaveable(selectedId, selectedType) { mutableIntStateOf(0) }
-    var entryDay by rememberSaveable(selectedId, selectedType) {
-        mutableIntStateOf(currentDayIndex)
-    }
-    val locale = remember { Locale.forLanguageTag("ru") }
-    val weekDateFormat = remember { DateTimeFormatter.ofPattern("d MMM", locale) }
-    val haptic = LocalHapticFeedback.current
-    val profiler = (LocalContext.current.applicationContext as? MpeiNeoApplication)
-        ?.container?.uiFrameProfiler
-    val overscrollThreshold = with(LocalDensity.current) { 76.dp.toPx() }
-    val overscrollMax = with(LocalDensity.current) { 180.dp.toPx() }
-
-    LaunchedEffect(selectedId, selectedType, visibleWeek) {
-        onViewedWeek(visibleWeek)
-        onScrollInProgressChanged(false)
-        onEnsureWeek(visibleWeek)
-        // Preload adjacent weeks without displaying their days.
-        onEnsureWeek(visibleWeek - 1)
-        onEnsureWeek(visibleWeek + 1)
-    }
-    LaunchedEffect(todayJumpRequest) {
-        visibleWeek = 0
-        entryDay = currentDayIndex
-    }
-
-    LaunchedEffect(focusLesson?.requestId) {
-        val request = focusLesson ?: return@LaunchedEffect
-        visibleWeek = request.weekOffset
-        entryDay = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
-            .getOrDefault(0)
-    }
-
-    // Each week is a full-height, opaque vertical page. There is no sideways
-    // movement and no transparent overlap of two different week contents.
-    val weekSpatialSpring =
-        MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
-    val focusWeekEffects = remember { MotionScheme.expressive().fastEffectsSpec<Float>() }
-    val focusJumpPending = focusLesson != null
-    key(selectedId, selectedType) {
-    AnimatedContent(
-        targetState = visibleWeek,
-        modifier = modifier.fillMaxSize().clipToBounds(),
-        label = "schedule-week",
-        transitionSpec = {
-            if (focusJumpPending) {
-                (fadeIn(animationSpec = focusWeekEffects) togetherWith
-                    fadeOut(animationSpec = snap()))
-                    .using(SizeTransform(clip = true))
-            } else {
-                val direction = weekTravelDirection(initialState, targetState)
-                (slideInVertically(
-                    initialOffsetY = { height -> direction * height },
-                    animationSpec = weekSpatialSpring,
-                ) togetherWith slideOutVertically(
-                    targetOffsetY = { height -> -direction * height },
-                    animationSpec = weekSpatialSpring,
-                )).using(SizeTransform(clip = true))
+    val days = remember(weeks) {
+        weeks.values.flatMap { it.days }.mapNotNull { day ->
+            runCatching { LocalDate.parse(day.date) }.getOrNull()?.let {
+                it to timetableLessonsByStart(day.lessons)
             }
-        },
-    ) { displayedWeek ->
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {
-        val (weekStart, weekEnd) = weekRange(monday, displayedWeek)
-        val monthLabel = remember(weekStart, locale) {
-            weekStart.format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
-                .replaceFirstChar { it.titlecase(locale) }
-        }
-        // These strings are static for this week. Avoid date formatting on
-        // every pointer-driven overscroll animation frame.
-        val previousWeekLabel = remember(monday, displayedWeek, weekDateFormat) {
-            weekRange(monday, displayedWeek - 1).let { (start, end) ->
-                start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
-            }
-        }
-        val nextWeekLabel = remember(monday, displayedWeek, weekDateFormat) {
-            weekRange(monday, displayedWeek + 1).let { (start, end) ->
-                start.format(weekDateFormat) + " – " + end.format(weekDateFormat)
-            }
-        }
-        val listState = rememberLazyListState(
-            initialFirstVisibleItemIndex = entryDay.coerceIn(0, 6),
-        )
-        LaunchedEffect(todayJumpRequest, displayedWeek) {
-            if (displayedWeek == 0 && visibleWeek == 0 && focusLesson == null) {
-                // Jump requests own the list position while they are pending.
-                // Do not start a competing "today" scroll on composition.
-                listState.scrollToItem(currentDayIndex)
-            }
-        }
-        // Publish focus only after the day itself has finished scrolling.
-        // The lesson card then brings its own bounds into view.
-        var readyFocusId by remember(displayedWeek) { mutableIntStateOf(-1) }
-        LaunchedEffect(displayedWeek, visibleWeek, listState) {
-            if (displayedWeek == visibleWeek) {
-                snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-                    onScrollInProgressChanged(scrolling)
-                }
-            }
-        }
-        LaunchedEffect(focusLesson?.requestId, displayedWeek, state.agendaWeeks[displayedWeek]) {
-            readyFocusId = -1
-            val request = focusLesson ?: return@LaunchedEffect
-            if (request.weekOffset != displayedWeek ||
-                state.agendaWeeks[displayedWeek] == null) return@LaunchedEffect
-            val index = runCatching { LocalDate.parse(request.date).dayOfWeek.value - 1 }
-                .getOrDefault(0).coerceIn(0, 6)
-            // Move directly to the target day. A second animated scroll here
-            // looked like a spurious view switch before the focus highlight.
-            listState.scrollToItem(index)
-            readyFocusId = request.requestId
-        }
-        // Only this distance determines both the week switch and visual feedback.
-        var pullDistance by remember(displayedWeek) { mutableFloatStateOf(0f) }
-        // Fling callbacks can continue after finger-up and may report UserInput.
-        // Keep week switching strictly tied to a live touch gesture.
-        var fingerDown by remember(displayedWeek) {
-            androidx.compose.runtime.mutableStateOf(false)
-        }
-        var thresholdTicked by remember(displayedWeek) {
-            androidx.compose.runtime.mutableStateOf(false)
-        }
-        val visualPull by animateFloatAsState(
-            targetValue = pullDistance,
-            // Fast spatial spring retargets on finger reversals and release;
-            // threshold detection still reads the raw gesture distance.
-            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>(),
-            label = "schedule-week-pull-stretch",
-        )
-
-        val pullConnection = remember(
-            displayedWeek, listState, overscrollMax, overscrollThreshold, haptic,
-        ) {
-            object : NestedScrollConnection {
-                private fun pull(deltaY: Float): Offset {
-                    if (!fingerDown || displayedWeek != visibleWeek || deltaY == 0f) {
-                        return Offset.Zero
-                    }
-                    val step = advanceWeekPull(
-                        distance = pullDistance,
-                        deltaY = deltaY,
-                        atStart = !listState.canScrollBackward,
-                        atEnd = !listState.canScrollForward,
-                        maxDistance = overscrollMax,
-                    )
-                    if (shouldTickWeekPull(
-                            oldDistance = pullDistance,
-                            newDistance = step.distance,
-                            threshold = overscrollThreshold,
-                            alreadyTicked = thresholdTicked,
-                        )
-                    ) {
-                        thresholdTicked = true
-                        haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
-                    }
-                    pullDistance = step.distance
-                    return Offset(0f, step.consumedY)
-                }
-
-                override fun onPreScroll(
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset = if (source == NestedScrollSource.UserInput) {
-                    pull(available.y)
-                } else Offset.Zero
-
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset = if (source == NestedScrollSource.UserInput) {
-                    // Include the unconsumed portion of a drag that reaches the
-                    // first/last day after starting inside the list.
-                    pull(available.y)
-                } else Offset.Zero
-            }
-        }
-
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(monthLabel,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold)
-                    Text(
-                        weekStart.format(weekDateFormat) + " – " +
-                            weekEnd.format(weekDateFormat) +
-                            "  ·  " + studyWeekNumber(weekStart) + "-я учебная неделя",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (displayedWeek != 0) {
-                    TextButton(onClick = {
-                        visibleWeek = 0
-                        entryDay = currentDayIndex
-                    }) { Text("Сегодня") }
-                }
-            }
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth()
-                    .nestedScroll(pullConnection)
-                    .pointerInput(displayedWeek, selectedId, selectedType) {
-                        // Nested scroll is the sole pull accumulator. This
-                        // observer only decides on finger-up and always clears
-                        // the gesture (including canceled/interrupted input).
-                        awaitEachGesture {
-                            awaitFirstDown(
-                                requireUnconsumed = false,
-                                pass = PointerEventPass.Initial,
-                            )
-                            fingerDown = true
-                            try {
-                                do {
-                                    val event = awaitPointerEvent(PointerEventPass.Final)
-                                } while (event.changes.any { it.pressed })
-
-                                if (displayedWeek == visibleWeek) {
-                                    when (weekDeltaForPull(pullDistance, overscrollThreshold)) {
-                                        -1 -> {
-                                            profiler?.markInteraction("WEEK_CHANGE")
-                                            entryDay = 6
-                                            visibleWeek = displayedWeek - 1
-                                        }
-                                        1 -> {
-                                            profiler?.markInteraction("WEEK_CHANGE")
-                                            entryDay = 0
-                                            visibleWeek = displayedWeek + 1
-                                        }
-                                    }
-                                }
-                            } finally {
-                                // Clear before a fling can dispatch another nested-scroll event.
-                                fingerDown = false
-                                pullDistance = 0f
-                                thresholdTicked = false
-                            }
-                        }
-                    },
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize()
-                        .graphicsLayer { translationY = visualPull * 0.22f },
-                    state = listState,
-                    // The global top app bar and persistent root navigation own insets.
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    for (dayIndex in 0..6) {
-                        val date = weekStart.plusDays(dayIndex.toLong())
-                        item(key = "day-$date", contentType = "agenda-day") {
-                            val dayData: ScheduleDay? =
-                                state.agendaWeeks[displayedWeek]?.days
-                                    ?.firstOrNull { it.date == date.toString() }
-                            AgendaDayCard(
-                                date = date,
-                                today = today,
-                                clock = clock,
-                                day = dayData,
-                                loading = displayedWeek in state.agendaLoadingOffsets,
-                                failed = displayedWeek in state.agendaFailedOffsets,
-                                onRetry = { onRetryWeek(displayedWeek) },
-                                onLocateRoom = onLocateRoom,
-                                focusLesson = focusLesson?.takeIf {
-                                    it.weekOffset == displayedWeek &&
-                                        it.date == date.toString() &&
-                                        it.requestId == readyFocusId
-                                },
-                                onFocusConsumed = onFocusConsumed,
-                            )
-                        }
-                    }
-                }
-                // Both indicators stay composed while fading out. Neither
-                // can stick after release, cancellation or a week transition.
-                WeekPullIndicator(
-                    previous = true,
-                    destination = previousWeekLabel,
-                    progress = (pullDistance / overscrollThreshold).coerceIn(0f, 1f),
-                    armed = pullDistance >= overscrollThreshold,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                )
-                WeekPullIndicator(
-                    previous = false,
-                    destination = nextWeekLabel,
-                    progress = (-pullDistance / overscrollThreshold).coerceIn(0f, 1f),
-                    armed = pullDistance <= -overscrollThreshold,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                        .padding(start = 8.dp, end = 8.dp, bottom = 16.dp),
-                )
-            }
-        }
+        }.toMap()
     }
+    val periods = remember(days) {
+        val extraTimes = days.values.flatMap { it.keys }.toSet()
+        val times = (timetablePeriodStarts + extraTimes.filterNotNull()).distinct().sorted()
+        if (null in extraTimes) times + listOf(null) else times
     }
-    }
-}
-
-/**
- * A destination preview instead of a loading-like pull cue. Gesture progress
- * controls reveal; the target dates do not change while the finger moves.
- * At threshold the arrow crossfades to a check and a single haptic tick fires.
- */
-@Composable
-private fun WeekPullIndicator(
-    previous: Boolean,
-    destination: String,
-    progress: Float,
-    armed: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    // Gesture feedback is driven directly by the finger, not by competing
-    // duration-based animations that can outlive a released pull.
-    val reveal = progress.coerceIn(0f, 1f)
-    val color = if (armed) MaterialTheme.colorScheme.surfaceContainerHigh
-        else MaterialTheme.colorScheme.surfaceContainer
-    val contentColor = MaterialTheme.colorScheme.onSurface
-    Surface(
-        modifier = modifier.graphicsLayer {
-            alpha = reveal.coerceIn(0f, 1f)
-            translationY = (if (previous) -1f else 1f) *
-                (1f - reveal) * 12.dp.toPx()
-            scaleX = 0.96f + 0.04f * reveal
-            scaleY = 0.96f + 0.04f * reveal
-        },
-        shape = RoundedCornerShape(24.dp),
-        color = color,
-        contentColor = contentColor,
+    val flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start)
+    BoxWithConstraints(
+        modifier = modifier.windowInsetsPadding(WindowInsets.systemGestures.only(WindowInsetsSides.Horizontal)),
     ) {
+        val density = LocalDensity.current
+        val fontScale = density.fontScale.coerceAtLeast(1f)
+        val gutter = (46.dp * fontScale).coerceAtMost(maxWidth * .32f)
+        val columnArea = (maxWidth - gutter).coerceAtLeast(1.dp)
+        val minColumn = 70.dp * (1f + (fontScale - 1f) * .8f)
+        val columnCount = (columnArea / minColumn).toInt().coerceIn(1, 7)
+        val columnWidth = columnArea / columnCount
+        val dayHeight = 56.dp * fontScale
+        val cardHeight = with(density) {
+            val available = maxHeight.roundToPx() - dayHeight.roundToPx() - AppSpacing.sm.roundToPx()
+            (available / periods.size).toDp().coerceAtLeast(60.dp * fontScale)
+        }
+        val scroll = rememberScrollState()
+        val pinnedHeader = Modifier.zIndex(1f)
+            .offset { IntOffset(0, scroll.value) }
+            .fillMaxWidth().height(dayHeight)
+            .background(MaterialTheme.colorScheme.background)
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxSize().verticalScroll(scroll)
+                .padding(bottom = AppSpacing.sm),
         ) {
-            AppIcon(
-                icon = when {
-                    armed -> AppIcons.Confirm
-                    previous -> AppIcons.ExpandMore
-                    else -> AppIcons.ExpandLess
-                },
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(
-                    if (previous) "Предыдущая неделя" else "Следующая неделя",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.78f),
-                )
-                Text(
-                    destination,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun AgendaDaySection(
-    date: LocalDate,
-    clock: State<LocalDateTime>,
-    day: ScheduleDay?,
-    loading: Boolean,
-    failed: Boolean,
-    onRetry: () -> Unit,
-    onLocateRoom: (String) -> Unit,
-    focusLesson: ScheduleLessonFocus?,
-    onFocusConsumed: (Int) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when {
-            day != null -> {
-                if (day.lessons.isEmpty()) {
-                    Text(
-                        "Пар нет",
-                        modifier = Modifier.padding(start = 14.dp, bottom = 10.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                val oneHourBreaks = remember(day.lessons) {
-                    day.lessons.indices.filter { index ->
-                        index > 0 && isOneHourBreak(day.lessons[index - 1], day.lessons[index])
-                    }.toSet()
-                }
-                day.lessons.forEachIndexed { index, lesson ->
-                    if (index in oneHourBreaks) {
-                        Spacer(Modifier.height(8.dp))
+            Column(Modifier.width(gutter)) {
+                Spacer(pinnedHeader)
+                periods.forEach { period ->
+                    Box(
+                        Modifier.fillMaxWidth().height(cardHeight),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            period?.format(timeFormat) ?: "—",
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                        )
                     }
-                    LessonCard(
-                        lesson = lesson,
-                        onLocateRoom = onLocateRoom,
-                        focusRequestId = focusLesson?.takeIf {
-                            it.name == lesson.name &&
-                                it.startTime == lesson.startTime &&
-                                (it.place == null || it.place == lesson.place)
-                        }?.requestId,
-                        onFocusConsumed = onFocusConsumed,
-                        date = date,
-                        now = clock.value,
-                    )
                 }
             }
-            failed -> {
-                Text(
-                    "Не удалось загрузить эту неделю",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                TextButton(onClick = onRetry) { Text("Повторить") }
-            }
-            loading -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    contentAlignment = Alignment.Center,
-                ) { ContainedLoadingIndicator() }
-            }
-            else -> {
-                Text(
-                    "Загружаем расписание…",
-                    modifier = Modifier.padding(start = 14.dp, bottom = 12.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            LazyRow(
+                modifier = Modifier.weight(1f).testTag("schedule-timetable-grid"),
+                state = listState,
+                flingBehavior = flingBehavior,
+                contentPadding = PaddingValues(end = columnArea - columnWidth),
+            ) {
+                items(timetableDayCount, key = { it }) { index ->
+                    val date = remember(index) { timetableDayAt(index) }
+                    TimetableDayColumn(
+                        date, today, days[date].orEmpty(), aliases, periods,
+                        columnWidth, dayHeight, cardHeight, pinnedHeader, onSlot,
+                    )
+                }
             }
         }
     }
 }
 
-/**
- * Google Calendar-style agenda rows: a fixed date rail and a continuous event
- * column. Each day is one list item (stable by date); no enclosing "card inside
- * a card" and no duplicate date headers. The full row participates in vertical
- * scrolling and is clipped at the week viewport boundary.
- */
 @Composable
-private fun AgendaDayCard(
+private fun TimetableDayColumn(
     date: LocalDate,
     today: LocalDate,
-    clock: State<LocalDateTime>,
-    day: ScheduleDay?,
-    loading: Boolean,
-    failed: Boolean,
-    onRetry: () -> Unit,
-    onLocateRoom: (String) -> Unit,
-    focusLesson: ScheduleLessonFocus?,
-    onFocusConsumed: (Int) -> Unit,
+    lessons: Map<LocalTime?, List<Lesson>>,
+    aliases: Map<String, String>,
+    periods: List<LocalTime?>,
+    width: Dp,
+    dayHeight: Dp,
+    cardHeight: Dp,
+    pinnedHeader: Modifier,
+    onSlot: (TimetableSlot) -> Unit,
 ) {
-    val locale = remember { Locale.forLanguageTag("ru") }
-    val weekday = remember(date) {
-        date.format(DateTimeFormatter.ofPattern("EEE", locale))
-            .replace(".", "")
-            .lowercase(locale)
+    val boundary = date.dayOfWeek == DayOfWeek.MONDAY
+    val colors = MaterialTheme.colorScheme
+    val (dayColor, dayText) = when {
+        date == today -> colors.primary to colors.onPrimary
+        boundary -> colors.secondaryContainer to colors.onSecondaryContainer
+        else -> colors.surfaceContainer to colors.onSurface
     }
-    val isToday = date == today
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .padding(start = 8.dp, end = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Column(
-            modifier = Modifier.width(52.dp).padding(top = 3.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(
-                weekday,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isToday) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+    val slots = remember(date, periods, lessons) {
+        periods.map { period -> lessons[period]?.takeIf { it.isNotEmpty() }?.let { TimetableSlot(date, it) } }
+    }
+    val cellShape = MaterialTheme.shapes.medium
+    val dividerWidth = if (boundary) 2.dp else 0.dp
+    val dayInset = if (boundary) dividerWidth + 3.dp else 0.dp
+    val cellPadding = 3.dp
+    Layout(
+        modifier = Modifier.width(width).testTag("schedule-day-$date").drawWithCache {
+            val rtl = layoutDirection == LayoutDirection.Rtl
+            val inset = dayInset.roundToPx()
+            val padding = cellPadding.roundToPx()
+            val rowHeight = cardHeight.roundToPx()
+            val startX = if (rtl) padding else inset + padding
+            val outline = cellShape.createOutline(
+                Size((size.width - inset - padding * 2).coerceAtLeast(0f),
+                    (rowHeight - padding * 2).coerceAtLeast(0).toFloat()),
+                layoutDirection, this,
             )
-            Surface(
-                shape = CircleShape,
-                color = if (isToday) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceContainerLow,
-                contentColor = if (isToday) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface,
-            ) {
-                Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        date.dayOfMonth.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                    )
+            val firstRowY = dayHeight.roundToPx() + padding
+            onDrawBehind {
+                if (boundary) {
+                    val lineWidth = dividerWidth.roundToPx().toFloat()
+                    drawRect(colors.outlineVariant, Offset(if (rtl) size.width - lineWidth else 0f, 0f),
+                        Size(lineWidth, size.height))
+                }
+                slots.forEachIndexed { index, slot ->
+                    if (slot == null) {
+                        translate(startX.toFloat(), (firstRowY + index * rowHeight).toFloat()) {
+                            drawOutline(outline, colors.surfaceContainerLow)
+                        }
+                    }
                 }
             }
+        },
+        content = {
+            Surface(
+                modifier = pinnedHeader.padding(3.dp).testTag("schedule-day-header-$date")
+                    .semantics(mergeDescendants = true) {
+                        heading()
+                        contentDescription = date.format(fullDateFormat)
+                    },
+                shape = MaterialTheme.shapes.medium,
+                color = dayColor,
+                contentColor = dayText,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(date.format(weekdayFormat), style = MaterialTheme.typography.labelMedium)
+                    Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium)
+                }
+            }
+            slots.forEach { slot ->
+                if (slot != null) TimetableCell(Modifier.padding(cellPadding), slot, aliases, onSlot)
+            }
+        },
+    ) { measurables, constraints ->
+        val inset = dayInset.roundToPx()
+        val columnWidth = constraints.maxWidth
+        val contentWidth = (columnWidth - inset).coerceAtLeast(0)
+        val headerHeight = dayHeight.roundToPx()
+        val rowHeight = cardHeight.roundToPx()
+        val header = measurables.first().measure(Constraints.fixed(contentWidth, headerHeight))
+        val cells = measurables.drop(1).map { it.measure(Constraints.fixed(contentWidth, rowHeight)) }
+        layout(columnWidth, headerHeight + rowHeight * slots.size) {
+            header.placeRelative(inset, 0)
+            var cell = 0
+            slots.forEachIndexed { index, slot ->
+                if (slot != null) cells[cell++].placeRelative(inset, headerHeight + index * rowHeight)
+            }
         }
+    }
+}
+
+@Composable
+private fun TimetableCell(
+    modifier: Modifier,
+    slot: TimetableSlot,
+    aliases: Map<String, String>,
+    onSlot: (TimetableSlot) -> Unit,
+) {
+    val lesson = slot.lessons.first()
+    val additionalLessons = slot.lessons.size - 1
+    val colors = MaterialTheme.colorScheme
+    val type = timetableLessonType(lesson.kind)
+    val (container, foreground) = when (type) {
+        TimetableLessonType.LECTURE -> colors.primaryContainer to colors.onPrimaryContainer
+        TimetableLessonType.PRACTICE -> colors.secondaryContainer to colors.onSecondaryContainer
+        TimetableLessonType.LAB -> colors.tertiaryContainer to colors.onTertiaryContainer
+        TimetableLessonType.OTHER -> colors.surfaceContainerHigh to colors.onSurface
+    }
+    val alias = remember(lesson.name, aliases) { timetableLessonLabel(lesson.name, aliases) }
+    val description = remember(slot, type) {
+        listOfNotNull(
+            lesson.name, type.label(lesson.kind), slot.date.format(fullDateFormat),
+            lesson.startTime.takeIf(String::isNotBlank),
+            "Всего занятий — ${slot.lessons.size}".takeIf { additionalLessons > 0 },
+        ).joinToString(", ")
+    }
+    Surface(
+        onClick = { onSlot(slot) },
+        modifier = modifier.testTag("schedule-lesson").semantics { contentDescription = description },
+        shape = MaterialTheme.shapes.medium,
+        color = container,
+        contentColor = foreground,
+    ) {
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            Modifier.padding(horizontal = AppSpacing.xs, vertical = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         ) {
-            AgendaDaySection(
-                date = date,
-                clock = clock,
-                day = day,
-                loading = loading,
-                failed = failed,
-                onRetry = onRetry,
-                onLocateRoom = onLocateRoom,
-                focusLesson = focusLesson,
-                onFocusConsumed = onFocusConsumed,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppIcon(type.icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                if (additionalLessons > 0) {
+                    Text("+$additionalLessons", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
+            }
+            Text(
+                alias,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

@@ -1,7 +1,10 @@
 package com.rteats.mpeineo
 
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +13,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -18,6 +22,7 @@ import com.rteats.mpeineo.data.OwaMailFolder
 import com.rteats.mpeineo.ui.MailFolderTabs
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +61,33 @@ class MailFolderActionGroupUiTest {
             assertEquals(OwaMailFolder.SENT, folder)
             assertEquals(1, changes)
         }
+    }
+
+    @Test fun scrollableRowCentersTheIndicatorUnderTheSelectedFolder() {
+        var folder by mutableStateOf(OwaMailFolder.INBOX)
+        var indicator = Color.Unspecified
+        rule.setContent { MpeiNeoTheme {
+            indicator = MaterialTheme.colorScheme.primary
+            MailFolderTabs(
+                selectedFolder = folder,
+                onSelectFolder = { folder = it },
+                availableFolders = listOf(OwaMailFolder.INBOX, OwaMailFolder.SENT,
+                    OwaMailFolder.JUNK, OwaMailFolder.DELETED, OwaMailFolder.DRAFTS, OwaMailFolder.NOTES),
+                modifier = Modifier.width(320.dp),
+            )
+        } }
+
+        val row = rule.onNodeWithTag("mail-folder-tabs")
+        val sent = rule.onNodeWithTag("mail-folder-sent").performClick()
+        val image = row.captureToImage().toPixelMap()
+        val lines = with(rule.density) { 3.dp.roundToPx() }
+        val coloredColumns = (0 until image.width).filter { x ->
+            (image.height - lines until image.height).any { y -> image[x, y] == indicator }
+        }
+        assertTrue("Primary indicator is visible", coloredColumns.isNotEmpty())
+        val tabCenter = sent.fetchSemanticsNode().boundsInRoot.center.x -
+            row.fetchSemanticsNode().boundsInRoot.left
+        assertEquals(tabCenter, (coloredColumns.first() + coloredColumns.last()) / 2f, 2f)
     }
 
     @Test fun iconTabsContainOnlyDiscoveredFolders() {

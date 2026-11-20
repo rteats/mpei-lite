@@ -185,20 +185,26 @@ internal fun BarsNativeDashboard(
   }
   val dashboardListState = rememberLazyListState()
   var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
-  androidx.compose.runtime.LaunchedEffect(reselectRequest) {
-    if (reselectRequest != lastReselect) dashboardListState.animateScrollToItem(0)
-    lastReselect = reselectRequest
-  }
+  var previousSection by remember { mutableStateOf(selectedSection) }
   androidx.compose.runtime.LaunchedEffect(selectedSection) {
-    dashboardListState.scrollToItem(0)
+    if (previousSection != selectedSection) dashboardListState.scrollToItem(0)
+    previousSection = selectedSection
   }
   val selectedDiscipline = state.disciplines.firstOrNull {
     it.disciplineName == selectedDisciplineName
   }
   // Keep the outgoing detail content intact while its spring slides away.
-  var retainedDiscipline by remember { mutableStateOf(state.disciplines.firstOrNull()) }
+  var retainedDiscipline by remember { mutableStateOf(selectedDiscipline) }
   androidx.compose.runtime.LaunchedEffect(selectedDiscipline) {
     if (selectedDiscipline != null) retainedDiscipline = selectedDiscipline
+  }
+  val detailAvailable = selectedDisciplineName != null &&
+    (selectedDiscipline ?: retainedDiscipline)?.disciplineName == selectedDisciplineName
+  androidx.compose.runtime.LaunchedEffect(selectedDisciplineName, detailAvailable, state.isLoading) {
+    if (selectedDisciplineName != null && !detailAvailable && !state.isLoading) {
+      selectedDisciplineName = null
+      focusDisciplineName = null
+    }
   }
   androidx.compose.runtime.LaunchedEffect(openDisciplineRequest, openDisciplineName,
       state.disciplines, active) {
@@ -211,13 +217,21 @@ internal fun BarsNativeDashboard(
 
   androidx.compose.runtime.SideEffect {
     // Keep the detail route stable while grades refresh or are temporarily absent.
-    onDetailOpenChange(selectedDisciplineName != null)
+    onDetailOpenChange(detailAvailable)
   }
 
   fun closeDetail() {
     selectedDisciplineName?.let(onAcknowledgeGrades)
     selectedDisciplineName = null
     focusDisciplineName = null
+  }
+  androidx.compose.runtime.LaunchedEffect(reselectRequest) {
+    if (active && reselectRequest != lastReselect) {
+      closeDetail()
+      selectedSection = "subjects"
+      dashboardListState.scrollToItem(0)
+    }
+    lastReselect = reselectRequest
   }
 
   // The overview stays mounted behind its detail so the back gesture exposes
@@ -374,7 +388,7 @@ internal fun BarsNativeDashboard(
         }
       }
     SpatialScreenOverlay(
-      visible = selectedDisciplineName != null,
+      visible = detailAvailable,
       skipExitAnimation = dismissedByGesture,
       modifier = Modifier.testTag("bars-discipline-slide-layer"),
     ) {
@@ -384,7 +398,7 @@ internal fun BarsNativeDashboard(
           PredictiveBackDetail(
             onBack = ::closeDetail,
             onGestureCommit = { dismissedByGesture = true },
-            enabled = active && selectedDisciplineName != null && !state.browserVisible,
+            enabled = active && detailAvailable && !state.browserVisible,
             modifier = Modifier.testTag("bars-detail-swipe-back"),
           ) {
           Surface(

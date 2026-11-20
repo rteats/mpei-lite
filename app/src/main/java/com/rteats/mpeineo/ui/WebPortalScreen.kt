@@ -3,6 +3,7 @@ package com.rteats.mpeineo.ui
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -22,12 +23,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
+
+/** Kept with the Mail ViewModel while the view is detached or the activity is recreated. */
+internal class EmbeddedPortalSession {
+    val history = Bundle()
+    var scrollX = 0
+    var scrollY = 0
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -37,6 +42,8 @@ internal fun WebPortalScreen(
     modifier: Modifier = Modifier,
     onDebugEvent: (String) -> Unit = {},
     onExit: () -> Unit = {},
+    active: Boolean = true,
+    session: EmbeddedPortalSession,
 ) {
     val debugEvent by rememberUpdatedState(onDebugEvent)
     DisposableEffect(url) {
@@ -55,11 +62,9 @@ internal fun WebPortalScreen(
         )
     }
 
-    BackHandler {
-        if (browserState.canGoBack) {
-            debugEvent("browser back within website")
-            webView?.takeIf { it.canGoBack() }?.goBack()
-        } else onExit()
+    BackHandler(enabled = active && browserState.canGoBack) {
+        debugEvent("browser back within website")
+        webView?.takeIf { it.canGoBack() }?.goBack()
     }
 
     Box(
@@ -70,6 +75,9 @@ internal fun WebPortalScreen(
                 .padding(top = EMBEDDED_BROWSER_APPBAR_HEIGHT),
             factory = { context ->
                 WebView(context).apply {
+                    val originalX = session.scrollX
+                    val originalY = session.scrollY
+                    var restoreScroll = false
                     debugEvent("webview created")
                     setOnFocusChangeListener { _, focused ->
                         debugEvent("webview focus changed focused=$focused")
@@ -121,6 +129,14 @@ internal fun WebPortalScreen(
 
                         override fun onPageFinished(view: WebView, url: String) {
                             syncBrowserState(view, url)
+                            if (restoreScroll) {
+                                restoreScroll = false
+                                view.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
+                                    override fun onComplete(requestId: Long) {
+                                        if (webView === view) view.scrollTo(originalX, originalY)
+                                    }
+                                })
+                            }
                             // Persist the manually established OWA login for
                             // cold-start and idle-session testing.
                             if (url.startsWith("https://mail.mpei.ru/", ignoreCase = true)) {
@@ -142,11 +158,13 @@ internal fun WebPortalScreen(
                             isReload: Boolean,
                         ) {
                             syncBrowserState(view, url)
+                            view.saveState(session.history)
                         }
                     }
 
                     webView = this
-                    loadUrl(url)
+                    restoreScroll = restoreState(session.history) != null
+                    if (!restoreScroll) loadUrl(url)
                 }
             },
             update = { view ->
@@ -155,6 +173,9 @@ internal fun WebPortalScreen(
             },
             onRelease = { view ->
                 debugEvent("webview released")
+                view.saveState(session.history)
+                session.scrollX = view.scrollX
+                session.scrollY = view.scrollY
                 view.onFocusChangeListener = null
                 view.stopLoading()
                 view.webViewClient = WebViewClient()

@@ -1,6 +1,5 @@
 package com.rteats.mpeineo.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -75,7 +74,6 @@ internal fun MailComposeScreen(
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> viewModel.addOutgoingFiles(uris) }
-    BackHandler(enabled = !state.sending) { onExit() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("mail-compose"),
