@@ -16,7 +16,10 @@ class CampusMapKeyboardUiTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
 
     @Test fun keyboardHighlightsBuildingDirectlyWithoutModal() {
-        rule.onNodeWithTag("service-maps").performClick()
+        rule.onNodeWithTag("nav-maps").performClick()
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithTag("campus-building-keyboard").fetchSemanticsNodes().isNotEmpty()
+        }
         rule.onNodeWithTag("campus-building-keyboard").assertIsDisplayed()
         rule.onNodeWithTag("campus-keyboard-toggle").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {

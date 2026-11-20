@@ -2,7 +2,41 @@
 
 **Status: not a completed compliance audit.** This is a baseline inventory and a set of recorded, previously reported discrepancies. It is deliberately not a Google certification. The `screen-audit.json` inventory is machine-checked to catch newly added `*Screen.kt` entry points that lack a review record. Other composables, dialogs, navigation transitions and WebView content must also be included in the manual audit.
 
-## Verified findings awaiting existing PRs
+## Redesign research — 2026-11-20
+
+The [repository audit, source review and timetable proposal](redesign-research-2026-11-20.md) rechecks the earlier PRs against `main`, records the current navigation and motion gaps, and specifies evidence needed for the redesign. Registry statuses and screenshot references still require implementation review.
+
+### Overlapping lessons and lesson-type icons
+
+Each period now occupies one row of the existing timetable height. A cell with simultaneous lessons presents the first abbreviation and a count for the rest. Tapping it opens a list in the lesson sheet. Every entry has its own type, room and teacher where available, and opens the existing details and actions. The grid and picker use Outlined Material Symbols. MPEI Lite maps practice to `edit`, lecture to `hearing`, lab to `science`, and exams and other lesson types to `quiz`. The icon is decorative for accessibility because the lesson type is conveyed in the cell description and in the picker text.
+
+Affected rules are M3-COMP-001, M3-COLOR-001, M3-TYPE-001, M3-ACCESS-001, M3-ADAPT-001 and M3-LAYOUT-001. Exact pages reviewed include [Material 3 in Compose](https://developer.android.com/develop/ui/compose/designsystems/material3), [clickable list items](https://developer.android.com/reference/kotlin/androidx/compose/material3/ListItem.composable), [Compose accessibility defaults](https://developer.android.com/develop/ui/compose/accessibility/api-defaults), and [Material Symbols](https://developers.google.com/fonts/docs/material_symbols).
+
+The overlap regression reproduced the threefold row height on the previous build. On the new build, six API 37 emulator tests passed, including fixed row height, choosing a lesson from an overlapping slot, large-font date headers and lesson-sheet restoration. The debug build, lint, 318 JVM tests, both Python policy checks and 20 Python tests passed. The signed build was installed in place over USB on a Redmi Note 9 Pro. On its loaded timetable, a three-lesson slot occupied one row, showed `+2`, listed all three entries with lecture and lab icons, and opened the selected lab's details. Six horizontal swipes on the phone produced 233 rendered frames, p50 19 ms, p95 44 ms and 27 missed deadlines in `dumpsys gfxinfo`. This debug sample has no matched comparison. The phone's Compose instrumentation still stops in its coroutine ServiceLoader before running the UI assertions. Dark mode, expanded-window rendering and manual TalkBack traversal remain open for this change.
+
+### Android system navigation bar
+
+MPEI Lite extends its Material 3 `surfaceContainer` color behind Android's navigation buttons and uses the system's light or dark button appearance for contrast. The main activity draws the color in the tappable navigation insets, including the side inset when Android places the buttons there. Gesture navigation uses a transparent system bar.
+
+Affected rules are M3-COLOR-001 and M3-ADAPT-001. Android documents the edge-to-edge drawing and contrast behavior in [Compose system bar protection](https://developer.android.com/develop/ui/compose/system/system-bars), [Compose insets](https://developer.android.com/develop/ui/compose/system/insets), and the [edge-to-edge codelab](https://developer.android.com/codelabs/edge-to-edge). The surface role follows [Material 3 in Compose](https://developer.android.com/develop/ui/compose/designsystems/material3).
+
+An API 37 emulator screenshot test verified the exact theme color behind the buttons. With gesture navigation enabled, the destination, schedule search and Settings smoke checks passed. On a Redmi Note 9 Pro, the system strip and app bar matched in light and dark modes, Home was readable in both, and system Back returned from Settings after switching themes. The original theme was restored after testing. Landscape and older Android releases still need device coverage.
+
+### Timetable viewport, week gestures and mail tab alignment
+
+MPEI Lite fits four days on the Redmi Note 9 Pro at its default text size. Period rows share the available height and continue to scroll when their scaled minimum height exceeds the viewport. Lectures use the Outlined `school` symbol. The seventh standard period starts at 20:30 and ends at 22:00. Extra start times from the schedule feed are still rendered. [MPEI timetable regulations, §6.6](https://mpei.ru/AboutUniverse/OficialInfo/Orders2022/MPEI-22-838-pril2.pdf)
+
+The week heading uses a finger-tracked pager and moves the day grid when the selected week settles. Tapping the heading opens the date picker. Pulling down on the grid refreshes the visible week. The heading also exposes accessibility actions for refresh and adjacent weeks. Mail keeps the Material primary indicator centered within the selected tab as the folder strip scrolls. Affected rules are M3-COMP-001, M3-MOTION-001, M3-ACCESS-001, M3-ADAPT-001, M3-INPUT-001 and M3-LAYOUT-001. [Compose pager](https://developer.android.com/develop/ui/compose/layouts/pager), [Material pull to refresh](https://developer.android.com/develop/ui/compose/components/pull-to-refresh), [Material tabs](https://developer.android.com/develop/ui/compose/components/tabs), [Compose accessibility semantics](https://developer.android.com/develop/ui/compose/accessibility/semantics), [Material Symbols](https://developers.google.com/fonts/docs/material_symbols)
+
+The updated Redmi build showed four date columns, reached the 20:30 row, switched weeks in both directions and issued a network refresh after a downward swipe. Tapping the heading opened the date picker, and system Back returned to the same week. The Sent icon and its pill centers matched within one pixel. API 37 emulator checks passed for four columns with gesture insets, viewport height, calendar order across Sunday, finger tracking and cancellation, refresh, the mail indicator and tab accessibility. Dark theme, landscape, expanded-window layouts and manual TalkBack traversal still need device coverage.
+
+### Timetable frame pacing
+
+The week heading keeps one pager across changes. The grid advances at most one day column per frame when following a settled heading, and nearby columns use Compose lazy prefetch. Empty period backgrounds are drawn together per day. The heading and occupied cells retain their existing layout, touch targets and accessibility nodes.
+
+A Redmi Note 9 Pro debug trace attributed the week-switch hitch to the grid measuring the destination days in one frame. The swipe regression covers cancellation, switching in both directions, matching the grid to the heading, and opening the date picker after switching. Affected rules are M3-MOTION-001, M3-ADAPT-001, M3-ACCESS-001 and M3-LAYOUT-001. [Compose performance practices](https://developer.android.com/develop/ui/compose/performance/bestpractices), [Compose pager](https://developer.android.com/develop/ui/compose/layouts/pager), [Custom Compose layouts](https://developer.android.com/develop/ui/compose/layouts/custom), [Compose drawing modifiers](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers)
+
+## Findings recorded before the November 5 fixes merged
 
 | Area | Existing issue | Linked remediation PR | How to verify before marking reviewed |
 | --- | --- | --- | --- |

@@ -53,7 +53,6 @@ internal fun MailSearchAppBar(
     onOpen: (SearchMailHit) -> Unit,
     onOpenPortal: () -> Unit,
     onLogout: () -> Unit,
-    onSettings: () -> Unit = {},
 ) {
     val bar = rememberSearchBarState()
     val input = rememberTextFieldState()
@@ -96,12 +95,6 @@ internal fun MailSearchAppBar(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Настройки") },
-                                leadingIcon = { AppIcon(AppIcons.Settings, contentDescription = null) },
-                                onClick = { menuExpanded = false; onSettings() },
-                                modifier = Modifier.testTag("mail-open-settings"),
-                            )
                             DropdownMenuItem(
                                 text = { Text("Веб-версия") },
                                 leadingIcon = {

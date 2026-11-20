@@ -27,6 +27,32 @@ import org.junit.runner.RunWith
 class MailDetailOverlayUiTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun cancelledPredictiveBackKeepsTheDetailOpen() {
+        val backCalls = AtomicInteger()
+        rule.setContent {
+            MpeiNeoTheme {
+                Box(Modifier.fillMaxSize()) {
+                    Text("Inbox behind detail")
+                    MailDetailOverlay(visible = true, enabled = true, onBack = { backCalls.incrementAndGet() }) {
+                        Text("Message detail")
+                    }
+                }
+            }
+        }
+        val detail = rule.onNodeWithText("Message detail")
+        val originalPosition = detail.fetchSemanticsNode().positionInRoot
+        rule.runOnUiThread {
+            val dispatcher = rule.activity.onBackPressedDispatcher
+            dispatcher.dispatchOnBackStarted(BackEventCompat(0f, 0f, 0f, BackEventCompat.EDGE_RIGHT))
+            dispatcher.dispatchOnBackProgressed(BackEventCompat(170f, 0f, .8f, BackEventCompat.EDGE_RIGHT))
+        }
+        rule.waitUntil(5_000) { detail.fetchSemanticsNode().positionInRoot != originalPosition }
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.dispatchOnBackCancelled() }
+        rule.waitUntil(5_000) { detail.fetchSemanticsNode().positionInRoot == originalPosition }
+        detail.assertIsDisplayed()
+        assertEquals(0, backCalls.get())
+    }
+
     @Test fun committedPredictiveBackDoesNotAnimateTheOverlayOutAgain() {
         val backCalls = AtomicInteger()
         rule.mainClock.autoAdvance = false

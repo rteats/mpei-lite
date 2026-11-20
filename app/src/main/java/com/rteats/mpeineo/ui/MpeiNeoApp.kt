@@ -1,13 +1,15 @@
 package com.rteats.mpeineo.ui
 
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -33,10 +35,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +51,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
@@ -91,13 +96,14 @@ fun MpeiNeoApp(
     }
     var settingsVisible by rememberSaveable { mutableStateOf(false) }
     var mailWebVisible by rememberSaveable { mutableStateOf(false) }
+    val mailSearchState = rememberSaveableStateHolder()
     val primaryTabs = listOf(AppTab.SCHEDULE, AppTab.MAIL, AppTab.BARS, AppTab.MAPS)
     val widthDp = LocalConfiguration.current.screenWidthDp
     val expandedWidth = widthDp >= 840
     val compactWidth = widthDp < 600
     var reselectRequest by remember { mutableIntStateOf(0) }
     var barsDetailOpen by remember { mutableStateOf(false) }
-    var mailFullScreenOpen by remember { mutableStateOf(false) }
+    var mailFullScreenOpen by rememberSaveable { mutableStateOf(false) }
     val detailOpen = currentTab == AppTab.MAIL &&
         (mailState.selected != null || mailState.composing || mailFullScreenOpen) ||
         currentTab == AppTab.BARS && barsDetailOpen
@@ -105,19 +111,9 @@ fun MpeiNeoApp(
     // Shell navigation remains available even when an embedded portal is open.
     val navigationVisible = true
 
-    fun openTab(tab: AppTab) {
-        if (tab == AppTab.SETTINGS) {
-            settingsVisible = true
-            diagnostics.log("NAV", "settings from=" + currentTab.name)
-            return
-        }
+    fun selectTab(tab: AppTab) {
         if (settingsVisible) settingsVisible = false
-        if (tab == currentTab) {
-            reselectRequest++
-            diagnostics.log("NAV", "reselect=" + tab.name)
-            return
-        }
-        if (mailWebVisible) mailWebVisible = false
+        if (tab == currentTab) return
         diagnostics.log("NAV", "tab=" + tab.name + " from=" + currentTab.name)
         currentTab = tab
     }
@@ -134,6 +130,19 @@ fun MpeiNeoApp(
         mailWebVisible = false
         diagnostics.log("MAIL_WEB", "portal closed")
         mailViewModel.refresh()
+    }
+
+    fun openMailBrowser() {
+        mailViewModel.portalSession = EmbeddedPortalSession()
+        mailWebVisible = true
+    }
+
+    fun pressTab(tab: AppTab) {
+        if (tab == currentTab) {
+            if (tab == AppTab.MAIL && mailWebVisible) closeMailBrowser()
+            reselectRequest++
+            diagnostics.log("NAV", "reselect=" + tab.name)
+        } else selectTab(tab)
     }
 
     // Only retry an expired OWA session once with previously saved credentials.
@@ -170,20 +179,13 @@ fun MpeiNeoApp(
     LaunchedEffect(Unit) { application.startPostLaunchMaintenance() }
     LaunchedEffect(mailNotificationTarget?.requestId) {
         val target = mailNotificationTarget ?: return@LaunchedEffect
-        openTab(AppTab.MAIL)
+        mailWebVisible = false
+        selectTab(AppTab.MAIL)
         if (target.uid > 0 && target.validity > 0) {
             mailViewModel.openFromNotification(target.uid, target.validity)
         } else mailViewModel.closeMessage()
     }
     LaunchedEffect(currentTab) { application.container.uiFrameProfiler.markScreen(currentTab.name) }
-
-    BackHandler(enabled = !settingsVisible && currentTab == AppTab.MAIL && mailWebVisible) {
-        closeMailBrowser()
-    }
-    BackHandler(enabled = !settingsVisible && currentTab != AppTab.SCHEDULE && !mailWebVisible &&
-        !detailOpen) {
-        openTab(AppTab.SCHEDULE)
-    }
 
     val railVisible = navigationVisible && expandedWidth
     Box(Modifier.fillMaxSize()) {
@@ -194,7 +196,7 @@ fun MpeiNeoApp(
                     val selected = currentTab == tab
                     NavigationRailItem(
                         selected = selected,
-                        onClick = { openTab(tab) },
+                        onClick = { pressTab(tab) },
                         icon = {
                             MainNavigationIcon(
                                 tab = tab, selected = selected,
@@ -224,42 +226,6 @@ fun MpeiNeoApp(
                     WindowInsetsSides.Top + WindowInsetsSides.End + WindowInsetsSides.Bottom,
                 )
             } else ScaffoldDefaults.contentWindowInsets,
-            topBar = {
-                if (!mailWebVisible && !(currentTab == AppTab.MAIL &&
-                        (mailState.composing || mailFullScreenOpen))) {
-                    if (currentTab == AppTab.MAIL) {
-                        MailSearchAppBar(
-                            mail = mailState,
-                            onOpen = { hit ->
-                                mailViewModel.switchMailbox(hit.folder)
-                                mailViewModel.open(hit.message)
-                            },
-                            onOpenPortal = { mailWebVisible = true },
-                            onLogout = mailViewModel::logout,
-                            onSettings = { openTab(AppTab.SETTINGS) },
-                        )
-                    } else if (currentTab != AppTab.SCHEDULE) {
-                        TopAppBar(
-                            title = {
-                                Text(when (currentTab) {
-                                    AppTab.SCHEDULE -> "Расписание"
-                                    AppTab.MAIL -> "Почта"
-                                    AppTab.MAPS -> "Карта"
-                                    AppTab.SETTINGS -> "Настройки"
-                                    AppTab.BARS -> "БАРС"
-                                })
-                            },
-                            actions = {
-                                IconButton(onClick = { openTab(AppTab.SETTINGS) },
-                                    modifier = Modifier.testTag("open-settings")) {
-                                    AppIcon(AppIcons.Settings, contentDescription = "Настройки")
-                                }
-                            },
-                            modifier = Modifier.testTag("main-app-bar"),
-                        )
-                    }
-                }
-            },
             bottomBar = {
                 if (navigationVisible && !expandedWidth) {
                     ShortNavigationBar(
@@ -271,7 +237,7 @@ fun MpeiNeoApp(
                             val selected = currentTab == tab
                             ShortNavigationBarItem(
                                 selected = selected,
-                                onClick = { openTab(tab) },
+                                onClick = { pressTab(tab) },
                                 icon = {
                                     MainNavigationIcon(
                                         tab = tab, selected = selected,
@@ -292,61 +258,106 @@ fun MpeiNeoApp(
                 Modifier.fillMaxSize().padding(padding)
                     .consumeWindowInsets(padding).imePadding(),
             ) {
-                when (currentTab) {
-                AppTab.SCHEDULE -> ScheduleExplorerScreen(
-                    state = scheduleState,
-                    onQueryChange = viewModel::updateSearchQuery,
-                    onSearchTypeChange = viewModel::setSearchType,
-                    onSelectTarget = viewModel::selectTarget,
-                    onToggleFavorite = viewModel::toggleFavorite,
-                    onEnsureWeek = viewModel::ensureAgendaWeek,
-                    onRefreshWeek = viewModel::refreshAgendaWeek,
-                    onRetryWeek = viewModel::retryAgendaWeek,
-                    onSettings = { openTab(AppTab.SETTINGS) },
-                    reselectRequest = reselectRequest,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                AppTab.MAIL -> {
-                    MailScreen(
-                        viewModel = mailViewModel,
-                        loginViewModel = mailLoginViewModel,
-                        active = !mailWebVisible && !settingsVisible,
-                        onOpenPortal = { mailWebVisible = true },
-                        reselectRequest = reselectRequest,
-                        onFullScreenChange = { mailFullScreenOpen = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    SpatialScreenOverlay(visible = mailWebVisible) {
-                        WebPortalScreen(
-                            url = "https://mail.mpei.ru/owa",
-                            testTag = "portal-mail",
-                            modifier = Modifier.fillMaxSize().testTag("mail-webview"),
-                            onDebugEvent = { diagnostics.log("MAIL_WEB", it) },
-                            onExit = ::closeMailBrowser,
-                        )
+                PrimaryDestinationMotion(
+                    destination = currentTab,
+                    backToSchedule = if (!settingsVisible && currentTab != AppTab.SCHEDULE &&
+                        (currentTab != AppTab.MAIL || !mailWebVisible) && !detailOpen
+                    ) ({ selectTab(AppTab.SCHEDULE) }) else null,
+                ) { tab ->
+                    val active = tab == currentTab && !settingsVisible
+                    Column(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                            .then(if (tab == currentTab) Modifier else Modifier.clearAndSetSemantics {}),
+                    ) {
+                        if (tab == AppTab.MAIL && !mailWebVisible && !mailState.composing && !mailFullScreenOpen) {
+                            mailSearchState.SaveableStateProvider("mail-search") {
+                                MailSearchAppBar(
+                                    mail = mailState,
+                                    onOpen = { hit ->
+                                        mailViewModel.switchMailbox(hit.folder)
+                                        mailViewModel.open(hit.message)
+                                    },
+                                    onOpenPortal = ::openMailBrowser,
+                                    onLogout = mailViewModel::logout,
+                                )
+                            }
+                        }
+                        if (tab == AppTab.MAPS || tab == AppTab.BARS) {
+                            TopAppBar(
+                                title = { Text(mainTabLabel(tab)) },
+                                modifier = Modifier.testTag("main-app-bar"),
+                                windowInsets = WindowInsets(0, 0, 0, 0),
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth().weight(1f)) {
+                            when (tab) {
+                                AppTab.SCHEDULE -> ScheduleExplorerScreen(
+                                    state = scheduleState,
+                                    onQueryChange = viewModel::updateSearchQuery,
+                                    onSearchTypeChange = viewModel::setSearchType,
+                                    onSelectTarget = viewModel::selectTarget,
+                                    onToggleFavorite = viewModel::toggleFavorite,
+                                    viewModel = viewModel,
+                                    active = active,
+                                    onSettings = { settingsVisible = true },
+                                    reselectRequest = reselectRequest,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                AppTab.MAIL -> {
+                                    MailScreen(
+                                        viewModel = mailViewModel,
+                                        loginViewModel = mailLoginViewModel,
+                                        active = active && !mailWebVisible,
+                                        onOpenPortal = ::openMailBrowser,
+                                        reselectRequest = reselectRequest,
+                                        onFullScreenChange = { mailFullScreenOpen = it },
+                                        modifier = Modifier.fillMaxSize()
+                                            .then(if (mailWebVisible) Modifier.clearAndSetSemantics {} else Modifier),
+                                    )
+                                    DetailScreenOverlay(
+                                        visible = mailWebVisible,
+                                        enabled = active && mailWebVisible,
+                                        onBack = ::closeMailBrowser,
+                                    ) {
+                                        val session = mailViewModel.portalSession
+                                        key(session) {
+                                            WebPortalScreen(
+                                                url = "https://mail.mpei.ru/owa",
+                                                testTag = "portal-mail",
+                                                modifier = Modifier.fillMaxSize().testTag("mail-webview"),
+                                                onDebugEvent = { diagnostics.log("MAIL_WEB", it) },
+                                                onExit = ::closeMailBrowser,
+                                                active = active && mailWebVisible,
+                                                session = session,
+                                            )
+                                        }
+                                    }
+                                }
+                                AppTab.MAPS -> CampusMapScreen(
+                                    active = active,
+                                    reselectRequest = reselectRequest,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                AppTab.SETTINGS -> Unit
+                                AppTab.BARS -> {
+                                    val barsViewModel: BarsViewModel = composeViewModel(
+                                        factory = BarsViewModel.factory(
+                                            diagnostics,
+                                            BarsNetworkDiagnostics(application, diagnostics),
+                                            BarsSnapshotStore(application),
+                                        ),
+                                    )
+                                    BarsScreen(
+                                        viewModel = barsViewModel,
+                                        active = active,
+                                        reselectRequest = reselectRequest,
+                                        onDetailOpenChange = { barsDetailOpen = it },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
+                        }
                     }
-                }
-                AppTab.MAPS -> CampusMapScreen(
-                    active = true,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                AppTab.SETTINGS -> Unit
-                AppTab.BARS -> {
-                    val barsViewModel: BarsViewModel = composeViewModel(
-                        factory = BarsViewModel.factory(
-                            diagnostics,
-                            BarsNetworkDiagnostics(application, diagnostics),
-                            BarsSnapshotStore(application),
-                        ),
-                    )
-                    BarsScreen(
-                        viewModel = barsViewModel,
-                        active = !settingsVisible,
-                        reselectRequest = reselectRequest,
-                        onDetailOpenChange = { barsDetailOpen = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
                 }
             }
         }

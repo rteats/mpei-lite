@@ -13,14 +13,14 @@
       "linked_prs": [
         123
       ],
-      "notes": "BARS class-detail persistence and predictive-back transition are under review.",
+      "notes": "Review BARS detail and planner restoration through refresh, destination switching and predictive Back. The redesign checks a restored route whose discipline disappeared.",
       "review_evidence": []
     },
     {
       "path": "app/src/main/java/com/rteats/mpeineo/ui/CampusMapScreen.kt",
       "status": "not-reviewed",
       "linked_prs": [],
-      "notes": "Review map gestures, touch targets, app-bar and keyboard behavior at window-size breakpoints.",
+      "notes": "The redesign checks retained map zoom and selection Back. Review pan, gestures, touch targets and keyboard behavior at window-size breakpoints.",
       "review_evidence": []
     },
     {
@@ -36,7 +36,7 @@
       "linked_prs": [
         124
       ],
-      "notes": "Primary navigation visibility during composition is addressed in a separate open PR.",
+      "notes": "The redesign keeps primary navigation mounted during compose. Review authenticated draft restoration and predictive Back with the keyboard present.",
       "review_evidence": []
     },
     {
@@ -46,7 +46,7 @@
         124,
         125
       ],
-      "notes": "Mail detail navigation/search, mailbox tab placement and FAB size are addressed in open PRs.",
+      "notes": "The merged Mail chrome and FAB fixes are the baseline. Review restored folder and detail positions and authenticated Mail navigation.",
       "review_evidence": []
     },
     {
@@ -55,14 +55,14 @@
       "linked_prs": [
         126
       ],
-      "notes": "Search placeholder text/line count is addressed in a separate open PR.",
+      "notes": "Review Schedule search focus, the Settings overflow and the teacher timetable Back path across font and window sizes.",
       "review_evidence": []
     },
     {
       "path": "app/src/main/java/com/rteats/mpeineo/ui/ScheduleScreen.kt",
       "status": "not-reviewed",
       "linked_prs": [],
-      "notes": "Review schedule cards, typography, loading state and adaptive layout.",
+      "notes": "Review timetable type cues, lesson sheets, pinned date headings, day snapping and large-font behavior. See redesign-research-2026-11-20.md for automated evidence and pending device checks.",
       "review_evidence": []
     },
     {
@@ -71,7 +71,7 @@
       "linked_prs": [
         124
       ],
-      "notes": "Settings destination placement is addressed by the navigation shell PR.",
+      "notes": "Settings is reached from Schedule overflow. Review update and copy-log actions plus focus restoration on Back.",
       "review_evidence": []
     },
     {
@@ -87,7 +87,7 @@
       "linked_prs": [
         124
       ],
-      "notes": "Shell navigation and top app bar visibility decisions are addressed in an open PR.",
+      "notes": "Review separate destination state, reselect, and predictive root Back with destination app bars in the transition.",
       "review_evidence": []
     }
   ]

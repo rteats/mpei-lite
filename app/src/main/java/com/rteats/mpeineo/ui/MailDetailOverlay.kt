@@ -34,9 +34,9 @@ internal fun DetailScreenOverlay(
     LaunchedEffect(visible) {
         if (visible) dismissedByGesture = false
     }
+    if (!visible && dismissedByGesture) return
     SpatialScreenOverlay(
         visible = visible,
-        skipExitAnimation = dismissedByGesture,
         modifier = modifier,
     ) {
         PredictiveBackDetail(
