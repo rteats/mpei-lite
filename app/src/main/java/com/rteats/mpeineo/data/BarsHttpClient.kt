@@ -12,7 +12,6 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +30,20 @@ internal data class BarsHttpPage(
 internal sealed interface BarsCredentialResult {
     data class NeedsCode(val hint: String = "Введите код подтверждения") : BarsCredentialResult
     data class Complete(val page: BarsHttpPage) : BarsCredentialResult
+}
+
+/**
+ * A returned login or 2FA form indicates the step was not accepted, but does not
+ * establish whether the user typed the wrong value or the server rejected the session.
+ */
+internal fun barsUnacceptedAuthPage(html: String, codeChallenge: Boolean): BarsProtocolException {
+    val field = if (codeChallenge) "AF2_Code" else "Password"
+    val reason = if (Jsoup.parse(html).selectFirst("input[name=$field]") != null) {
+        if (codeChallenge) BarsFailureReason.CODE_REJECTED else BarsFailureReason.CREDENTIALS_REJECTED
+    } else {
+        BarsFailureReason.UNEXPECTED_AUTH_PAGE
+    }
+    return BarsProtocolException(reason)
 }
 
 /**
@@ -146,9 +159,9 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
     }
 
     private fun valid(url: HttpUrl): HttpUrl {
-        require(url.scheme == "https" && url.host == host &&
-            url.port == 443 && url.encodedPath.startsWith("/bars_web/")) {
-            "BARS requested an unexpected origin or path"
+        if (url.scheme != "https" || url.host != host || url.port != 443 ||
+            !url.encodedPath.startsWith("/bars_web/")) {
+            throw BarsProtocolException(BarsFailureReason.UNEXPECTED_ORIGIN)
         }
         return url
     }
@@ -159,7 +172,7 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
             it.selectFirst("input[name=$field]") != null
         } ?: return null
         val action = valid(page.url.resolve(element.attr("action").ifBlank { page.url.toString() })
-            ?: error("Invalid BARS form action"))
+            ?: throw BarsProtocolException(BarsFailureReason.INVALID_FORM_ACTION))
         val hidden = element.select("input[type=hidden][name]").map {
             it.attr("name") to it.attr("value")
         }
@@ -187,35 +200,35 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
                 if (response.code in 300..399) {
                     val target = response.header("Location")
                         ?.let(url::resolve)?.let(::valid)
-                        ?: throw IOException("BARS redirect has no valid target")
+                        ?: throw BarsProtocolException(BarsFailureReason.INVALID_REDIRECT)
                     next = Request.Builder().url(target).get()
                         .header("Referer", url.toString()).build()
                 } else {
                     if (response.code !in 200..299) {
-                        throw IOException("BARS HTTP ${response.code}")
+                        throw BarsProtocolException(BarsFailureReason.HTTP_STATUS, response.code)
                     }
                     val body = response.body?.string()
-                        ?: throw IOException("Empty BARS response")
+                        ?: throw BarsProtocolException(BarsFailureReason.EMPTY_RESPONSE)
                     if (body.length > 1_000_000) {
-                        throw IOException("BARS response exceeds expected size")
+                        throw BarsProtocolException(BarsFailureReason.OVERSIZED_RESPONSE)
                     }
                     return BarsHttpPage(url, response.code, body)
                 }
             }
         }
-        throw IOException("Too many BARS redirects")
+        throw BarsProtocolException(BarsFailureReason.TOO_MANY_REDIRECTS)
     }
 
     suspend fun openLogin(): Unit = withContext(Dispatchers.IO) {
         clear()
         val page = execute(Request.Builder().url(root).get().build())
         credentialsForm = form(page, "Password")
-            ?: throw IOException("BARS login form is unavailable")
+            ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_UNAVAILABLE)
     }
 
     suspend fun credentials(account: String, password: String): BarsCredentialResult =
         withContext(Dispatchers.IO) {
-            val login = credentialsForm ?: throw IOException("BARS login form has expired")
+            val login = credentialsForm ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_EXPIRED)
             val page = post(login, listOf(
                 "Account" to account,
                 "Password" to password,
@@ -230,12 +243,12 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
                     .getElementById("div-Student_SemesterSheet__Mark") != null) {
                 BarsCredentialResult.Complete(page)
             } else {
-                throw IOException("BARS did not accept the credentials")
+                throw barsUnacceptedAuthPage(page.html, codeChallenge = false)
             }
         }
 
     suspend fun requestCode() = withContext(Dispatchers.IO) {
-        check(codeForm != null) { "Two-factor confirmation not started" }
+        if (codeForm == null) throw BarsProtocolException(BarsFailureReason.CODE_FORM_EXPIRED)
         // In the successful capture, tid=3 is the code-delivery channel (MAX).
         val url = valid(root.resolve("Auth/JSON_SendAF2_Code")!!)
             .newBuilder().addQueryParameter("tid", "3")
@@ -244,15 +257,24 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Referer", root.toString()).get().build())
         // JSON errors must not be mistaken for successful delivery.
-        val json = org.json.JSONObject(result.html)
-        if (!json.optBoolean("success")) throw IOException("BARS could not send the code")
+        val json = try {
+            org.json.JSONObject(result.html)
+        } catch (_: org.json.JSONException) {
+            throw BarsProtocolException(BarsFailureReason.CODE_DELIVERY_INVALID_JSON)
+        }
+        if (!json.has("success")) {
+            throw BarsProtocolException(BarsFailureReason.CODE_DELIVERY_INVALID_JSON)
+        }
+        if (!json.optBoolean("success")) {
+            throw BarsProtocolException(BarsFailureReason.CODE_SEND_REJECTED)
+        }
     }
 
     suspend fun confirm(code: String): BarsHttpPage = withContext(Dispatchers.IO) {
-        val form = codeForm ?: throw IOException("BARS confirmation form has expired")
+        val form = codeForm ?: throw BarsProtocolException(BarsFailureReason.CODE_FORM_EXPIRED)
         val page = post(form, listOf("AF2_Code" to code))
         if (Jsoup.parse(page.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
-            throw IOException("BARS rejected the confirmation code")
+            throw barsUnacceptedAuthPage(page.html, codeChallenge = true)
         }
         codeForm = null
         mainUrl = page.url
@@ -270,15 +292,16 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
             if (page.url.encodedPath == "/bars_web/" ||
                 Jsoup.parse(page.html).selectFirst("input[name=Password]") != null) {
                 clear()
+                throw BarsProtocolException(BarsFailureReason.SESSION_NOT_AUTHENTICATED)
             }
-            throw IOException("BARS study page is not authenticated")
+            throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
         }
         saveSession()
         page
     }
 
     suspend fun refreshSummary(): String = withContext(Dispatchers.IO) {
-        val url = summaryUrl ?: throw IOException("BARS summary route is missing")
+        val url = summaryUrl ?: throw BarsProtocolException(BarsFailureReason.SUMMARY_ROUTE_MISSING)
         val page = execute(Request.Builder().url(valid(url)).get().build())
         BarsHtmlParser.summaryReport(page.html)
     }
