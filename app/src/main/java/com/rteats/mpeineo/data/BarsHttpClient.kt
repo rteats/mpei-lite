@@ -50,9 +50,12 @@ internal fun barsUnacceptedAuthPage(html: String, codeChallenge: Boolean): BarsP
  * Private, in-memory BARS session. No WebView, user-agent scripts, or disk cookies.
  * Passwords and MFA codes are used only as method arguments and never logged.
  */
-internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
-    private val host = "bars.mpei.ru"
-    private val root = "https://bars.mpei.ru/bars_web/".toHttpUrl()
+internal class BarsHttpClient(
+    private val store: BarsSessionStore? = null,
+    private val root: HttpUrl = "https://bars.mpei.ru/bars_web/".toHttpUrl(),
+) {
+    private val host = root.host
+    private val htmlAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     private val jar = object : CookieJar {
         private val cookies = mutableMapOf<String, Cookie>()
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
@@ -159,7 +162,7 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
     }
 
     private fun valid(url: HttpUrl): HttpUrl {
-        if (url.scheme != "https" || url.host != host || url.port != 443 ||
+        if (url.scheme != root.scheme || url.host != host || url.port != root.port ||
             !url.encodedPath.startsWith("/bars_web/")) {
             throw BarsProtocolException(BarsFailureReason.UNEXPECTED_ORIGIN)
         }
@@ -188,12 +191,15 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
             Request.Builder().url(valid(form.action))
                 .header("Origin", "https://bars.mpei.ru")
                 .header("Referer", root.toString())
+                .header("Accept", htmlAccept)
                 .post(body).build(),
         )
     }
 
     private fun execute(request: Request): BarsHttpPage {
         var next = request
+        // Browser HAR retains the login-page Referer across the post-MFA 302.
+        val navigationReferer = request.header("Referer") ?: root.toString()
         repeat(6) {
             client.newCall(next).execute().use { response: Response ->
                 val url = valid(response.request.url)
@@ -202,7 +208,8 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
                         ?.let(url::resolve)?.let(::valid)
                         ?: throw BarsProtocolException(BarsFailureReason.INVALID_REDIRECT)
                     next = Request.Builder().url(target).get()
-                        .header("Referer", url.toString()).build()
+                        .header("Referer", navigationReferer)
+                        .header("Accept", htmlAccept).build()
                 } else {
                     if (response.code !in 200..299) {
                         throw BarsProtocolException(BarsFailureReason.HTTP_STATUS, response.code)
@@ -221,7 +228,8 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
 
     suspend fun openLogin(): Unit = withContext(Dispatchers.IO) {
         clear()
-        val page = execute(Request.Builder().url(root).get().build())
+        val page = execute(Request.Builder().url(root)
+            .header("Accept", htmlAccept).get().build())
         credentialsForm = form(page, "Password")
             ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_UNAVAILABLE)
     }
@@ -271,10 +279,35 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
     }
 
     suspend fun confirm(code: String): BarsHttpPage = withContext(Dispatchers.IO) {
-        val form = codeForm ?: throw BarsProtocolException(BarsFailureReason.CODE_FORM_EXPIRED)
-        val page = post(form, listOf("AF2_Code" to code))
-        if (Jsoup.parse(page.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
-            throw barsUnacceptedAuthPage(page.html, codeChallenge = true)
+        val challenge = codeForm ?: throw BarsProtocolException(BarsFailureReason.CODE_FORM_EXPIRED)
+        val submitted = post(challenge, listOf("AF2_Code" to code))
+        val returned = Jsoup.parse(submitted.html)
+        // A returned verification form is not a completed login. Update the
+        // anti-forgery token so another attempt can use the same challenge.
+        form(submitted, "AF2_Code")?.let {
+            codeForm = it
+            throw BarsProtocolException(BarsFailureReason.CODE_REJECTED)
+        }
+        if (returned.selectFirst("input[name=Password]") != null) {
+            throw BarsProtocolException(BarsFailureReason.SESSION_NOT_AUTHENTICATED)
+        }
+
+        // Successful HAR: LoginCode -> 302 -> Main?studentID=... .
+        // If BARS returns an intermediate page for another account, verify
+        // the study route with the same in-memory cookies. Never accept an
+        // unrelated page as an authenticated student dashboard.
+        val page = if (returned.getElementById("div-Student_SemesterSheet__Mark") != null) {
+            submitted
+        } else {
+            val study = valid(root.resolve("ST_Study/Main/Main")!!)
+            val verified = execute(Request.Builder().url(study)
+                .header("Referer", root.toString())
+                .header("Accept", htmlAccept).get().build())
+            if (Jsoup.parse(verified.html)
+                    .getElementById("div-Student_SemesterSheet__Mark") == null) {
+                throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
+            }
+            verified
         }
         codeForm = null
         mainUrl = page.url
@@ -285,7 +318,8 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
 
     suspend fun refreshMain(): BarsHttpPage = withContext(Dispatchers.IO) {
         val url = mainUrl ?: throw BarsProtocolException(BarsFailureReason.SESSION_NOT_AUTHENTICATED)
-        val page = execute(Request.Builder().url(valid(url)).get().build())
+        val page = execute(Request.Builder().url(valid(url))
+            .header("Accept", htmlAccept).get().build())
         if (Jsoup.parse(page.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
             // Only clear the stored session if BARS actually redirected to login.
             // HTML changes or network failures must not erase a valid session.
