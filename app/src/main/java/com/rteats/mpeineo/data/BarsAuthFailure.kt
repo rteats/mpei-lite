@@ -57,7 +57,8 @@ internal fun barsFailureDiagnostic(stage: BarsAuthStage, error: Throwable): Stri
         is SSLException -> "network" to "tls"
         is ConnectException -> "network" to "connect"
         is SocketException -> "network" to "socket"
-        is IOException -> "network" to "io"
+        is IOException -> if (stage == BarsAuthStage.SAVED_LOGIN) "storage" to "io"
+            else "network" to "io"
         else -> "internal" to "unexpected"
     }
     val status = (error as? BarsProtocolException)?.httpStatus?.takeIf { it in 100..599 }
