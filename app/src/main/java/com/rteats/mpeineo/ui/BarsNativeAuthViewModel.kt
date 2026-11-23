@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.rteats.mpeineo.data.BarsAuthStage
 import com.rteats.mpeineo.data.BarsCredentialResult
 import com.rteats.mpeineo.data.BarsHtmlParser
 import com.rteats.mpeineo.data.BarsHttpClient
@@ -14,6 +15,7 @@ import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.SavedCredentialStore
 import com.rteats.mpeineo.data.SavedLoginCredentials
 import com.rteats.mpeineo.data.SavedLoginService
+import com.rteats.mpeineo.data.barsFailureDiagnostic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,8 +88,8 @@ internal class BarsNativeAuthViewModel(
             }
             if (restored.isFailure) {
                 // Transient network errors must not delete session material.
-                diagnostics.log("BARS_NATIVE", "session_restore=unverified type=" +
-                    restored.exceptionOrNull()!!.javaClass.simpleName)
+                diagnostics.log("BARS_NATIVE", "session_restore=unverified " +
+                    barsFailureDiagnostic(BarsAuthStage.SESSION_RESTORE, restored.exceptionOrNull()!!))
                 bars.extractionFailed("Не удалось проверить сохранённую сессию БАРС.")
                 _status.value = BarsNativeStatus(
                     step = BarsNativeStep.RESTORE_FAILED,
@@ -130,7 +132,8 @@ internal class BarsNativeAuthViewModel(
                         }
                     }
                 }.onFailure {
-                    diagnostics.log("BARS_NATIVE", "login_form=failed type=" + it.javaClass.simpleName)
+                    diagnostics.log("BARS_NATIVE", "login_form=failed " +
+                        barsFailureDiagnostic(BarsAuthStage.LOGIN_FORM, it))
                     _status.update { it.copy(step = BarsNativeStep.LOGIN,
                         error = "Не удалось открыть БАРС.") }
                 }
@@ -151,14 +154,19 @@ internal class BarsNativeAuthViewModel(
             runCatching { http.credentials(account.trim(), password) }.onSuccess { result ->
                 when (result) {
                     is BarsCredentialResult.NeedsCode -> {
+                        diagnostics.log("BARS_NATIVE", "credentials=challenge")
                         enterBarsCodeChallenge(_status, ::sendCode)
                     }
-                    is BarsCredentialResult.Complete -> publish(result.page)
+                    is BarsCredentialResult.Complete -> {
+                        diagnostics.log("BARS_NATIVE", "credentials=accepted")
+                        publish(result.page)
+                    }
                 }
             }.onFailure {
                 pendingSave = null
                 pendingForget = false
-                diagnostics.log("BARS_NATIVE", "credentials=failed type=" + it.javaClass.simpleName)
+                diagnostics.log("BARS_NATIVE", "credentials=failed " +
+                    barsFailureDiagnostic(BarsAuthStage.CREDENTIALS, it))
                 _status.update { it.copy(step = BarsNativeStep.LOGIN,
                     error = "Вход не выполнен. Проверьте логин и пароль.") }
             }
@@ -170,6 +178,7 @@ internal class BarsNativeAuthViewModel(
         _status.update { it.copy(busySending = true, error = null, notice = null) }
         viewModelScope.launch {
             runCatching { http.requestCode() }.onSuccess {
+                diagnostics.log("BARS_NATIVE", "send_code=sent")
                 _status.update { current ->
                     if (current.step == BarsNativeStep.CODE) current.copy(
                         busySending = false, codeSent = true,
@@ -177,7 +186,8 @@ internal class BarsNativeAuthViewModel(
                     ) else current
                 }
             }.onFailure {
-                diagnostics.log("BARS_NATIVE", "send_code=failed type=" + it.javaClass.simpleName)
+                diagnostics.log("BARS_NATIVE", "send_code=failed " +
+                    barsFailureDiagnostic(BarsAuthStage.CODE_DELIVERY, it))
                 _status.update { current ->
                     if (current.step == BarsNativeStep.CODE) current.copy(
                         busySending = false, error = "Не удалось отправить код.",
@@ -195,8 +205,12 @@ internal class BarsNativeAuthViewModel(
         }
         _status.update { it.copy(step = BarsNativeStep.SUBMITTING, error = null) }
         viewModelScope.launch {
-            runCatching { http.confirm(code.trim()) }.onSuccess { publish(it) }.onFailure {
-                diagnostics.log("BARS_NATIVE", "code=failed type=" + it.javaClass.simpleName)
+            runCatching { http.confirm(code.trim()) }.onSuccess {
+                diagnostics.log("BARS_NATIVE", "code=accepted")
+                publish(it)
+            }.onFailure {
+                diagnostics.log("BARS_NATIVE", "code=failed " +
+                    barsFailureDiagnostic(BarsAuthStage.CODE_CONFIRMATION, it))
                 pendingSave = null
                 pendingForget = false
                 http.clear()
@@ -225,14 +239,15 @@ internal class BarsNativeAuthViewModel(
                     runCatching {
                         if (forget) credentials.clear() else credentials.save(save!!)
                     }.onFailure {
-                        diagnostics.log("BARS_NATIVE", "save_login_failed type=" +
-                            it.javaClass.simpleName)
+                        diagnostics.log("BARS_NATIVE", "save_login_failed " +
+                            barsFailureDiagnostic(BarsAuthStage.SAVED_LOGIN, it))
                     }
                 }
             }
             refreshSummary()
         }.onFailure {
-            diagnostics.log("BARS_NATIVE", "parse=failed type=" + it.javaClass.simpleName)
+            diagnostics.log("BARS_NATIVE", "parse=failed " +
+                barsFailureDiagnostic(BarsAuthStage.MARKS_PARSE, it))
             bars.extractionFailed("Не удалось прочитать данные БАРС.")
             _status.update { it.copy(step = BarsNativeStep.LOGIN,
                 error = "Не удалось разобрать таблицу дисциплин.") }
@@ -251,7 +266,8 @@ internal class BarsNativeAuthViewModel(
             runCatching { http.refreshMain() }.onSuccess {
                 publish(it)
             }.onFailure {
-                diagnostics.log("BARS_NATIVE", "refresh=failed type=" + it.javaClass.simpleName)
+                diagnostics.log("BARS_NATIVE", "refresh=failed " +
+                    barsFailureDiagnostic(BarsAuthStage.REFRESH_MAIN, it))
                 bars.extractionFailed("Не удалось обновить БАРС.")
                 if (http.mainUrl == null) {
                     openLogin(force = true, trySaved = true)
@@ -270,7 +286,8 @@ internal class BarsNativeAuthViewModel(
                 bars.rawSnapshotReceived("SUMMARY", it)
                 diagnostics.log("BARS_NATIVE", "summary=loaded")
             }.onFailure {
-                diagnostics.log("BARS_NATIVE", "summary=failed type=" + it.javaClass.simpleName)
+                diagnostics.log("BARS_NATIVE", "summary=failed " +
+                    barsFailureDiagnostic(BarsAuthStage.REFRESH_SUMMARY, it))
                 bars.summaryCaptureFailed("Не удалось получить сводку БАРС.")
             }
         }
