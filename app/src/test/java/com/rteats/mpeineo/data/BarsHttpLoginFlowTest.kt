@@ -68,12 +68,43 @@ class BarsHttpLoginFlowTest {
             assertEquals(page.url, client.mainUrl)
             val requests = synchronized(received) { received.toList() }
             assertEquals(5, requests.size)
+            val credentials = requests[1].body.readUtf8()
+            assertTrue(credentials.contains("Account=fake-student"))
+            assertTrue(credentials.contains("Password=fake-password"))
+            assertTrue(credentials.contains("RememberMe=true&RememberMe=false"))
             val body = requests[3].body.readUtf8()
             assertTrue(body.contains("Account=fake-student"))
             assertTrue(body.contains("AF2_Code=111111"))
             assertTrue(body.contains("__RequestVerificationToken=code-token"))
             assertEquals(server.url("/bars_web/").toString(),
                 requests[4].getHeader("Referer"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun uncheckedRememberLoginSubmitsOnlyTheHiddenFalse() = runBlocking {
+        val server = MockWebServer()
+        var postBody = ""
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path == "/bars_web/" && request.method == "GET" -> ok(loginForm())
+                request.path == "/bars_web/" && request.method == "POST" -> {
+                    postBody = request.body.readUtf8()
+                    ok(codeForm())
+                }
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        server.start()
+        try {
+            val client = BarsHttpClient(root = server.url("/bars_web/"))
+            client.openLogin()
+            assertTrue(client.credentials("fake-student", "fake-password",
+                rememberSession = false) is BarsCredentialResult.NeedsCode)
+            assertTrue(postBody.contains("RememberMe=false"))
+            assertFalse(postBody.contains("RememberMe=true"))
+            assertEquals(1, "RememberMe=".toRegex().findAll(postBody).count())
         } finally {
             server.shutdown()
         }
