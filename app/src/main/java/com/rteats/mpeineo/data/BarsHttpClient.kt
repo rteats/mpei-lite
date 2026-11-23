@@ -284,7 +284,7 @@ internal class BarsHttpClient(private val store: BarsSessionStore? = null) {
     }
 
     suspend fun refreshMain(): BarsHttpPage = withContext(Dispatchers.IO) {
-        val url = mainUrl ?: throw IOException("Sign in to BARS first")
+        val url = mainUrl ?: throw BarsProtocolException(BarsFailureReason.SESSION_NOT_AUTHENTICATED)
         val page = execute(Request.Builder().url(valid(url)).get().build())
         if (Jsoup.parse(page.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
             // Only clear the stored session if BARS actually redirected to login.
