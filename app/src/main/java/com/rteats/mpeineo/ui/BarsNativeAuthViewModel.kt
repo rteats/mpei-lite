@@ -153,7 +153,7 @@ internal class BarsNativeAuthViewModel(
         _status.update { it.copy(step = BarsNativeStep.SUBMITTING,
             codeSent = false, error = null, notice = null) }
         viewModelScope.launch {
-            runCatching { http.credentials(account.trim(), password) }.onSuccess { result ->
+            runCatching { http.credentials(account.trim(), password, rememberSession = rememberLogin) }.onSuccess { result ->
                 when (result) {
                     is BarsCredentialResult.NeedsCode -> {
                         diagnostics.log("BARS_NATIVE", "credentials=challenge")
