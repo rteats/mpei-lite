@@ -240,6 +240,68 @@ internal class BarsHttpClient(
             ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_UNAVAILABLE)
     }
 
+    /** Resolve an authenticated role menu to the user's own student record.
+     * The HAR's student list has two links but one distinct studentID.
+     * Never follow group-management links or guess when multiple student IDs appear.
+     */
+    private fun studentPageFromMenu(menu: BarsHttpPage): BarsHttpPage {
+        if (menu.url.encodedPath != "/bars_web/Auth/Menu") {
+            throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
+        }
+        val hasStudentList = Jsoup.parse(menu.html).select("a[href]").any { anchor ->
+            val url = menu.url.resolve(anchor.attr("href"))
+            url != null && url.scheme == root.scheme && url.host == host &&
+                url.port == root.port && url.encodedPath == "/bars_web/ST/Student/ListStudent"
+        }
+        if (!hasStudentList) {
+            throw BarsProtocolException(BarsFailureReason.STUDENT_ROUTE_UNAVAILABLE)
+        }
+
+        val listUrl = valid(root.resolve("ST/Student/ListStudent")!!)
+        val listing = execute(Request.Builder().url(listUrl)
+            .header("Referer", menu.url.toString())
+            .header("Accept", htmlAccept).get().build())
+        if (listing.url.encodedPath != "/bars_web/ST/Student/ListStudent") {
+            throw BarsProtocolException(BarsFailureReason.STUDENT_ROUTE_UNAVAILABLE)
+        }
+        val ids = Jsoup.parse(listing.html).select("a[href]").mapNotNull { anchor ->
+            val url = listing.url.resolve(anchor.attr("href")) ?: return@mapNotNull null
+            if (url.scheme != root.scheme || url.host != host || url.port != root.port ||
+                url.encodedPath != "/bars_web/ST/Student/Main") return@mapNotNull null
+            url.queryParameter("studentID")?.takeIf {
+                it.matches(Regex("[A-Za-z0-9-]{1,128}"))
+            }
+        }.distinct()
+        if (ids.isEmpty()) {
+            throw BarsProtocolException(BarsFailureReason.STUDENT_ROUTE_UNAVAILABLE)
+        }
+        if (ids.size != 1) {
+            throw BarsProtocolException(BarsFailureReason.STUDENT_SELECTION_AMBIGUOUS)
+        }
+
+        val student = valid(root.resolve("ST/Student/Main")!!.newBuilder()
+            .addQueryParameter("studentID", ids.single()).build())
+        val result = execute(Request.Builder().url(student)
+            .header("Referer", listing.url.toString())
+            .header("Accept", htmlAccept).get().build())
+        if (result.url.encodedPath != "/bars_web/ST_Study/Main/Main" ||
+            result.url.queryParameter("studentID") != ids.single()) {
+            throw BarsProtocolException(BarsFailureReason.STUDENT_ROUTE_MISMATCH)
+        }
+        if (Jsoup.parse(result.html).getElementById("div-Student_SemesterSheet__Mark") == null) {
+            throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
+        }
+        return result
+    }
+
+    private fun verifiedStudentPage(page: BarsHttpPage): BarsHttpPage {
+        codeForm = null
+        mainUrl = page.url
+        summaryUrl = BarsHtmlParser.summaryUrl(page.html, page.url)
+        saveSession()
+        return page
+    }
+
     suspend fun credentials(
         account: String,
         password: String,
@@ -261,7 +323,9 @@ internal class BarsHttpClient(
                 BarsCredentialResult.NeedsCode()
             } else if (Jsoup.parse(page.html)
                     .getElementById("div-Student_SemesterSheet__Mark") != null) {
-                BarsCredentialResult.Complete(page)
+                BarsCredentialResult.Complete(verifiedStudentPage(page))
+            } else if (page.url.encodedPath == "/bars_web/Auth/Menu") {
+                BarsCredentialResult.Complete(verifiedStudentPage(studentPageFromMenu(page)))
             } else {
                 throw barsUnacceptedAuthPage(page.html, codeChallenge = false)
             }
@@ -308,24 +372,23 @@ internal class BarsHttpClient(
         // If BARS returns an intermediate page for another account, verify
         // the study route with the same in-memory cookies. Never accept an
         // unrelated page as an authenticated student dashboard.
-        val page = if (returned.getElementById("div-Student_SemesterSheet__Mark") != null) {
-            submitted
-        } else {
-            val study = valid(root.resolve("ST_Study/Main/Main")!!)
-            val verified = execute(Request.Builder().url(study)
-                .header("Referer", root.toString())
-                .header("Accept", htmlAccept).get().build())
-            if (Jsoup.parse(verified.html)
-                    .getElementById("div-Student_SemesterSheet__Mark") == null) {
-                throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
+        val page = when {
+            returned.getElementById("div-Student_SemesterSheet__Mark") != null -> submitted
+            submitted.url.encodedPath == "/bars_web/Auth/Menu" ->
+                studentPageFromMenu(submitted)
+            else -> {
+                val study = valid(root.resolve("ST_Study/Main/Main")!!)
+                val verified = execute(Request.Builder().url(study)
+                    .header("Referer", root.toString())
+                    .header("Accept", htmlAccept).get().build())
+                if (Jsoup.parse(verified.html)
+                        .getElementById("div-Student_SemesterSheet__Mark") == null) {
+                    throw BarsProtocolException(BarsFailureReason.UNEXPECTED_AUTH_PAGE)
+                }
+                verified
             }
-            verified
         }
-        codeForm = null
-        mainUrl = page.url
-        summaryUrl = BarsHtmlParser.summaryUrl(page.html, page.url)
-        saveSession()
-        page
+        verifiedStudentPage(page)
     }
 
     suspend fun refreshMain(): BarsHttpPage = withContext(Dispatchers.IO) {
