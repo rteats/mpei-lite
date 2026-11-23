@@ -10,6 +10,8 @@ import com.rteats.mpeineo.data.BarsCredentialResult
 import com.rteats.mpeineo.data.BarsHtmlParser
 import com.rteats.mpeineo.data.BarsHttpClient
 import com.rteats.mpeineo.data.BarsHttpPage
+import com.rteats.mpeineo.data.BarsFailureReason
+import com.rteats.mpeineo.data.BarsProtocolException
 import com.rteats.mpeineo.data.BarsSessionStore
 import com.rteats.mpeineo.data.DiagnosticLog
 import com.rteats.mpeineo.data.SavedCredentialStore
@@ -151,7 +153,7 @@ internal class BarsNativeAuthViewModel(
         _status.update { it.copy(step = BarsNativeStep.SUBMITTING,
             codeSent = false, error = null, notice = null) }
         viewModelScope.launch {
-            runCatching { http.credentials(account.trim(), password) }.onSuccess { result ->
+            runCatching { http.credentials(account.trim(), password, rememberSession = rememberLogin) }.onSuccess { result ->
                 when (result) {
                     is BarsCredentialResult.NeedsCode -> {
                         diagnostics.log("BARS_NATIVE", "credentials=challenge")
@@ -208,14 +210,22 @@ internal class BarsNativeAuthViewModel(
             runCatching { http.confirm(code.trim()) }.onSuccess {
                 diagnostics.log("BARS_NATIVE", "code=accepted")
                 publish(it)
-            }.onFailure {
+            }.onFailure { failure ->
                 diagnostics.log("BARS_NATIVE", "code=failed " +
-                    barsFailureDiagnostic(BarsAuthStage.CODE_CONFIRMATION, it))
-                pendingSave = null
-                pendingForget = false
-                http.clear()
-                _status.update { it.copy(step = BarsNativeStep.LOGIN,
-                    error = "Код отклонён. Начните вход заново.") }
+                    barsFailureDiagnostic(BarsAuthStage.CODE_CONFIRMATION, failure))
+                if (failure is BarsProtocolException &&
+                    failure.reason == BarsFailureReason.CODE_REJECTED) {
+                    // The server returned a fresh challenge. Preserve cookies and
+                    // anti-forgery token to allow retrying without starting over.
+                    _status.update { it.copy(step = BarsNativeStep.CODE,
+                        error = "Код не принят. Проверьте его и попробуйте снова.") }
+                } else {
+                    pendingSave = null
+                    pendingForget = false
+                    http.clear()
+                    _status.update { it.copy(step = BarsNativeStep.LOGIN,
+                        error = "Не удалось завершить вход БАРС. Попробуйте ещё раз.") }
+                }
             }
         }
     }
