@@ -184,8 +184,14 @@ internal class BarsHttpClient(
 
     private fun post(form: BarsForm, fields: List<Pair<String, String>>): BarsHttpPage {
         val body = FormBody.Builder().apply {
-            form.hidden.forEach { (name, value) -> add(name, value) }
+            // ASP.NET forms submit the checked RememberMe value before their
+            // hidden false fallback. Preserve that order (seen in the HAR).
+            val overridesRemember = fields.any { it.first == "RememberMe" }
+            form.hidden.filterNot { overridesRemember && it.first == "RememberMe" }
+                .forEach { (name, value) -> add(name, value) }
             fields.forEach { (name, value) -> add(name, value) }
+            if (overridesRemember) form.hidden.filter { it.first == "RememberMe" }
+                .forEach { (name, value) -> add(name, value) }
         }.build()
         return execute(
             Request.Builder().url(valid(form.action))
@@ -234,15 +240,21 @@ internal class BarsHttpClient(
             ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_UNAVAILABLE)
     }
 
-    suspend fun credentials(account: String, password: String): BarsCredentialResult =
+    suspend fun credentials(
+        account: String,
+        password: String,
+        rememberSession: Boolean = true,
+    ): BarsCredentialResult =
         withContext(Dispatchers.IO) {
             val login = credentialsForm ?: throw BarsProtocolException(BarsFailureReason.LOGIN_FORM_EXPIRED)
-            val page = post(login, listOf(
-                "Account" to account,
-                "Password" to password,
-                // The official form posts this value even when unchecked.
-                "RememberMe" to "false",
-            ))
+            val fields = buildList {
+                add("Account" to account)
+                add("Password" to password)
+                // A checked box precedes the hidden false field. If not
+                // selected, the hidden false field is submitted alone.
+                if (rememberSession) add("RememberMe" to "true")
+            }
+            val page = post(login, fields)
             val next = form(page, "AF2_Code")
             if (next != null) {
                 codeForm = next
