@@ -22,6 +22,7 @@ class UserPreferences(
     private val selectedKey = stringPreferencesKey("selected_schedule")
     private val recentlyViewedKey = stringPreferencesKey("recent_schedule_targets")
     private val favoriteNamesKey = stringPreferencesKey("favorite_custom_names")
+    private val lessonAliasesKey = stringPreferencesKey("lesson_aliases")
 
     val favorites: Flow<List<ScheduleTarget>> = context.dataStore.data.map { prefs ->
         decodeFavorites(prefs[favoritesKey])
@@ -41,6 +42,20 @@ class UserPreferences(
 
     val favoriteNames: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
         decodeFavoriteNames(prefs[favoriteNamesKey])
+    }
+
+    val lessonAliases: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        decodeFavoriteNames(prefs[lessonAliasesKey])
+    }
+
+    suspend fun setLessonAlias(key: String, alias: String) {
+        if (key.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val aliases = decodeFavoriteNames(prefs[lessonAliasesKey]).toMutableMap()
+            val value = alias.trim().take(32)
+            if (value.isEmpty()) aliases.remove(key) else aliases[key] = value
+            prefs[lessonAliasesKey] = gson.toJson(aliases)
+        }
     }
 
     suspend fun setSelected(target: ScheduleTarget) {

@@ -138,6 +138,7 @@ internal class MailViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(MailUiState())
     val state: StateFlow<MailUiState> = _state.asStateFlow()
+    var portalSession = EmbeddedPortalSession()
     private var sessionVersion = 0L
     private var sessionProbeJob: Job? = null
     private var lastProbeAtElapsed = 0L
@@ -805,6 +806,13 @@ internal class MailViewModel(
     fun discardDraft() = compose.discardDraft()
     fun sendDraft() = compose.sendDraft()
 
+    fun returnToMailRoot() {
+        pendingNotification = null
+        if (state.value.sending) return
+        if (state.value.composing) closeCompose()
+        if (state.value.selected != null) closeMessage()
+    }
+
     fun logout() {
         // Explicit sign-out revokes automatic reauthentication too.
         SavedCredentialStore(repository.contextForNotifications, SavedLoginService.MAIL).clear()
@@ -812,6 +820,7 @@ internal class MailViewModel(
         sessionProbeJob?.cancel()
         OwaSessionHealth.stop(repository.contextForNotifications)
         pendingNotification = null
+        portalSession = EmbeddedPortalSession()
         sentRecipientJob?.cancel()
         compose.cancelAndRelease()
         sentVisible = false

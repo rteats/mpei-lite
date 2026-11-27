@@ -18,6 +18,8 @@ private val mpeiPeriodStarts = mapOf(
     LocalTime.of(20, 30) to 7,
 )
 
+internal val timetablePeriodStarts: List<LocalTime> = mpeiPeriodStarts.keys.toList()
+
 internal fun lessonPeriodNumber(startTime: String): Int? =
     runCatching {
         val start = LocalTime.parse(startTime.trim(), DateTimeFormatter.ofPattern("H:mm"))

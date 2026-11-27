@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.TooltipDefaults
@@ -78,10 +78,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,6 +96,7 @@ import androidx.compose.ui.layout.ContentScale
 import android.graphics.Bitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
@@ -151,8 +152,7 @@ internal fun MailScreen(
             composing = state.composing,
         ))
     }
-    DisposableEffect(Unit) { onDispose { onFullScreenChange(false) } }
-    BackHandler(enabled = active && showLoginPage) { showLoginPage = false }
+    BackHandler(enabled = active && state.composing && state.sending) { /* Wait for send. */ }
     LaunchedEffect(state.loginRequired) {
         if (!state.loginRequired) showLoginPage = false
     }
@@ -182,17 +182,18 @@ internal fun MailScreen(
         onDispose { viewModel.setSentVisible(false) }
     }
     val context = LocalContext.current
-    val inboxScrollState = rememberLazyListState()
-    val sentScrollState = rememberLazyListState()
-    val otherScrollStates = remember { mutableStateMapOf<OwaMailFolder, LazyListState>() }
-    val scrollState = when (state.mailbox) {
-        OwaMailFolder.INBOX -> inboxScrollState
-        OwaMailFolder.SENT -> sentScrollState
-        else -> otherScrollStates.getOrPut(state.mailbox) { LazyListState() }
+    val folderPositions = rememberSaveable(saver = mailFolderPositionsSaver) {
+        mutableMapOf<String, LazyListState>()
     }
+    val scrollState = folderPositions.getOrPut(state.mailbox.name) { LazyListState() }
+    val sentScrollState = folderPositions.getOrPut(OwaMailFolder.SENT.name) { LazyListState() }
     var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
-        if (reselectRequest != lastReselect) scrollState.animateScrollToItem(0)
+        if (active && reselectRequest != lastReselect) {
+            showLoginPage = false
+            viewModel.returnToMailRoot()
+            if (!state.sending) scrollState.scrollToItem(0)
+        }
         lastReselect = reselectRequest
     }
     // Compose list keys contain only stable, opaque IDs; never log or persist
@@ -273,7 +274,11 @@ internal fun MailScreen(
         Box(
             modifier = Modifier.fillMaxSize().padding(insets),
         ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        val detailCoversMailbox = state.selected != null || state.composing || showLoginPage
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .then(if (detailCoversMailbox) Modifier.clearAndSetSemantics {} else Modifier),
+        ) {
             if (state.configured) {
                 if (state.loginRequired) {
                     ServiceStatus(
@@ -460,7 +465,8 @@ internal fun MailScreen(
             visible = state.configured && state.selected != null,
             enabled = active && !showLoginPage && !state.composing,
             onBack = viewModel::closeMessage,
-            modifier = Modifier.testTag("mail-message-slide-layer"),
+            modifier = Modifier.testTag("mail-message-slide-layer")
+                .then(if (state.composing || showLoginPage) Modifier.clearAndSetSemantics {} else Modifier),
         ) {
             val detailState = if (state.selected != null) state else lastDetailState
             if (detailState != null) {
@@ -485,8 +491,10 @@ internal fun MailScreen(
                 }
             }
         }
-        SpatialScreenOverlay(
+        DetailScreenOverlay(
             visible = showLoginPage && state.configured,
+            enabled = active && !state.composing,
+            onBack = { showLoginPage = false },
             modifier = Modifier.testTag("mail-login-slide-layer"),
         ) {
             Surface(
@@ -518,8 +526,10 @@ internal fun MailScreen(
                 }
             }
         }
-        SpatialScreenOverlay(
+        DetailScreenOverlay(
             visible = state.composing,
+            enabled = active && !state.sending,
+            onBack = viewModel::closeCompose,
             modifier = Modifier.testTag("mail-compose-slide-layer"),
         ) {
             val composerState = if (state.composing) state else lastComposerState
@@ -542,6 +552,18 @@ internal fun MailScreen(
 
 }
 
+private val mailFolderPositionsSaver = listSaver<MutableMap<String, LazyListState>, Any>(
+    save = { folders ->
+        folders.flatMap { (name, position) ->
+            listOf(name, position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+        }
+    },
+    restore = { saved ->
+        saved.chunked(3).associateTo(mutableMapOf()) { (name, index, offset) ->
+            name as String to LazyListState(index as Int, offset as Int)
+        }
+    },
+)
 
 /**
  * Primary tabs select the current mail folder directly below the search app bar.
@@ -565,25 +587,33 @@ internal fun MailFolderTabs(
                 tooltip = { PlainTooltip { Text(folder.title) } },
                 state = rememberTooltipState(),
             ) {
-                Tab(
-                    selected = selectedFolder == folder,
-                    onClick = {
-                        if (selectedFolder != folder) onSelectFolder(folder)
-                    },
-                    icon = { AppIcon(mailFolderIcon(folder), contentDescription = null) },
-                    modifier = Modifier
-                        .semantics { contentDescription = folder.title }
-                        .testTag("mail-folder-${folder.name.lowercase()}"),
-                )
+                Box(propagateMinConstraints = true) {
+                    Tab(
+                        selected = selectedFolder == folder,
+                        onClick = {
+                            if (selectedFolder != folder) onSelectFolder(folder)
+                        },
+                        icon = { AppIcon(mailFolderIcon(folder), contentDescription = null) },
+                        modifier = Modifier
+                            .semantics { contentDescription = folder.title }
+                            .testTag("mail-folder-${folder.name.lowercase()}"),
+                    )
+                    if (selectedFolder == folder) {
+                        // Keep the pill in the tab's own coordinates as the folder strip scrolls.
+                        Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomCenter) {
+                            TabRowDefaults.PrimaryIndicator()
+                        }
+                    }
+                }
             }
         }
     }
     BoxWithConstraints(modifier = modifier.testTag("mail-folder-tabs")) {
         if (64.dp * folders.size <= maxWidth) {
-            PrimaryTabRow(selectedTabIndex = selectedIndex, tabs = tabs)
+            PrimaryTabRow(selectedTabIndex = selectedIndex, indicator = {}, tabs = tabs)
         } else {
             PrimaryScrollableTabRow(selectedTabIndex = selectedIndex,
-                edgePadding = 0.dp, tabs = tabs)
+                indicator = {}, edgePadding = 0.dp, tabs = tabs)
         }
     }
 }

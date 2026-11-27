@@ -1,20 +1,40 @@
 package com.rteats.mpeineo
 
 import android.content.Intent
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.tappableElement
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.rteats.mpeineo.data.InterfacePreferences
 import com.rteats.mpeineo.ui.MainViewModel
 import com.rteats.mpeineo.ui.MpeiNeoApp
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
-import com.rteats.mpeineo.data.InterfacePreferences
 
 data class MailNotificationTarget(val uid: Long, val validity: Long, val requestId: Int)
 
@@ -53,7 +73,10 @@ class MainActivity : ComponentActivity() {
         // Use Android's normal splash screen without an artificial delay.
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         readMailTarget(intent)
         setContent {
             val interfacePrefs = remember { InterfacePreferences(applicationContext) }
@@ -61,19 +84,49 @@ class MainActivity : ComponentActivity() {
             MpeiNeoTheme(theme = theme) {
                 val application = application as MpeiNeoApplication
                 val viewModel: MainViewModel = viewModel(factory = MainViewModel.factory(application.container))
-                MpeiNeoApp(
-                    viewModel,
-                    initialMailTab = intent.getBooleanExtra(EXTRA_OPEN_MAIL, false),
-                    mailNotificationTarget = mailNotificationTarget,
-                    interfaceTheme = theme,
-                    onInterfaceThemeChange = { next ->
-                        if (theme != next) {
-                            interfacePrefs.setTheme(next)
-                            theme = next
-                            application.container.diagnostics.log("UI_PREF", "theme=" + next.name)
-                        }
-                    },
-                )
+                Box(Modifier.fillMaxSize()) {
+                    MpeiNeoApp(
+                        viewModel,
+                        initialMailTab = intent.getBooleanExtra(EXTRA_OPEN_MAIL, false),
+                        mailNotificationTarget = mailNotificationTarget,
+                        interfaceTheme = theme,
+                        onInterfaceThemeChange = { next ->
+                            if (theme != next) {
+                                interfacePrefs.setTheme(next)
+                                theme = next
+                                application.container.diagnostics.log("UI_PREF", "theme=" + next.name)
+                            }
+                        },
+                    )
+                    SystemNavigationBarProtection(Modifier.matchParentSize())
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun SystemNavigationBarProtection(modifier: Modifier) {
+        val color = MaterialTheme.colorScheme.surfaceContainer
+        // Gesture navigation reports no tappable strip. Older releases only have button navigation.
+        val insets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WindowInsets.tappableElement
+        } else WindowInsets.navigationBars
+        val density = LocalDensity.current
+        val direction = LocalLayoutDirection.current
+        val bottom = insets.getBottom(density).toFloat()
+        val left = insets.getLeft(density, direction).toFloat()
+        val right = insets.getRight(density, direction).toFloat()
+        val hasButtons = bottom > 0f || left > 0f || right > 0f
+        val darkIcons = if (hasButtons) color.luminance() > 0.179f else !isSystemInDarkTheme()
+
+        SideEffect {
+            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = darkIcons
+        }
+        if (hasButtons) {
+            Canvas(modifier) {
+                drawRect(color, size = Size(left, size.height))
+                drawRect(color, Offset(size.width - right, 0f), Size(right, size.height))
+                drawRect(color, Offset(0f, size.height - bottom), Size(size.width, bottom))
             }
         }
     }

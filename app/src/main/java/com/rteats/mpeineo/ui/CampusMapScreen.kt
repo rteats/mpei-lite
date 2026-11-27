@@ -1,5 +1,7 @@
 package com.rteats.mpeineo.ui
 
+import androidx.activity.compose.BackHandler
+
 import android.content.Intent
 import android.os.SystemClock
 import android.graphics.Bitmap
@@ -76,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import kotlin.math.abs
@@ -536,6 +539,7 @@ internal fun CampusMapScreen(
     active: Boolean,
     focus: CampusMapFocus? = null,
     onFocusConsumed: () -> Unit = {},
+    reselectRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -643,6 +647,7 @@ internal fun CampusMapScreen(
         flingJob = null
     }
     var zoom by rememberSaveable { mutableFloatStateOf(1f) }
+    var savedBaseScale by rememberSaveable { mutableFloatStateOf(0f) }
     var pan by rememberSaveable(
         stateSaver = Saver<Offset, ArrayList<Float>>(
             save = { arrayListOf(it.x, it.y) },
@@ -650,11 +655,27 @@ internal fun CampusMapScreen(
         ),
     ) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    var selected by remember { mutableStateOf<CampusPlace?>(null) }
-    var selectedPoi by remember { mutableStateOf<CampusPoi?>(null) }
-    var selectedRoom by remember { mutableStateOf<String?>(null) }
+    var selectedSymbol by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPoiId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedRoom by rememberSaveable { mutableStateOf<String?>(null) }
+    val selected = remember(places, selectedSymbol) { places.firstOrNull { it.symbol == selectedSymbol } }
+    val selectedPoi = remember(data.pois, selectedPoiId) { data.pois.firstOrNull { it.id == selectedPoiId } }
     var keyboardExpanded by rememberSaveable { mutableStateOf(false) }
 
+    fun clearSelection() {
+        selectedSymbol = null
+        selectedPoiId = null
+        selectedRoom = null
+        keyboardExpanded = false
+    }
+    BackHandler(enabled = active && (selected != null || selectedPoi != null || keyboardExpanded)) {
+        if (keyboardExpanded) keyboardExpanded = false else clearSelection()
+    }
+    var previousReselect by remember { mutableStateOf(reselectRequest) }
+    LaunchedEffect(reselectRequest) {
+        if (active && reselectRequest != previousReselect) clearSelection()
+        previousReselect = reselectRequest
+    }
     fun mapScale(): Float = campusBaseScale(prepared.bounds, viewport) * zoom
     fun fitPan(nextPan: Offset, nextZoom: Float): Offset {
         val scale = campusBaseScale(prepared.bounds, viewport) * nextZoom
@@ -678,8 +699,8 @@ internal fun CampusMapScreen(
         stopFling()
         // Change the selected vector overlay immediately; no modal-dismiss or
         // bitmap regeneration is involved.
-        selected = place
-        selectedPoi = null
+        selectedSymbol = place.symbol
+        selectedPoiId = null
         selectedRoom = room
         keyboardExpanded = false
         if (viewport.width > 0 && viewport.height > 0) {
@@ -695,13 +716,16 @@ internal fun CampusMapScreen(
         )
     }
 
-    LaunchedEffect(prepared) {
+    var previousBounds by remember { mutableStateOf(prepared.bounds) }
+    LaunchedEffect(prepared.bounds) {
         // A fresh city extract replaces the smaller bundled campus. Fit the
         // new rectangle once; never leave the user looking at its old crop.
-        if (viewport.width > 0 && viewport.height > 0) {
+        if (previousBounds != prepared.bounds && viewport.width > 0 && viewport.height > 0) {
             zoom = 1f
             pan = fitPan(centeredPan(zoom), zoom)
+            savedBaseScale = campusBaseScale(prepared.bounds, viewport)
         }
+        previousBounds = prepared.bounds
     }
 
     val visibleMarkers = remember(data.pois, zoom, pan, viewport, density.density) {
@@ -755,9 +779,13 @@ internal fun CampusMapScreen(
             modifier = Modifier.fillMaxSize()
                 .onSizeChanged {
                     stopFling()
-                    val initialSize = viewport == IntSize.Zero
                     viewport = it
-                    pan = fitPan(if (initialSize) centeredPan(zoom) else pan, zoom)
+                    val baseScale = campusBaseScale(prepared.bounds, it)
+                    val position = if (savedBaseScale > 0f) {
+                        pan * (baseScale / savedBaseScale)
+                    } else centeredPan(zoom)
+                    pan = fitPan(position, zoom)
+                    savedBaseScale = baseScale
                 }
                 // Handle single taps as soon as the finger is released.
                 // A double-tap recognizer previously held every tap for the
@@ -778,13 +806,13 @@ internal fun CampusMapScreen(
                                     20.dp.toPx()
                             }
                             if (poiHit != null) {
-                                selectedPoi = poiHit
-                                selected = null
+                                selectedPoiId = poiHit.id
+                                selectedSymbol = null
                                 selectedRoom = null
                                 keyboardExpanded = false
                                 return@mapTap
                             }
-                            selectedPoi = null
+                            selectedPoiId = null
                             val point = Offset(
                                 (tap.x - viewport.width / 2f - pan.x) / scale,
                                 (tap.y - viewport.height / 2f - pan.y) / scale,
@@ -804,11 +832,12 @@ internal fun CampusMapScreen(
                                 hypot((point.x - it.center.x).toDouble(),
                                     (point.y - it.center.y).toDouble()) <= threshold
                             }
-                            selected = polygonHit ?: nearby
+                            val tappedPlace = polygonHit ?: nearby
+                            selectedSymbol = tappedPlace?.symbol
                             selectedRoom = null
-                            if (selected != null) keyboardExpanded = false
+                            if (tappedPlace != null) keyboardExpanded = false
                             diagnostics?.log(
-                                "MAP_UI", "select source=tap building=${selected?.symbol ?: "none"}" +
+                                "MAP_UI", "select source=tap building=${tappedPlace?.symbol ?: "none"}" +
                                     " hit=${if (polygonHit != null) "polygon" else if (nearby != null) "nearby" else "none"}" +
                                     " resolveMs=${SystemClock.elapsedRealtime() - started}",
                             )
@@ -1140,7 +1169,9 @@ internal fun CampusMapScreen(
                     zoom = 1f
                     pan = fitPan(centeredPan(zoom), zoom)
                 },
-                modifier = Modifier.testTag("campus-zoom-reset"),
+                modifier = Modifier.testTag("campus-zoom-reset").semantics {
+                    stateDescription = "${kotlin.math.round(zoom * 100).toInt()}%"
+                },
             ) {
                 AppIcon(AppIcons.Refresh, contentDescription = "Показать весь кампус")
             }
@@ -1187,11 +1218,7 @@ internal fun CampusMapScreen(
                                 color = colors.onSurfaceVariant)
                         }
                     }
-                    TextButton(onClick = {
-                        selected = null
-                        selectedPoi = null
-                        selectedRoom = null
-                    }) { Text("Скрыть") }
+                    TextButton(onClick = ::clearSelection) { Text("Скрыть") }
                 }
             }
         }

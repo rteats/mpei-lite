@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExpandedFullScreenSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -34,19 +36,26 @@ import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopSearchBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
@@ -55,6 +64,7 @@ import com.rteats.mpeineo.AppIcon
 import com.rteats.mpeineo.AppIcons
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 
 /**
@@ -69,9 +79,8 @@ internal fun ScheduleExplorerScreen(
     onSearchTypeChange: (ScheduleTargetType?) -> Unit,
     onSelectTarget: (ScheduleTarget) -> Unit,
     onToggleFavorite: (ScheduleTarget) -> Unit,
-    onEnsureWeek: (Int) -> Unit,
-    onRefreshWeek: (Int) -> Unit,
-    onRetryWeek: (Int) -> Unit,
+    viewModel: MainViewModel,
+    active: Boolean,
     onSettings: () -> Unit = {},
     reselectRequest: Int = 0,
     modifier: Modifier = Modifier,
@@ -81,11 +90,20 @@ internal fun ScheduleExplorerScreen(
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val agendaStateHolder = rememberSaveableStateHolder()
+    val teacherState by viewModel.teacherState.collectAsState()
+    var teacherId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var teacherName by rememberSaveable { mutableStateOf("") }
+    var teacherDay by rememberSaveable { mutableStateOf(0L) }
     val query = state.searchQuery.trim()
     val favorites = remember(state.favorites) { state.favorites.map { it.type to it.id }.toSet() }
     val expanded = searchBar.currentValue == SearchBarValue.Expanded
+    var menuExpanded by remember { mutableStateOf(false) }
 
+    LaunchedEffect(teacherId) {
+        teacherId?.let { id ->
+            viewModel.setTeacherPreview(ScheduleTarget(id, teacherName, type = ScheduleTargetType.LECTURER))
+        }
+    }
     LaunchedEffect(searchText.text) {
         val text = searchText.text.toString()
         if (text != state.searchQuery) onQueryChange(text)
@@ -111,14 +129,15 @@ internal fun ScheduleExplorerScreen(
     var agendaJumpRequest by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var lastReselect by remember { androidx.compose.runtime.mutableIntStateOf(reselectRequest) }
     LaunchedEffect(reselectRequest) {
-        if (reselectRequest != lastReselect) {
-            agendaJumpRequest++
+        if (active && reselectRequest != lastReselect) {
+            if (teacherId != null) teacherId = null
+            else if (!expanded) agendaJumpRequest++
             closeSearch()
         }
         lastReselect = reselectRequest
     }
 
-    val searchInput: @Composable () -> Unit = {
+    val searchInput: @Composable (Boolean) -> Unit = { expandedInput ->
         SearchBarDefaults.InputField(
             textFieldState = searchText,
             searchBarState = searchBar,
@@ -128,7 +147,7 @@ internal fun ScheduleExplorerScreen(
             },
             placeholder = {
                 Text(
-                    if (expanded) "Группа, преподаватель или аудитория"
+                    if (expandedInput) "Группа, преподаватель или аудитория"
                     else state.selected?.let { "${it.name} · ${it.type.displayName}" }
                         ?: "Найти расписание",
                     maxLines = 1,
@@ -136,65 +155,86 @@ internal fun ScheduleExplorerScreen(
                 )
             },
             leadingIcon = {
-                if (expanded) {
+                if (expandedInput) {
                     IconButton(onClick = ::closeSearch) {
                         AppIcon(AppIcons.Back, contentDescription = "Закрыть поиск")
                     }
                 } else AppIcon(AppIcons.Search, contentDescription = null)
             },
             trailingIcon = {
-                if (expanded) {
+                if (expandedInput) {
                     if (searchText.text.isNotEmpty()) {
                         IconButton(onClick = {
                             searchText.setTextAndPlaceCursorAtEnd("")
                         }) { AppIcon(AppIcons.Close, contentDescription = "Очистить запрос") }
                     }
                 } else {
-                    IconButton(
-                        onClick = onSettings,
-                        modifier = Modifier.testTag("schedule-open-settings"),
-                    ) { AppIcon(AppIcons.Settings, contentDescription = "Настройки") }
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.testTag("schedule-overflow"),
+                        ) { AppIcon(AppIcons.Overflow, contentDescription = "Действия расписания") }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Настройки") },
+                                leadingIcon = { AppIcon(AppIcons.Settings, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSettings()
+                                },
+                                modifier = Modifier.testTag("schedule-open-settings"),
+                            )
+                        }
+                    }
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             // Keep the last query for reopening search, while the collapsed
             // field continues to identify the timetable currently on screen.
-            outputTransformation = if (!expanded && state.selected != null &&
+            outputTransformation = if (!expandedInput && state.selected != null &&
                 searchText.text.isNotEmpty()) {
                 val label = "${state.selected.name} · ${state.selected.type.displayName}"
                 OutputTransformation { replace(0, length, label) }
             } else null,
-            modifier = Modifier.testTag("schedule-target-query"),
+            modifier = Modifier
+                .testTag(if (expandedInput) "schedule-expanded-query" else "schedule-target-query")
+                .semantics { if (!expandedInput && expanded) hideFromAccessibility() },
         )
     }
 
     Box(
         modifier = modifier.fillMaxSize().testTag("schedule-explorer"),
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().then(if (teacherId == null) Modifier else Modifier.clearAndSetSemantics {})) {
             TopSearchBar(
                 state = searchBar,
-                inputField = searchInput,
+                inputField = { searchInput(false) },
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 modifier = Modifier.fillMaxWidth().testTag("schedule-search-open"),
             )
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                agendaStateHolder.SaveableStateProvider("schedule-agenda") {
+                key(state.selected?.id, state.selected?.type) {
                     ScheduleScreen(
                         state = state,
-                        onEnsureAgendaWeek = onEnsureWeek,
-                        onRefreshAgendaWeek = onRefreshWeek,
-                        onRetryAgendaWeek = onRetryWeek,
-                        onViewedAgendaWeek = {},
-                        onAgendaScrollingChanged = {},
-                        onLocateRoom = {},
+                        onEnsureAgendaWeek = viewModel::ensureAgendaWeek,
+                        onRefreshAgendaWeek = viewModel::refreshAgendaWeek,
+                        onRetryAgendaWeek = viewModel::retryAgendaWeek,
+                        onAliasChanged = viewModel::changeLessonAlias,
+                        onFindTeachers = viewModel::findLessonTeachers,
+                        onOpenTeacher = { target, day ->
+                            viewModel.setTeacherPreview(target)
+                            teacherName = target.name
+                            teacherDay = day.toEpochDay()
+                            teacherId = target.id
+                        },
                         todayJumpRequest = agendaJumpRequest,
+                        active = active && teacherId == null && !expanded,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
         }
-        ExpandedFullScreenSearchBar(state = searchBar, inputField = searchInput) {
+        ExpandedFullScreenSearchBar(state = searchBar, inputField = { searchInput(true) }) {
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -319,6 +359,39 @@ internal fun ScheduleExplorerScreen(
                     }
                 }
                 item(key = "end-space") { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+        DetailScreenOverlay(
+            visible = teacherId != null,
+            enabled = active && teacherId != null,
+            onBack = { teacherId = null },
+            modifier = Modifier.testTag("schedule-teacher-timetable"),
+        ) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Column {
+                    TopAppBar(
+                        title = { Text(teacherName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        navigationIcon = {
+                            IconButton(onClick = { teacherId = null }) {
+                                AppIcon(AppIcons.Back, contentDescription = "Назад к расписанию")
+                            }
+                        },
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                    )
+                    key(teacherState.selected?.id, teacherDay) {
+                        ScheduleScreen(
+                            state = teacherState.copy(lessonAliases = state.lessonAliases),
+                            onEnsureAgendaWeek = viewModel::ensureTeacherWeek,
+                            onRefreshAgendaWeek = viewModel::refreshTeacherWeek,
+                            onRetryAgendaWeek = viewModel::refreshTeacherWeek,
+                            onAliasChanged = viewModel::changeLessonAlias,
+                            startDate = LocalDate.ofEpochDay(teacherDay),
+                            todayJumpRequest = 0,
+                            active = active && teacherId != null && teacherState.selected?.id == teacherId,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
             }
         }
     }

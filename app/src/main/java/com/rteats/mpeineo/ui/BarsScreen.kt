@@ -1,5 +1,7 @@
 package com.rteats.mpeineo.ui
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +21,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,18 +55,29 @@ internal fun BarsScreen(
     )
     val data by viewModel.state.collectAsState()
     val login by auth.status.collectAsState()
+    val dashboardState = rememberSaveableStateHolder()
+    var hasDashboard by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(data.disciplines.isNotEmpty()) {
+        if (data.disciplines.isNotEmpty()) hasDashboard = true
+    }
+    val showCredentials = login.forceLogin || (data.disciplines.isEmpty() && !(hasDashboard && data.isLoading))
+    val nestedLogin = login.forceLogin && data.disciplines.isNotEmpty()
+    BackHandler(enabled = active && nestedLogin, onBack = auth::cancelLogin)
+    var previousReselect by remember { mutableStateOf(reselectRequest) }
+    LaunchedEffect(reselectRequest) {
+        if (active && nestedLogin && reselectRequest != previousReselect) auth.cancelLogin()
+        previousReselect = reselectRequest
+    }
     LaunchedEffect(active) {
         if (active) auth.start()
     }
-    LaunchedEffect(login.forceLogin, data.disciplines.isEmpty()) {
-        if (login.forceLogin || data.disciplines.isEmpty()) {
-            onDetailOpenChange(false)
-        }
+    LaunchedEffect(showCredentials, nestedLogin) {
+        if (showCredentials) onDetailOpenChange(nestedLogin)
     }
 
     Box(modifier.fillMaxSize().testTag("bars-screen"),
         contentAlignment = Alignment.TopCenter) {
-        if (login.forceLogin || data.disciplines.isEmpty()) {
+        if (showCredentials) {
             BarsCredentialsForm(
                 status = login,
                 onLogin = auth::login,
@@ -75,7 +90,8 @@ internal fun BarsScreen(
                 onCancel = if (data.disciplines.isNotEmpty()) auth::cancelLogin else null,
             )
         } else {
-            BarsNativeDashboard(
+            dashboardState.SaveableStateProvider("bars-dashboard") {
+                BarsNativeDashboard(
                 state = data, active = active,
                 onDetailOpenChange = onDetailOpenChange,
                 reselectRequest = reselectRequest,
@@ -88,7 +104,8 @@ internal fun BarsScreen(
                 onAcknowledgeGrades = viewModel::acknowledgeGradeChanges,
                 onRefreshSummary = auth::refreshSummary,
                 onSearch = onSearch,
-            )
+                )
+            }
         }
     }
 }

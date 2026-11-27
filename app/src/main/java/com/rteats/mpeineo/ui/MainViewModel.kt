@@ -10,9 +10,7 @@ import com.rteats.mpeineo.data.shouldQueryScheduleServer
 import com.rteats.mpeineo.model.ScheduleTarget
 import com.rteats.mpeineo.model.ScheduleTargetType
 import com.rteats.mpeineo.model.ScheduleWeek
-import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -38,6 +36,8 @@ data class MainUiState(
     val searchResults: List<ScheduleTarget> = emptyList(),
     val isSearching: Boolean = false,
     val searchError: String? = null,
+    val lessonAliases: Map<String, String> = emptyMap(),
+    val agendaReferenceMonday: LocalDate = timetableWeekStart(LocalDate.now(mpeiTimeZone)),
 )
 
 /**
@@ -57,9 +57,14 @@ class MainViewModel(
 
     private val _state = MutableStateFlow(MainUiState())
     val state: StateFlow<MainUiState> = _state.asStateFlow()
+    private val _teacherState = MutableStateFlow(
+        MainUiState(agendaReferenceMonday = _state.value.agendaReferenceMonday),
+    )
+    internal val teacherState = _teacherState.asStateFlow()
 
     private var searchJob: Job? = null
     private val agendaJobs = mutableMapOf<Int, Job>()
+    private val teacherJobs = mutableMapOf<Int, Job>()
     private var selectionVersion = 0L
 
     init {
@@ -71,6 +76,11 @@ class MainViewModel(
         viewModelScope.launch {
             container.preferences.favoriteNames.collect { names ->
                 _state.update { it.copy(favoriteNames = names) }
+            }
+        }
+        viewModelScope.launch {
+            container.preferences.lessonAliases.collect { aliases ->
+                _state.update { it.copy(lessonAliases = aliases) }
             }
         }
         viewModelScope.launch {
@@ -86,7 +96,9 @@ class MainViewModel(
                 _state.update { it.copy(selected = selected) }
                 // Preserve the prior startup behavior: cached days immediately,
                 // followed by one forced network refresh for the current week.
-                refreshAgendaWeek(0)
+                refreshAgendaWeek(timetableWeekOffset(
+                    _state.value.agendaReferenceMonday, LocalDate.now(mpeiTimeZone),
+                ))
             }
         }
     }
@@ -138,7 +150,7 @@ class MainViewModel(
     fun selectTarget(target: ScheduleTarget) {
         // Cancel in-flight agenda pages when selecting a different group/person/room.
         selectionVersion++
-        agendaJobs.values.forEach { it.cancel() }
+        agendaJobs.values.toList().forEach { it.cancel() }
         agendaJobs.clear()
         _state.update {
             it.copy(
@@ -152,7 +164,9 @@ class MainViewModel(
             container.preferences.setSelected(target)
             NextLessonWidgetProvider.requestRefresh(container.appContext)
         }
-        ensureAgendaWeek(0)
+        ensureAgendaWeek(timetableWeekOffset(
+            _state.value.agendaReferenceMonday, LocalDate.now(mpeiTimeZone),
+        ))
     }
 
     /**
@@ -172,18 +186,52 @@ class MainViewModel(
 
     fun refreshAgendaWeek(offset: Int) = requestAgendaWeek(offset, forceNetwork = true)
 
+    internal fun setTeacherPreview(target: ScheduleTarget) {
+        if (_teacherState.value.selected?.id == target.id) return
+        teacherJobs.values.toList().forEach { it.cancel() }
+        teacherJobs.clear()
+        _teacherState.update {
+            MainUiState(selected = target, agendaReferenceMonday = it.agendaReferenceMonday)
+        }
+    }
+
+    internal fun ensureTeacherWeek(offset: Int) = requestAgendaWeek(offset, false, teacherPreview = true)
+
+    internal fun refreshTeacherWeek(offset: Int) = requestAgendaWeek(offset, true, teacherPreview = true)
+
+    internal fun changeLessonAlias(name: String, alias: String) {
+        viewModelScope.launch { container.preferences.setLessonAlias(timetableAliasKey(name), alias) }
+    }
+
+    internal suspend fun findLessonTeachers(lecturer: String): List<ScheduleTarget> {
+        val type = ScheduleTargetType.LECTURER
+        val surname = lecturer.trim().substringBefore(' ')
+        val cached = container.repository.cachedSearch(surname, type)
+        val candidates = try {
+            container.repository.search(surname, type) + cached
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            cached
+        }
+        return timetableTeacherMatches(lecturer, candidates)
+    }
+
     /**
      * Single owner of all agenda loading, including the startup refresh.
      * An obsolete request cannot publish a week or clear its replacement's
      * loading state, even when a repository call ignores cancellation.
      */
-    private fun requestAgendaWeek(offset: Int, forceNetwork: Boolean) {
-        val target = state.value.selected ?: return
-        if (!forceNetwork && !state.value.shouldLoadAgendaWeek(offset)) return
-        val version = selectionVersion
-        agendaJobs[offset]?.cancel()
-        val weekStart = mondayFor(LocalDate.now()).plusWeeks(offset.toLong())
-        _state.update {
+    private fun requestAgendaWeek(offset: Int, forceNetwork: Boolean, teacherPreview: Boolean = false) {
+        val owner = if (teacherPreview) _teacherState else _state
+        val jobs = if (teacherPreview) teacherJobs else agendaJobs
+        val target = owner.value.selected ?: return
+        if (!forceNetwork && !owner.value.shouldLoadAgendaWeek(offset)) return
+        jobs[offset]?.cancel()
+        val weekStart = owner.value.agendaReferenceMonday.plusWeeks(offset.toLong())
+        val currentWeek = timetableWeekStart(LocalDate.now(mpeiTimeZone))
+        val affectsWidget = !teacherPreview && (weekStart == currentWeek || weekStart == currentWeek.plusWeeks(1))
+        owner.update {
             it.copy(
                 agendaLoadingOffsets = it.agendaLoadingOffsets + offset,
                 agendaFailedOffsets = it.agendaFailedOffsets - offset,
@@ -195,9 +243,8 @@ class MainViewModel(
         val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
             val thisJob = currentCoroutineContext()[Job]
             fun isCurrentRequest(): Boolean {
-                val selected = state.value.selected ?: return false
-                return selectionVersion == version &&
-                    agendaJobs[offset] === thisJob &&
+                val selected = owner.value.selected ?: return false
+                return jobs[offset] === thisJob &&
                     selected.id == target.id && selected.type == target.type
             }
 
@@ -207,10 +254,10 @@ class MainViewModel(
                     // instead of waiting for a slow remote response.
                     val cached = container.repository.cachedWeek(target, weekStart)
                     if (cached != null && isCurrentRequest()) {
-                        _state.update {
+                        owner.update {
                             it.copy(agendaWeeks = it.agendaWeeks + (offset to cached.week))
                         }
-                        if (offset in 0..1) {
+                        if (affectsWidget) {
                             NextLessonWidgetProvider.requestRefresh(container.appContext)
                         }
                     }
@@ -223,13 +270,13 @@ class MainViewModel(
                 if (isCurrentRequest()) {
                     container.diagnostics.log("SCHEDULE",
                         "week received offset=$offset source=${result.source} days=${result.week.days.size}")
-                    _state.update {
+                    owner.update {
                         it.copy(
                             agendaWeeks = it.agendaWeeks + (offset to result.week),
                             agendaFailedOffsets = it.agendaFailedOffsets - offset,
                         )
                     }
-                    if (offset in 0..1) {
+                    if (affectsWidget) {
                         NextLessonWidgetProvider.requestRefresh(container.appContext)
                     }
                 }
@@ -240,20 +287,20 @@ class MainViewModel(
                     container.diagnostics.log("SCHEDULE",
                         "week error offset=$offset type=${error.javaClass.simpleName} " +
                             "detail=${error.message.orEmpty().take(160)}")
-                    _state.update {
+                    owner.update {
                         it.copy(agendaFailedOffsets = it.agendaFailedOffsets + offset)
                     }
                 }
             } finally {
                 if (isCurrentRequest()) {
-                    agendaJobs.remove(offset)
-                    _state.update {
+                    jobs.remove(offset)
+                    owner.update {
                         it.copy(agendaLoadingOffsets = it.agendaLoadingOffsets - offset)
                     }
                 }
             }
         }
-        agendaJobs[offset] = job
+        jobs[offset] = job
         job.start()
     }
 
@@ -344,9 +391,6 @@ class MainViewModel(
             }
         }
     }
-
-    private fun mondayFor(date: LocalDate): LocalDate =
-        date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory =

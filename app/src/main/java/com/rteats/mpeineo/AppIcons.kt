@@ -52,6 +52,8 @@ object AppIcons {
     @get:DrawableRes val Favorite: Int get() = R.drawable.ms_star
     @get:DrawableRes val Overflow: Int get() = R.drawable.ms_more_vert
     @get:DrawableRes val Edit: Int get() = R.drawable.ms_edit
+    @get:DrawableRes val Science: Int get() = R.drawable.ms_science
+    @get:DrawableRes val Quiz: Int get() = R.drawable.ms_quiz
     @get:DrawableRes val Search: Int get() = R.drawable.ms_search
     @get:DrawableRes val Close: Int get() = R.drawable.ms_close
     @get:DrawableRes val Refresh: Int get() = R.drawable.ms_refresh

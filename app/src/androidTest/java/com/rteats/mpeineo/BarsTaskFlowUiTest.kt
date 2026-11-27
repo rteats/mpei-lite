@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rteats.mpeineo.ui.BarsActivity
 import com.rteats.mpeineo.ui.BarsActivityType
 import com.rteats.mpeineo.ui.BarsDiscipline
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import com.rteats.mpeineo.ui.BarsNativeDashboard
 import com.rteats.mpeineo.ui.BarsUiState
 import com.rteats.mpeineo.ui.theme.MpeiNeoTheme
@@ -133,6 +134,35 @@ class BarsTaskFlowUiTest {
         rule.waitForIdle()
         pressBack()
         rule.onNodeWithTag("bars-discipline-Физика").assertIsDisplayed()
+    }
+
+    @Test fun restoredDetailReturnsToDashboardIfItsDisciplineWasRemoved() {
+        val restoration = StateRestorationTester(rule)
+        var uiState by mutableStateOf(BarsUiState(isLoading = false, disciplines = listOf(sampleDiscipline())))
+        val detailOpen = java.util.concurrent.atomic.AtomicBoolean(false)
+        restoration.setContent {
+            MpeiNeoTheme {
+                BarsNativeDashboard(
+                    state = uiState,
+                    active = true,
+                    onDetailOpenChange = detailOpen::set,
+                    openDisciplineName = null,
+                    openDisciplineRequest = 0,
+                    onOpenDisciplineConsumed = {},
+                    showCachedRefreshErrors = false,
+                    onRefresh = {},
+                    onOpenBrowser = {},
+                    onAcknowledgeGrades = {},
+                    onRefreshSummary = {},
+                )
+            }
+        }
+        rule.onNodeWithTag("bars-discipline-Физика").performClick()
+        rule.onNodeWithTag("bars-detail-swipe-back").assertIsDisplayed()
+        rule.runOnUiThread { uiState = uiState.copy(disciplines = listOf(sampleDiscipline().copy(disciplineName = "Оптика"))) }
+        restoration.emulateSavedInstanceStateRestore()
+        rule.onNodeWithTag("bars-discipline-Оптика").assertIsDisplayed()
+        org.junit.Assert.assertFalse(detailOpen.get())
     }
 
     private fun sampleDiscipline() = BarsDiscipline(
